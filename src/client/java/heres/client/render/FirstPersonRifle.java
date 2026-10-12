@@ -26,7 +26,7 @@ import org.joml.Vector3f;
  */
 public final class FirstPersonRifle {
 	/** Where the middle of the rifle sits in view space (camera looks down -Z). */
-	private static final Vector3f CENTER = new Vector3f(0.34F, -0.40F, -1.25F);
+	private static final Vector3f CENTER = new Vector3f(0.32F, -0.35F, -1.25F);
 	private static final float SCALE = 1.2F;
 	private static final float ARM_SCALE = 0.6F;
 
@@ -34,7 +34,7 @@ public final class FirstPersonRifle {
 	private static final Vector3f GRIP = new Vector3f(0.0F, -0.085F, 0.31F);
 	private static final Vector3f FOREND = new Vector3f(-0.01F, -0.035F, -0.17F);
 	/** Direction from each shoulder to its hand, in the rifle frame. */
-	private static final Vector3f RIGHT_REACH = new Vector3f(-0.35F, 0.45F, -0.45F).normalize();
+	private static final Vector3f RIGHT_REACH = new Vector3f(-0.65F, 0.40F, -0.25F).normalize();
 	private static final Vector3f LEFT_REACH = new Vector3f(0.45F, 0.35F, -0.80F).normalize();
 
 	private FirstPersonRifle() {
