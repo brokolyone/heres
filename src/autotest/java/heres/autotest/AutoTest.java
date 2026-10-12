@@ -83,6 +83,18 @@ public class AutoTest implements ClientModInitializer {
 		then(5, () -> mc.options.setPerspective(Perspective.THIRD_PERSON_BACK));
 		then(20, () -> shot(mc, "03_thirdperson_back_sniper"));
 		then(5, () -> {
+			mc.options.setPerspective(Perspective.THIRD_PERSON_FRONT);
+			mc.player.setYaw(90);
+			mc.player.setBodyYaw(90);
+			mc.player.setHeadYaw(90);
+		});
+		then(20, () -> shot(mc, "03b_thirdperson_side_sniper"));
+		then(5, () -> {
+			mc.player.setYaw(0);
+			mc.player.setBodyYaw(0);
+			mc.player.setHeadYaw(0);
+		});
+		then(5, () -> {
 			mc.options.setPerspective(Perspective.FIRST_PERSON);
 			mc.options.useKey.setPressed(true);
 		});
@@ -96,10 +108,8 @@ public class AutoTest implements ClientModInitializer {
 		then(10, () -> cmd(mc, "summon minecraft:ender_dragon 0.5 -54 30 {NoAI:1b}"));
 		for (int i = 1; i <= 5; i++) {
 			int n = i;
-			then(20, () -> {
-				aimAtDragon(mc);
-				KeyBinding.onKeyPressed(KeyBindingHelper.getBoundKeyOf(mc.options.attackKey));
-			});
+			then(17, () -> aimAtDragon(mc));
+			then(3, () -> KeyBinding.onKeyPressed(KeyBindingHelper.getBoundKeyOf(mc.options.attackKey)));
 			then(3, () -> {
 				if (n == 1) {
 					shot(mc, "05_shot_tracer");

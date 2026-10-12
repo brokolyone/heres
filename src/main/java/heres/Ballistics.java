@@ -26,6 +26,7 @@ import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.Box;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
 
@@ -44,7 +45,7 @@ public final class Ballistics {
 	private Ballistics() {
 	}
 
-	public static void shoot(ServerPlayerEntity player) {
+	public static void shoot(ServerPlayerEntity player, float yaw, float pitch) {
 		if (!(player.getMainHandStack().getItem() instanceof SniperRifleItem rifle)
 				|| player.getItemCooldownManager().isCoolingDown(rifle)
 				|| player.isSpectator()) {
@@ -54,7 +55,7 @@ public final class Ballistics {
 		ServerWorld world = player.getServerWorld();
 
 		Vec3d eye = player.getEyePos();
-		Vec3d dir = player.getRotationVec(1.0F);
+		Vec3d dir = Vec3d.fromPolar(MathHelper.clamp(pitch, -90.0F, 90.0F), yaw);
 		Vec3d far = eye.add(dir.multiply(RANGE));
 		BlockHitResult blockHit = world.raycast(new RaycastContext(eye, far,
 				RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, player));
@@ -136,10 +137,11 @@ public final class Ballistics {
 				Vec3d p = muzzle.add(step.multiply(d));
 				world.spawnParticles(viewer, ParticleTypes.CRIT, true, p.x, p.y, p.z, 1, 0, 0, 0, 0);
 			}
+			// muzzle flash and smoke would sit right in front of the shooter's own camera
 			if (viewer != shooter) {
 				world.spawnParticles(viewer, ParticleTypes.FLASH, true, muzzle.x, muzzle.y, muzzle.z, 1, 0, 0, 0, 0);
+				world.spawnParticles(viewer, ParticleTypes.SMOKE, true, muzzle.x, muzzle.y, muzzle.z, 5, 0.03, 0.03, 0.03, 0.02);
 			}
-			world.spawnParticles(viewer, ParticleTypes.SMOKE, true, muzzle.x, muzzle.y, muzzle.z, 5, 0.03, 0.03, 0.03, 0.02);
 		}
 	}
 

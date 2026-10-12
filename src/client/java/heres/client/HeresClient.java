@@ -53,7 +53,7 @@ public class HeresClient implements ClientModInitializer {
 			player.playSound(SoundEvents.BLOCK_DISPENSER_FAIL, 0.4F, 2.0F);
 			return;
 		}
-		ClientPlayNetworking.send(new ShootPayload());
+		ClientPlayNetworking.send(new ShootPayload(player.getYaw(), player.getPitch()));
 		// predict the server's cooldown so a double click doesn't send twice
 		player.getItemCooldownManager().set(rifle, SniperRifleItem.RELOAD_TICKS);
 		boolean scoped = player.isUsingSpyglass();

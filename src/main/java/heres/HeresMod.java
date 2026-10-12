@@ -68,7 +68,7 @@ public class HeresMod implements ModInitializer {
 		PayloadTypeRegistry.playC2S().register(ShootPayload.ID, ShootPayload.CODEC);
 		PayloadTypeRegistry.playC2S().register(OlliePayload.ID, OlliePayload.CODEC);
 
-		ServerPlayNetworking.registerGlobalReceiver(ShootPayload.ID, (payload, context) -> Ballistics.shoot(context.player()));
+		ServerPlayNetworking.registerGlobalReceiver(ShootPayload.ID, (payload, context) -> Ballistics.shoot(context.player(), payload.yaw(), payload.pitch()));
 		ServerPlayNetworking.registerGlobalReceiver(OlliePayload.ID, (payload, context) -> {
 			if (context.player().getVehicle() instanceof SkateboardEntity board) {
 				board.onRiderOllie(context.player());
