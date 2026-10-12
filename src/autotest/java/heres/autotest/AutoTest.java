@@ -82,17 +82,19 @@ public class AutoTest implements ClientModInitializer {
 		then(20, () -> shot(mc, "02_thirdperson_front_sniper"));
 		then(5, () -> mc.options.setPerspective(Perspective.THIRD_PERSON_BACK));
 		then(20, () -> shot(mc, "03_thirdperson_back_sniper"));
+		// an armor stand uses the same third-person transform and can be viewed side-on
 		then(5, () -> {
-			mc.options.setPerspective(Perspective.THIRD_PERSON_FRONT);
-			mc.player.setYaw(90);
-			mc.player.setBodyYaw(90);
-			mc.player.setHeadYaw(90);
+			mc.options.setPerspective(Perspective.FIRST_PERSON);
+			mc.options.hudHidden = true;
+			cmd(mc, "summon minecraft:armor_stand 0.5 -60 3.5 {ShowArms:1b,NoBasePlate:1b,Rotation:[90f,0f],"
+					+ "Pose:{RightArm:[-90f,0f,0f],LeftArm:[-90f,30f,0f]},HandItems:[{id:\"heres:sniper\",count:1},{}]}");
+			cmd(mc, "tp @a 0.5 -59.3 6.2 180 10");
 		});
-		then(20, () -> shot(mc, "03b_thirdperson_side_sniper"));
+		then(30, () -> shot(mc, "03b_armorstand_side_sniper"));
 		then(5, () -> {
-			mc.player.setYaw(0);
-			mc.player.setBodyYaw(0);
-			mc.player.setHeadYaw(0);
+			cmd(mc, "kill @e[type=minecraft:armor_stand]");
+			cmd(mc, "tp @a 0.5 -60 0.5 0 0");
+			mc.options.hudHidden = false;
 		});
 		then(5, () -> {
 			mc.options.setPerspective(Perspective.FIRST_PERSON);
@@ -105,7 +107,7 @@ public class AutoTest implements ClientModInitializer {
 		then(5, () -> mc.options.useKey.setPressed(false));
 
 		// dragon: five body shots should bring it down
-		then(10, () -> cmd(mc, "summon minecraft:ender_dragon 0.5 -54 30 {NoAI:1b}"));
+		then(10, () -> cmd(mc, "summon minecraft:ender_dragon 0.5 -54 30 {DragonPhase:10}"));
 		for (int i = 1; i <= 5; i++) {
 			int n = i;
 			then(17, () -> aimAtDragon(mc));
