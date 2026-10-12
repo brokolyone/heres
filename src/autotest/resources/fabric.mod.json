@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "heres-autotest",
+  "version": "1.0.0",
+  "name": "Heres autotest (dev only)",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["heres.autotest.AutoTest"]
+  },
+  "depends": {
+    "heres": "*"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "sniper.shot": {"subtitle": "subtitles.heres.sniper.shot", "sounds": [{"name": "heres:sniper_shot", "attenuation_distance": 96}]},
+  "sniper.bolt": {"subtitle": "subtitles.heres.sniper.bolt", "sounds": ["heres:sniper_bolt"]},
+  "skateboard.pop": {"subtitle": "subtitles.heres.skateboard.pop", "sounds": ["heres:skate_pop"]},
+  "skateboard.land": {"subtitle": "subtitles.heres.skateboard.land", "sounds": ["heres:skate_land"]},
+  "skateboard.roll": {"subtitle": "subtitles.heres.skateboard.roll", "sounds": [{"name": "heres:skate_roll", "stream": false}]}
+}

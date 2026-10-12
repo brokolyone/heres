@@ -1,0 +1,70 @@
+plugins {
+    id 'fabric-loom' version '1.13.6'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+loom {
+    splitEnvironmentSourceSets()
+}
+
+sourceSets {
+    autotest {
+        compileClasspath += sourceSets.client.compileClasspath + sourceSets.main.output + sourceSets.client.output
+        runtimeClasspath += sourceSets.client.runtimeClasspath + sourceSets.main.output + sourceSets.client.output
+    }
+}
+
+loom {
+    mods {
+        "heres" {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+        "heres-autotest" {
+            sourceSet sourceSets.autotest
+        }
+    }
+
+    runs {
+        // Scripted in-game check that saves screenshots to run/screenshots (see src/autotest).
+        autotest {
+            client()
+            name "Autotest Client"
+            source sourceSets.autotest
+            programArgs "--quickPlaySingleplayer", "test", "--width", "1280", "--height", "720"
+        }
+    }
+}
+
+repositories {
+    maven { url = 'https://maven-central.storage-download.googleapis.com/maven2/' }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+}
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 21
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}

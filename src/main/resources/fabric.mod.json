@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "heres",
+  "version": "${version}",
+  "name": "Heres: Sniper & Skateboard",
+  "description": "A real 3D M98B-style sniper rifle and a rideable skateboard. Ollie, kickflip and snipe the Ender Dragon.",
+  "authors": ["brokolyone"],
+  "license": "MIT",
+  "icon": "assets/heres/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["heres.HeresMod"],
+    "client": ["heres.client.HeresClient"]
+  },
+  "mixins": [
+    {"config": "heres.client.mixins.json", "environment": "client"}
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21 <1.21.2",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
