@@ -38,6 +38,9 @@ loom {
             name "Autotest Client"
             source sourceSets.autotest
             programArgs "--quickPlaySingleplayer", "test", "--width", "1280", "--height", "720"
+            if (project.hasProperty("quick")) {
+                vmArg "-Dheres.autotest.quick=true"
+            }
         }
     }
 }

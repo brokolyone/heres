@@ -91,6 +91,13 @@ public class AutoTest implements ClientModInitializer {
 			cmd(mc, "tp @a 0.5 -59.3 6.2 180 10");
 		});
 		then(30, () -> shot(mc, "03b_armorstand_side_sniper"));
+		if (Boolean.getBoolean("heres.autotest.quick")) {
+			then(5, () -> {
+				// set the property to only check how the rifle is held
+				log("done (quick)");
+				mc.scheduleStop();
+			});
+		}
 		then(5, () -> {
 			cmd(mc, "kill @e[type=minecraft:armor_stand]");
 			cmd(mc, "tp @a 0.5 -60 0.5 0 0");
