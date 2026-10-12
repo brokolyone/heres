@@ -1,0 +1,9 @@
+{
+  "pack": {
+    "description": "Скейт + снайперка M98B против Эндер-дракона",
+    "pack_format": 71,
+    "supported_formats": [71, 999],
+    "min_format": 71,
+    "max_format": 999
+  }
+}

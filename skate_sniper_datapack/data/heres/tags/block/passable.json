@@ -1,0 +1,12 @@
+{
+  "values": [
+    "#minecraft:replaceable",
+    {"id": "#minecraft:flowers", "required": false},
+    {"id": "#minecraft:saplings", "required": false},
+    "minecraft:torch", "minecraft:wall_torch", "minecraft:soul_torch", "minecraft:soul_wall_torch",
+    "minecraft:redstone_torch", "minecraft:redstone_wall_torch",
+    "minecraft:ladder", "minecraft:rail", "minecraft:powered_rail", "minecraft:detector_rail", "minecraft:activator_rail",
+    "minecraft:redstone_wire", "minecraft:tripwire", "minecraft:cobweb", "minecraft:sugar_cane", "minecraft:kelp", "minecraft:kelp_plant",
+    "minecraft:seagrass", "minecraft:tall_seagrass", "minecraft:end_gateway", "minecraft:end_portal", "minecraft:nether_portal", "minecraft:light"
+  ]
+}
