@@ -3,7 +3,7 @@
 #include <cstring>
 #include <filesystem>
 
-#include <SDL_opengl.h>
+#include "gl.h"
 #include <imgui_internal.h>
 #include <imgui_stdlib.h>
 
@@ -97,6 +97,15 @@ void Editor::scanFonts() {
     };
     for (auto& f : linuxFonts)
         if (exists(f.second)) fonts.push_back({f.first, f.second});
+    const std::pair<const char*, const char*> androidFonts[] = {
+        {"Roboto", "/system/fonts/Roboto-Regular.ttf"},       {"Roboto Bold", "/system/fonts/Roboto-Bold.ttf"},
+        {"Noto Serif", "/system/fonts/NotoSerif-Regular.ttf"}, {"Noto Serif Bold", "/system/fonts/NotoSerif-Bold.ttf"},
+        {"Droid Sans Mono", "/system/fonts/DroidSansMono.ttf"}, {"Cutive Mono", "/system/fonts/CutiveMono.ttf"},
+        {"Coming Soon", "/system/fonts/ComingSoon.ttf"},       {"Dancing Script", "/system/fonts/DancingScript-Regular.ttf"},
+        {"Carrois Gothic SC", "/system/fonts/CarroisGothicSC-Regular.ttf"},
+    };
+    for (auto& f : androidFonts)
+        if (exists(f.second)) fonts.push_back({f.first, f.second});
 }
 
 void Editor::loadFonts(float scale) {
@@ -124,15 +133,16 @@ void Editor::loadFonts(float scale) {
     };
     std::string wf = winDir() + "/Fonts/";
     std::string dv = "/usr/share/fonts/truetype/dejavu/";
-    ImFont* main = add({wf + "segoeui.ttf", wf + "arial.ttf", dv + "DejaVuSans.ttf",
+    const std::string af = "/system/fonts/";
+    ImFont* main = add({wf + "segoeui.ttf", wf + "arial.ttf", dv + "DejaVuSans.ttf", af + "Roboto-Regular.ttf", af + "NotoSans-Regular.ttf",
                         "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"}, 15.f);
     if (!main) {
         ImFontConfig cfg;
         cfg.SizePixels = std::round(13.f * scale);
         io.Fonts->AddFontDefault(&cfg);
     }
-    gMediumFont = add({wf + "segoeuib.ttf", wf + "arialbd.ttf", dv + "DejaVuSans-Bold.ttf"}, 17.f);
-    gTitleFont = add({wf + "segoeuib.ttf", wf + "arialbd.ttf", dv + "DejaVuSans-Bold.ttf"}, 30.f);
+    gMediumFont = add({wf + "segoeuib.ttf", wf + "arialbd.ttf", dv + "DejaVuSans-Bold.ttf", af + "Roboto-Bold.ttf", af + "Roboto-Regular.ttf"}, 17.f);
+    gTitleFont = add({wf + "segoeuib.ttf", wf + "arialbd.ttf", dv + "DejaVuSans-Bold.ttf", af + "Roboto-Bold.ttf", af + "Roboto-Regular.ttf"}, 30.f);
 }
 
 void Editor::setupStyle(float scale) {
@@ -210,7 +220,13 @@ void Editor::setupStyle(float scale) {
 
 // ---------------------------------------------------------------- frame
 
-void Editor::beforeFrame() { files.runPending(); }
+void Editor::beforeFrame() {
+    files.runPending();
+    if (!files.notice.empty()) {
+        status = files.notice;
+        files.notice.clear();
+    }
+}
 
 void Editor::frame() {
     handleShortcuts();
@@ -539,6 +555,11 @@ void Editor::drawMenuBar() {
         if (ImGui::MenuItem("О программе")) showAbout = true;
         ImGui::EndMenu();
     }
+    // Quick undo/redo (the only way on touch screens)
+    float ib = ImGui::GetFrameHeight();
+    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - ib * 2 - 16);
+    if (iconButton("##undo", UiIcon::Undo, "Отменить (Ctrl+Z)", d && doc->canUndo(), ib)) cmdUndo();
+    if (iconButton("##redo", UiIcon::Redo, "Повторить (Ctrl+Shift+Z)", d && doc->canRedo(), ib)) cmdRedo();
     ImGui::EndMainMenuBar();
 }
 

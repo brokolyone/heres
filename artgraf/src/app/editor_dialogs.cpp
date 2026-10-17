@@ -3,7 +3,7 @@
 #include <cstring>
 #include <memory>
 
-#include <SDL_opengl.h>
+#include "gl.h"
 #include <imgui_internal.h>
 #include <imgui_stdlib.h>
 
@@ -121,9 +121,12 @@ void Editor::drawSplash(float progress, const char* stage) {
     ImGui::PopStyleVar(3);
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 a = vp->Pos, b(vp->Pos.x + vp->Size.x, vp->Pos.y + vp->Size.y);
+    dl->AddRectFilled(a, b, IM_COL32(17, 21, 28, 255));
+    // Fit the artwork into the window keeping its aspect (phones are wider than the splash).
+    float s = std::min(vp->Size.x / 960.f, vp->Size.y / 560.f);
+    a = ImVec2(vp->Pos.x + (vp->Size.x - 960 * s) * 0.5f, vp->Pos.y + (vp->Size.y - 560 * s) * 0.5f);
+    b = ImVec2(a.x + 960 * s, a.y + 560 * s);
     if (splashTex) dl->AddImage(ImTextureID(uintptr_t(splashTex)), a, b);
-    else dl->AddRectFilled(a, b, IM_COL32(16, 12, 30, 255));
-    float s = vp->Size.x / 960.f;
     ImVec2 barA(a.x + 58 * s, a.y + 380 * s), barB(a.x + 360 * s, a.y + 384 * s);
     dl->AddRectFilled(barA, barB, IM_COL32(255, 255, 255, 30), 2);
     dl->AddRectFilled(barA, ImVec2(barA.x + (barB.x - barA.x) * std::clamp(progress, 0.f, 1.f), barB.y), IM_COL32(38, 128, 235, 255), 2);

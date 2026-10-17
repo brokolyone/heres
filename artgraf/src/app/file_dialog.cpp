@@ -1,11 +1,13 @@
 #include "file_dialog.h"
 
 #include <algorithm>
+#include <cstdio>
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
 
 #include "io.h"
+#include "platform.h"
 
 #ifdef ARTGRAF_NFD
 #include <nfd.h>
@@ -66,6 +68,40 @@ void FileDialog::requestMulti(const std::string& t, std::vector<Filter> f, Multi
 }
 
 void FileDialog::runPending() {
+#ifdef __ANDROID__
+    // Android: system picker for opening; images are exported to the gallery, projects to app storage.
+    if (awaitingPick) {
+        std::string p;
+        if (platformPollPicked(p)) {
+            awaitingPick = false;
+            if (!p.empty() && cb) cb(p);
+        }
+        return;
+    }
+    if (!pending) return;
+    pending = false;
+    if (mode == Mode::Open) {
+        bool imagesOnly = true;
+        for (auto& f : filters)
+            if (f.exts.find("agf") != std::string::npos || f.exts.find("ttf") != std::string::npos) imagesOnly = false;
+        awaitingPick = platformPickFile(imagesOnly);
+        return;
+    }
+    std::string name = defaultName.empty() ? "ArtGraf.png" : defaultName;
+    if (lowerExt(name).empty() && !filters.empty()) name += "." + filters[0].exts.substr(0, filters[0].exts.find(','));
+    std::string ext = lowerExt(name);
+    if (ext == "agf") {
+        if (cb) cb(platformDocumentsDir() + name);
+        return;
+    }
+    std::string tmp = platformCacheDir() + name;
+    if (cb) cb(tmp);
+    const char* mime = ext == "png" ? "image/png" : (ext == "jpg" || ext == "jpeg") ? "image/jpeg" : ext == "bmp" ? "image/bmp" : "image/x-tga";
+    notice = platformSaveToGallery(tmp, name, mime) ? "Сохранено в Галерею: Pictures/ArtGraf/" + name
+                                                     : "Не удалось сохранить в Галерею";
+    std::remove(tmp.c_str());
+    return;
+#endif
 #ifdef ARTGRAF_NFD
     if (!pending) return;
     pending = false;
@@ -138,7 +174,7 @@ void FileDialog::refresh() {
 }
 
 void FileDialog::draw() {
-#ifdef ARTGRAF_NFD
+#if defined(ARTGRAF_NFD) || defined(__ANDROID__)
     return;  // native dialogs run from runPending() between frames
 #endif
     if (pending) {  // built-in browser: the popup has to be opened inside the frame

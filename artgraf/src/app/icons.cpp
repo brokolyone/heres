@@ -264,6 +264,17 @@ void drawUiIcon(ImDrawList* dl, UiIcon icon, ImVec2 c, float size, ImU32 col) {
             p.line(0.25f, -0.85f, 0.25f, -0.5f); p.line(0.25f, -0.5f, 0.6f, -0.5f);
             break;
         case UiIcon::Close: p.line(-0.6f, -0.6f, 0.6f, 0.6f); p.line(0.6f, -0.6f, -0.6f, 0.6f); break;
+        case UiIcon::Undo:
+        case UiIcon::Redo: {
+            float k = icon == UiIcon::Undo ? 1.f : -1.f;
+            dl->PathArcTo(p.P(0.1f * k, 0.15f), 0.6f * p.s, icon == UiIcon::Undo ? -3.14159f * 0.5f : -3.14159f * 0.5f,
+                          icon == UiIcon::Undo ? 3.14159f * 0.5f : -3.14159f * 1.5f, 16);
+            dl->PathStroke(col, 0, p.th);
+            p.line(0.1f * k, -0.45f, -0.35f * k, -0.45f);
+            p.arrowHead(-0.55f * k, -0.45f, -k, 0);
+            p.line(0.1f * k, 0.75f, -0.5f * k, 0.75f);
+            break;
+        }
         case UiIcon::Brush:
             p.line(0.85f, -0.85f, -0.05f, 0.1f, p.th * 1.4f);
             p.poly({{-0.15f, 0.0f}, {0.1f, 0.25f}, {-0.3f, 0.75f}, {-0.85f, 0.85f}, {-0.7f, 0.35f}}, true);

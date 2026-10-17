@@ -77,6 +77,9 @@ public:
     void requestQuit();
     bool wantsQuit() const { return quitNow; }
     bool animating() const;
+    // Two-finger touch: zoom by `scale` around (cx, cy) and pan by (dx, dy), all in window pixels.
+    void touchGesture(float scale, float cx, float cy, float dx, float dy);
+    int touchFingers = 0;
 
     // Splash screen (drawn by main while the app finishes loading)
     void drawSplash(float progress, const char* stage);
@@ -355,7 +358,7 @@ RGBA fromVec4(const ImVec4& v);
 void drawGradientStrip(ImDrawList* dl, ImVec2 a, ImVec2 b, const Gradient& g, float rounding = 4.f);
 
 // Small line icons for UI buttons (not tools).
-enum class UiIcon { Eye, EyeOff, Plus, Duplicate, Trash, Up, Down, Merge, Fx, Folder, File, Close, Brush };
+enum class UiIcon { Eye, EyeOff, Plus, Duplicate, Trash, Up, Down, Merge, Fx, Folder, File, Close, Brush, Undo, Redo };
 void drawUiIcon(ImDrawList* dl, UiIcon icon, ImVec2 center, float size, ImU32 color);
 bool iconButton(const char* id, UiIcon icon, const char* tooltip, bool enabled = true, float size = 0);
 

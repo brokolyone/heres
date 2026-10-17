@@ -27,13 +27,14 @@ public:
     void requestMulti(const std::string& title, std::vector<Filter> filters, MultiCallback cb);
     void runPending();
     void draw();
+    std::string notice;  // one-off message for the status bar (e.g. "saved to gallery")
 
 private:
     struct Entry { std::string name; bool dir; };
     void refresh();
     bool matches(const std::string& name) const;
 
-    bool pending = false, browserOpen = false, multi = false;
+    bool pending = false, browserOpen = false, multi = false, awaitingPick = false;
     Mode mode = Mode::Open;
     std::string title, defaultName;
     std::vector<Filter> filters;

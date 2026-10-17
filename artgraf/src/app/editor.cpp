@@ -4,7 +4,7 @@
 #include <cstring>
 #include <filesystem>
 
-#include <SDL_opengl.h>
+#include "gl.h"
 
 #include "clipboard.h"
 #include "effects.h"
@@ -120,6 +120,18 @@ Editor::~Editor() {
     if (logoTex) glDeleteTextures(1, &logoTex);
     if (splashTex) glDeleteTextures(1, &splashTex);
     for (auto& [k, t] : brushPreviewTex) glDeleteTextures(1, &t);
+}
+
+void Editor::touchGesture(float scale, float cx, float cy, float dx, float dy) {
+    if (!doc) return;
+    if (dragging) {  // a second finger turns a starting stroke into a gesture
+        dragging = false;
+        cancelLive();
+        lasso.clear();
+    }
+    zoomAt(zoom * scale, ImVec2(cx, cy));
+    pan.x += dx;
+    pan.y += dy;
 }
 
 bool Editor::animating() const {

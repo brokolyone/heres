@@ -303,6 +303,7 @@ void Editor::canvasInput(bool hovered, bool) {
     }
     if (!doc) return;
 
+    if (touchFingers >= 2) return;  // two-finger gesture in progress: no tool input
     if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         downShift = io.KeyShift;
         downAlt = io.KeyAlt;

@@ -97,8 +97,23 @@ cmake --build build-win
 # готово: build-win/ArtGraf.exe
 ```
 
-Готовый `.exe` также собирается в GitHub Actions (workflow **ArtGraf**) при каждом изменении
-в `artgraf/`: его можно скачать из артефактов запуска.
+Готовые `.exe` и `.apk` также собираются в GitHub Actions (workflow **ArtGraf**) при каждом
+изменении в `artgraf/`: их можно скачать из артефактов запуска.
+
+### Android `.apk`
+
+Тот же код собирается в приложение для Android 7.0+ (arm64, armv7, x86_64). На телефоне:
+один палец рисует, двумя пальцами — масштаб и сдвиг; «Открыть» вызывает системный выбор файла
+(галерея, «Файлы», Диск), экспорт картинок сохраняется в «Галерею» (Pictures/ArtGraf), проекты —
+в папку приложения. Интерфейс тот же, что на компьютере, поэтому удобнее всего на планшете.
+
+```sh
+# нужны JDK 17+, Gradle 8.9+, Android SDK с NDK 26 и CMake 3.22
+cd artgraf/android
+echo "sdk.dir=$ANDROID_HOME" > local.properties
+gradle assembleRelease
+# готово: app/build/outputs/apk/release/app-release.apk (подписан отладочным ключом)
+```
 
 ### Linux (для разработки)
 
@@ -141,6 +156,8 @@ src/app/    программа: окно, панели, инструменты
   editor_dialogs.cpp  новый документ, стиль слоя, кривые, фильтры, заставка
   file_dialog.cpp   системные диалоги или встроенный браузер
   clipboard.cpp     буфер обмена Windows (PNG и CF_DIB)
+  platform.cpp      Android: выбор файла и сохранение в галерею через JNI
+android/            Gradle-проект: активити на базе SDLActivity, манифест, иконки
   icons.cpp         иконки инструментов
 ```
 

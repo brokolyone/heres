@@ -6,7 +6,7 @@
 #include <string>
 
 #include <SDL.h>
-#include <SDL_opengl.h>
+#include "gl.h"
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl2.h>
@@ -22,19 +22,32 @@ int main(int argc, char** argv) {
         return 1;
     }
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);  // OpenGL 3.0 on desktop, OpenGL ES 3.0 on Android
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
     float scale = 1.f;
     float ddpi = 0;
+#ifdef __ANDROID__
+    // Phones report ~400 dpi; aim for a UI a bit denser than Android's own 160-dpi "dp" unit.
+    if (SDL_GetDisplayDPI(0, &ddpi, nullptr, nullptr) == 0 && ddpi > 0) scale = std::clamp(ddpi / 160.f * 0.85f, 1.f, 3.5f);
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+#else
     if (SDL_GetDisplayDPI(0, &ddpi, nullptr, nullptr) == 0 && ddpi > 0) scale = std::clamp(ddpi / 96.f, 1.f, 3.f);
+#endif
 
     // The window starts as a borderless splash screen and turns into the main window once loaded.
     const int splashW = int(960 * scale), splashH = int(560 * scale);
+#ifdef __ANDROID__
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+    SDL_Window* window = SDL_CreateWindow("ArtGraf", 0, 0, 0, 0, SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_ALLOW_HIGHDPI);
+    (void)splashW;
+    (void)splashH;
+#else
     SDL_Window* window = SDL_CreateWindow("ArtGraf", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, splashW, splashH,
                                           SDL_WINDOW_OPENGL | SDL_WINDOW_BORDERLESS | SDL_WINDOW_ALLOW_HIGHDPI);
+#endif
     if (!window) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ArtGraf", SDL_GetError(), nullptr);
         return 1;
@@ -76,7 +89,11 @@ int main(int argc, char** argv) {
     editor.setupStyle(scale);
 
     ImGui_ImplSDL2_InitForOpenGL(window, gl);
+#ifdef __ANDROID__
+    ImGui_ImplOpenGL3_Init("#version 300 es");
+#else
     ImGui_ImplOpenGL3_Init("#version 130");
+#endif
     editor.loadAssets();
 
     auto renderFrame = [&](const std::function<void()>& ui) {
@@ -124,12 +141,14 @@ int main(int argc, char** argv) {
     }
 
     // ---- switch to the main window
+#ifndef __ANDROID__
     SDL_SetWindowBordered(window, SDL_TRUE);
     SDL_SetWindowResizable(window, SDL_TRUE);
     SDL_SetWindowMinimumSize(window, 900, 560);
     SDL_SetWindowSize(window, int(1440 * scale), int(900 * scale));
     SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
     SDL_MaximizeWindow(window);
+#endif
 
     if (argc > 1) editor.openPath(argv[1]);
 
@@ -148,6 +167,20 @@ int main(int argc, char** argv) {
             if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_CLOSE &&
                 e.window.windowID == SDL_GetWindowID(window))
                 editor.requestQuit();
+            // Touch: count fingers; two fingers pinch-zoom and pan the canvas.
+            if (e.type == SDL_FINGERDOWN) editor.touchFingers++;
+            if (e.type == SDL_FINGERUP) editor.touchFingers = std::max(0, editor.touchFingers - 1);
+            if (e.type == SDL_MULTIGESTURE && e.mgesture.numFingers >= 2) {
+                static float lastX = -1, lastY = -1;
+                static Uint32 lastT = 0;
+                float w = io.DisplaySize.x, h = io.DisplaySize.y;
+                float cx = e.mgesture.x * w, cy = e.mgesture.y * h;
+                if (SDL_GetTicks() - lastT > 200) { lastX = cx; lastY = cy; }  // new gesture
+                lastT = SDL_GetTicks();
+                editor.touchGesture(1.f + e.mgesture.dDist * 2.2f, cx, cy, cx - lastX, cy - lastY);
+                lastX = cx;
+                lastY = cy;
+            }
             if (e.type == SDL_DROPFILE) {
                 editor.dropPath(e.drop.file);
                 SDL_free(e.drop.file);
@@ -163,6 +196,11 @@ int main(int argc, char** argv) {
 
         editor.beforeFrame();
         renderFrame([&] { editor.frame(); });
+#ifdef __ANDROID__
+        // Show the on-screen keyboard while a text field is focused.
+        if (io.WantTextInput && !SDL_IsTextInputActive()) SDL_StartTextInput();
+        else if (!io.WantTextInput && SDL_IsTextInputActive()) SDL_StopTextInput();
+#endif
     }
 
     editorPtr.reset();  // frees GL textures while the context is alive

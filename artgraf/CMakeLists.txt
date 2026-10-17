@@ -84,8 +84,16 @@ endif()
 FetchContent_Declare(SDL2
   URL https://github.com/libsdl-org/SDL/releases/download/release-2.30.9/SDL2-2.30.9.tar.gz
   URL_HASH SHA256=24b574f71c87a763f50704bbb630cbe38298d544a1f890f099a4696b1d6beba4)
-set(SDL_SHARED OFF CACHE BOOL "" FORCE)
-set(SDL_STATIC ON CACHE BOOL "" FORCE)
+if(ANDROID)
+  # SDL's Java activity loads libSDL2.so and libmain.so.
+  set(SDL_SHARED ON CACHE BOOL "" FORCE)
+  set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+  set(SDL_LIB SDL2::SDL2)
+else()
+  set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+  set(SDL_STATIC ON CACHE BOOL "" FORCE)
+  set(SDL_LIB SDL2::SDL2-static)
+endif()
 set(SDL_TEST OFF CACHE BOOL "" FORCE)
 set(SDL2_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
 
@@ -106,9 +114,12 @@ add_library(imgui STATIC
   ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
   ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp)
 target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends ${imgui_SOURCE_DIR}/misc/cpp)
-target_link_libraries(imgui PUBLIC SDL2::SDL2-static)
-
-find_package(OpenGL REQUIRED)
+target_link_libraries(imgui PUBLIC ${SDL_LIB})
+if(ANDROID)
+  target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_ES3)
+else()
+  find_package(OpenGL REQUIRED)
+endif()
 
 # Logo and splash screen are compiled into the executable.
 set(EMBED_DIR ${CMAKE_CURRENT_BINARY_DIR}/embedded)
@@ -135,14 +146,23 @@ set(APP_SOURCES
   src/app/editor_tools.cpp
   src/app/file_dialog.cpp
   src/app/clipboard.cpp
+  src/app/platform.cpp
   src/app/icons.cpp)
 if(WIN32)
   list(APPEND APP_SOURCES res/artgraf.rc)
 endif()
 
-add_executable(artgraf WIN32 ${APP_SOURCES})
-target_include_directories(artgraf PRIVATE src/app)
-target_link_libraries(artgraf PRIVATE artgraf_core imgui SDL2::SDL2main OpenGL::GL)
+if(ANDROID)
+  # Android: the app is libmain.so, started by the Java activity in android/.
+  set(APP_TARGET main)
+  add_library(main SHARED ${APP_SOURCES})
+  target_link_libraries(main PRIVATE artgraf_core imgui ${SDL_LIB} GLESv3 EGL log android)
+else()
+  set(APP_TARGET artgraf)
+  add_executable(artgraf WIN32 ${APP_SOURCES})
+  target_link_libraries(artgraf PRIVATE artgraf_core imgui SDL2::SDL2main OpenGL::GL)
+endif()
+target_include_directories(${APP_TARGET} PRIVATE src/app)
 
 if(ARTGRAF_NATIVE_DIALOGS)
   FetchContent_Declare(nfd
@@ -150,14 +170,16 @@ if(ARTGRAF_NATIVE_DIALOGS)
     GIT_TAG v1.2.1)
   set(NFD_INSTALL OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(nfd)
-  target_link_libraries(artgraf PRIVATE nfd)
-  target_compile_definitions(artgraf PRIVATE ARTGRAF_NFD=1)
+  target_link_libraries(${APP_TARGET} PRIVATE nfd)
+  target_compile_definitions(${APP_TARGET} PRIVATE ARTGRAF_NFD=1)
 endif()
 
 if(MSVC)
-  target_compile_options(artgraf PRIVATE /utf-8)
+  target_compile_options(${APP_TARGET} PRIVATE /utf-8)
 elseif(MINGW)
   # One self-contained .exe: no libstdc++/libgcc/winpthread DLLs next to it.
-  target_link_options(artgraf PRIVATE -static -static-libgcc -static-libstdc++ $<$<CONFIG:Release>:-s>)
+  target_link_options(${APP_TARGET} PRIVATE -static -static-libgcc -static-libstdc++ $<$<CONFIG:Release>:-s>)
 endif()
-set_target_properties(artgraf PROPERTIES OUTPUT_NAME "ArtGraf")
+if(NOT ANDROID)
+  set_target_properties(${APP_TARGET} PROPERTIES OUTPUT_NAME "ArtGraf")
+endif()
