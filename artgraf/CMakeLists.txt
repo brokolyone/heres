@@ -55,7 +55,11 @@ add_library(artgraf_core STATIC
   src/core/filters.cpp
   src/core/raster.cpp
   src/core/text.cpp
-  src/core/io.cpp)
+  src/core/io.cpp
+  src/core/brush.cpp
+  src/core/gradient.cpp
+  src/core/effects.cpp
+  src/core/retouch.cpp)
 target_include_directories(artgraf_core PUBLIC src/core ${stb_SOURCE_DIR})
 target_link_libraries(artgraf_core PUBLIC nlohmann_json::nlohmann_json miniz)
 if(MSVC)
@@ -106,10 +110,28 @@ target_link_libraries(imgui PUBLIC SDL2::SDL2-static)
 
 find_package(OpenGL REQUIRED)
 
+# Logo and splash screen are compiled into the executable.
+set(EMBED_DIR ${CMAKE_CURRENT_BINARY_DIR}/embedded)
+foreach(asset logo splash)
+  string(SUBSTRING ${asset} 0 1 first)
+  string(TOUPPER ${first} first)
+  string(SUBSTRING ${asset} 1 -1 rest)
+  set(sym k${first}${rest}Png)
+  add_custom_command(
+    OUTPUT ${EMBED_DIR}/${asset}_png.cpp
+    COMMAND ${CMAKE_COMMAND} -DIN=${CMAKE_CURRENT_SOURCE_DIR}/res/${asset}.png -DOUT=${EMBED_DIR}/${asset}_png.cpp
+            -DNAME=${sym} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed.cmake
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/res/${asset}.png ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed.cmake
+    COMMENT "Embedding ${asset}.png")
+  list(APPEND EMBEDDED_SOURCES ${EMBED_DIR}/${asset}_png.cpp)
+endforeach()
+
 set(APP_SOURCES
+  ${EMBEDDED_SOURCES}
   src/app/main.cpp
   src/app/editor.cpp
   src/app/editor_ui.cpp
+  src/app/editor_dialogs.cpp
   src/app/editor_tools.cpp
   src/app/file_dialog.cpp
   src/app/clipboard.cpp

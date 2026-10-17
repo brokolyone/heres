@@ -7,9 +7,11 @@ namespace ag {
 
 namespace {
 
+constexpr float kPi = 3.14159265f;
+
 Vec2 constrain45(Vec2 a, Vec2 b) {
     float dx = b.x - a.x, dy = b.y - a.y;
-    float ang = std::round(std::atan2(dy, dx) / (3.14159265f / 4)) * (3.14159265f / 4);
+    float ang = std::round(std::atan2(dy, dx) / (kPi / 4)) * (kPi / 4);
     float len = std::sqrt(dx * dx + dy * dy);
     return {a.x + std::cos(ang) * len, a.y + std::sin(ang) * len};
 }
@@ -25,22 +27,73 @@ Rect rectFrom(Vec2 a, Vec2 b) {
             int(std::ceil(std::max(a.y, b.y)))};
 }
 
-// Cut a UTF-8 string to at most n bytes without splitting a character.
 std::string utf8Prefix(const std::string& s, size_t n) {
     if (s.size() <= n) return s;
     while (n > 0 && (uint8_t(s[n]) & 0xC0) == 0x80) n--;
     return s.substr(0, n) + "…";
 }
 
+uint32_t hash2(int x, int y) {
+    uint32_t h = uint32_t(x) * 374761393u + uint32_t(y) * 668265263u;
+    h = (h ^ (h >> 13)) * 1274126177u;
+    return h ^ (h >> 16);
+}
+
+// Outline points for the shape kinds that are polygons.
+std::vector<Vec2> shapePoints(ShapeKind k, Vec2 a, Vec2 b, float radius, int sides) {
+    float x0 = std::min(a.x, b.x), x1 = std::max(a.x, b.x), y0 = std::min(a.y, b.y), y1 = std::max(a.y, b.y);
+    float cx = (x0 + x1) * 0.5f, cy = (y0 + y1) * 0.5f, rx = (x1 - x0) * 0.5f, ry = (y1 - y0) * 0.5f;
+    std::vector<Vec2> p;
+    switch (k) {
+        case ShapeKind::RoundRect: {
+            float r = std::min({radius, rx, ry});
+            const Vec2 corners[4] = {{x1 - r, y0 + r}, {x1 - r, y1 - r}, {x0 + r, y1 - r}, {x0 + r, y0 + r}};
+            for (int c = 0; c < 4; c++)
+                for (int i = 0; i <= 8; i++) {
+                    float t = (c * 90.f - 90.f + i * 90.f / 8) * kPi / 180.f;
+                    p.push_back({corners[c].x + std::cos(t) * r, corners[c].y + std::sin(t) * r});
+                }
+            break;
+        }
+        case ShapeKind::Polygon:
+            for (int i = 0; i < sides; i++) {
+                float t = -kPi / 2 + i * 2 * kPi / sides;
+                p.push_back({cx + std::cos(t) * rx, cy + std::sin(t) * ry});
+            }
+            break;
+        case ShapeKind::Star:
+            for (int i = 0; i < sides * 2; i++) {
+                float t = -kPi / 2 + i * kPi / sides, k2 = i % 2 ? 0.45f : 1.f;
+                p.push_back({cx + std::cos(t) * rx * k2, cy + std::sin(t) * ry * k2});
+            }
+            break;
+        case ShapeKind::Heart:
+            for (int i = 0; i < 72; i++) {
+                float t = i * 2 * kPi / 72;
+                float hx = 16 * std::pow(std::sin(t), 3.f);
+                float hy = -(13 * std::cos(t) - 5 * std::cos(2 * t) - 2 * std::cos(3 * t) - std::cos(4 * t));
+                p.push_back({cx + hx / 17.f * rx, cy + (hy + 2.5f) / 15.5f * ry});
+            }
+            break;
+        default: break;
+    }
+    return p;
+}
+
 }  // namespace
 
 void Editor::setTool(Tool t) {
+    for (size_t g = 0; g < toolGroups().size(); g++)
+        for (Tool x : toolGroups()[g])
+            if (x == t) groupTool[int(g)] = t;
     if (t == tool) return;
     if (textEditing) commitText();
     if (dragging) {
         dragging = false;
         cancelLive();
     }
+    polyActive = false;
+    lasso.clear();
     cropActive = false;
     tool = t;
 }
@@ -65,16 +118,23 @@ void Editor::combineSelection(std::vector<uint8_t> shape, Selection::Op op) {
 }
 
 RGBA Editor::gradientAt(int x, int y) const {
-    float vx = gradB.x - gradA.x, vy = gradB.y - gradA.y;
-    float len2 = vx * vx + vy * vy;
-    float px = x + 0.5f - gradA.x, py = y + 0.5f - gradA.y;
-    float t = 0;
-    if (len2 > 0.5f) {
-        t = gradRadial ? std::sqrt((px * px + py * py) / len2) : (px * vx + py * vy) / len2;
-        t = std::clamp(t, 0.f, 1.f);
-    }
-    RGBA c1 = gradToTransparent ? RGBA{primary.r, primary.g, primary.b, 0} : secondary;
-    return lerp(primary, c1, t);
+    float t = gradientT(gradType, gradA.x, gradA.y, gradB.x, gradB.y, x + 0.5f, y + 0.5f);
+    if (gradDither) t += ((hash2(x, y) & 1023) / 1023.f - 0.5f) / 255.f;  // breaks up banding
+    RGBA c = liveGrad.sample(t);
+    c.a = clamp8(c.a * gradOpacity);
+    return c;
+}
+
+const BrushTip& Editor::tipOf(const BrushPreset& p) {
+    static BrushTip none;
+    if (p.shape == TipShape::Custom)
+        return p.customId >= 0 && p.customId < int(customTips.size()) ? customTips[size_t(p.customId)] : none;
+    return tipFor(p.shape, p.hardness);
+}
+
+float Editor::spacingPx() const {
+    const BrushPreset& p = tb.at(tool).preset;
+    return std::max(0.5f, p.size * p.spacing);
 }
 
 // ---------------------------------------------------------------- live operations
@@ -129,6 +189,10 @@ bool Editor::previewActive(Rect r, Image& out) const {
 }
 
 void Editor::cancelLive() {
+    if (!doc) {
+        live = Live::None;
+        return;
+    }
     if (live == Live::Move) invalidateAll();
     if (!cov.touched.empty()) invalidate(cov.touched);
     if (cov.w) cov.clear();
@@ -158,19 +222,59 @@ void Editor::commitStroke(const char* name, bool toNewLayer, const std::string& 
 }
 
 void Editor::brushDab(Vec2 p) {
-    const BrushOptions& b = brush();
-    float r = b.size * 0.5f;
-    bool pencil = tool == Tool::Pencil;
-    cov.dab(p.x, p.y, r, pencil ? 1.f : b.hardness, !pencil);
-    invalidate(Rect{int(p.x - r) - 2, int(p.y - r) - 2, int(p.x + r) + 3, int(p.y + r) + 3});
+    const BrushPreset& pr = brush().preset;
+    Rect r = stamper.dab(cov, pr, tipOf(pr), p.x, p.y, strokeDir);
+    invalidate(r.expand(1));
+}
+
+void Editor::retouchDab(Vec2 p) {
+    const ToolBrush& b = brush();
+    RetouchParams rp;
+    rp.radius = b.preset.size * 0.5f;
+    rp.hardness = b.preset.hardness;
+    rp.strength = b.strength;
+    rp.range = dodgeRange;
+    rp.saturate = spongeSaturate;
+    switch (tool) {
+        case Tool::Blur: rp.mode = RetouchMode::Blur; break;
+        case Tool::Sharpen: rp.mode = RetouchMode::Sharpen; break;
+        case Tool::Smudge: rp.mode = RetouchMode::Smudge; break;
+        case Tool::Dodge: rp.mode = RetouchMode::Dodge; break;
+        case Tool::Burn: rp.mode = RetouchMode::Burn; break;
+        default: rp.mode = RetouchMode::Sponge; break;
+    }
+    Rect r = retoucher.dab(doc->layer().img, p.x, p.y, rp, doc->sel.mask);
+    invalidate(r);
 }
 
 void Editor::nudge(int dx, int dy) {
     if (!doc || live != Live::None) return;
-    toolDown({0, 0});  // tool is Move: builds base and floating parts
+    toolDown({0, 0});
     moveDx = dx;
     moveDy = dy;
     toolUp({0, 0});
+}
+
+void Editor::drawShapeCoverage(Vec2 a, Vec2 b) {
+    switch (shapeKind) {
+        case ShapeKind::Rect: cov.rect(a.x, a.y, b.x, b.y, shapeFilled, shapeStroke); break;
+        case ShapeKind::Ellipse: cov.ellipse(a.x, a.y, b.x, b.y, shapeFilled, shapeStroke); break;
+        case ShapeKind::Line: cov.line(a.x, a.y, b.x, b.y, shapeStroke); break;
+        case ShapeKind::Arrow: {
+            float dx = b.x - a.x, dy = b.y - a.y, len = std::hypot(dx, dy);
+            if (len < 1) break;
+            float ux = dx / len, uy = dy / len, head = std::max(shapeStroke * 4.f, 12.f);
+            Vec2 base{b.x - ux * head, b.y - uy * head};
+            cov.line(a.x, a.y, base.x, base.y, shapeStroke);
+            cov.polygonAA({{b.x, b.y}, {base.x - uy * head * 0.6f, base.y + ux * head * 0.6f}, {base.x + uy * head * 0.6f, base.y - ux * head * 0.6f}});
+            break;
+        }
+        default: {
+            auto pts = shapePoints(shapeKind, a, b, shapeRadius, std::max(3, shapeSides));
+            if (shapeFilled) cov.polygonAA(pts);
+            else cov.polyline(pts, shapeStroke, true);
+        }
+    }
 }
 
 // ---------------------------------------------------------------- pointer handling
@@ -206,6 +310,7 @@ void Editor::canvasInput(bool hovered, bool) {
         dragging = true;
         downPt = lastPt = curPt;
         toolDown(curPt);
+        if (tool == Tool::PolyLasso && polyActive && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) finishPolyLasso();
     } else if (dragging && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
         if (curPt.x != lastPt.x || curPt.y != lastPt.y) {
             toolDrag(curPt);
@@ -222,7 +327,7 @@ void Editor::canvasInput(bool hovered, bool) {
             case Tool::Hand: ImGui::SetMouseCursor(ImGuiMouseCursor_Hand); break;
             case Tool::Text: ImGui::SetMouseCursor(ImGuiMouseCursor_TextInput); break;
             case Tool::Zoom: ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow); break;
-            default: ImGui::SetMouseCursor(ImGuiMouseCursor_None); break;  // drawn as an overlay
+            default: ImGui::SetMouseCursor(ImGuiMouseCursor_None); break;
         }
     }
 }
@@ -230,6 +335,7 @@ void Editor::canvasInput(bool hovered, bool) {
 void Editor::toolDown(Vec2 p) {
     int px = int(std::floor(p.x)), py = int(std::floor(p.y));
     bool inside = px >= 0 && py >= 0 && px < doc->w && py < doc->h;
+    smoothPt = p;
     switch (tool) {
         case Tool::Move: {
             cancelLive();
@@ -253,6 +359,20 @@ void Editor::toolDown(Vec2 p) {
             break;
         }
         case Tool::Lasso: lasso = {p}; break;
+        case Tool::PolyLasso:
+            if (!polyActive) {
+                polyActive = true;
+                lasso = {p};
+            } else {
+                Vec2 f = lasso.front();
+                if (lasso.size() > 2 && std::hypot(p.x - f.x, p.y - f.y) * zoom < 8) {
+                    finishPolyLasso();
+                } else {
+                    lasso.push_back(p);
+                }
+            }
+            dragging = false;
+            break;
         case Tool::MagicWand: {
             if (!inside) break;
             Image merged;
@@ -290,15 +410,22 @@ void Editor::toolDown(Vec2 p) {
             Vec2 from = stroker.last;
             bool line = downShift && stroker.started;
             beginStroke(tool == Tool::Eraser ? Source::Erase : Source::Solid, primary, brush().opacity);
-            float spacing = std::max(0.5f, brush().size * (tool == Tool::Pencil ? 0.25f : 0.12f));
+            if (tool != Tool::Eraser) pushRecentColor(primary);
+            stamper.reset(uint32_t(SDL_GetTicks()));
             if (line) {
+                strokeDir = std::atan2(p.y - from.y, p.x - from.x) * 180.f / kPi;
                 stroker.begin(from, [this](Vec2 q) { brushDab(q); });
-                stroker.to(p, spacing, [this](Vec2 q) { brushDab(q); });
+                stroker.to(p, spacingPx(), [this](Vec2 q) { brushDab(q); });
             } else {
                 stroker.begin(p, [this](Vec2 q) { brushDab(q); });
             }
             break;
         }
+        case Tool::SpotHeal:
+            beginStroke(Source::Solid, {255, 70, 120, 255}, 0.45f);
+            stamper.reset(1);
+            stroker.begin(p, [this](Vec2 q) { brushDab(q); });
+            break;
         case Tool::Clone:
             if (downAlt) {
                 cloneSource = p;
@@ -320,14 +447,34 @@ void Editor::toolDown(Vec2 p) {
             }
             cloneSnap = sampleMerged ? doc->flatten() : doc->layer().img;
             beginStroke(Source::Clone, {}, brush().opacity);
+            stamper.reset(2);
             stroker.begin(p, [this](Vec2 q) { brushDab(q); });
             break;
-        case Tool::Gradient:
+        case Tool::Blur:
+        case Tool::Sharpen:
+        case Tool::Smudge:
+        case Tool::Dodge:
+        case Tool::Burn:
+        case Tool::Sponge: {
+            cancelLive();
+            doc->push(toolInfo(tool).name);
+            retouching = true;
+            RetouchParams rp;
+            rp.mode = tool == Tool::Smudge ? RetouchMode::Smudge : RetouchMode::Blur;
+            rp.radius = brush().preset.size * 0.5f;
+            retoucher.begin(doc->layer().img, p.x, p.y, rp);
+            stroker.begin(p, [this](Vec2 q) { retouchDab(q); });
+            break;
+        }
+        case Tool::Gradient: {
             gradA = gradB = p;
+            liveGrad = gradPreset >= 0 ? gradientPresets(primary, secondary)[size_t(gradPreset)] : gradient;
+            if (gradReverse) liveGrad = liveGrad.reversed();
             beginStroke(Source::Gradient, {}, 1.f);
             cov.fillAll();
             invalidateAll();
             break;
+        }
         case Tool::Bucket: {
             if (!inside) break;
             Image merged;
@@ -337,6 +484,7 @@ void Editor::toolDown(Vec2 p) {
             cov.v = std::move(mask);
             cov.touched = {0, 0, doc->w, doc->h};
             commitStroke("Заливка");
+            pushRecentColor(primary);
             dragging = false;
             break;
         }
@@ -363,13 +511,19 @@ void Editor::toolDown(Vec2 p) {
 
 void Editor::toolDrag(Vec2 p) {
     bool shiftNow = ImGui::GetIO().KeyShift;
+    // Stroke stabilizer: the brush trails the cursor.
+    if (isBrushTool(tool) && smoothing > 0.01f) {
+        float k = 1.f - smoothing;
+        smoothPt = {smoothPt.x + (p.x - smoothPt.x) * k, smoothPt.y + (p.y - smoothPt.y) * k};
+        p = smoothPt;
+    }
     switch (tool) {
         case Tool::Move: {
             if (live != Live::Move) break;
             invalidate(Rect{moveBounds.x0 + moveDx, moveBounds.y0 + moveDy, moveBounds.x1 + moveDx, moveBounds.y1 + moveDy});
             moveDx = int(std::lround(p.x - downPt.x));
             moveDy = int(std::lround(p.y - downPt.y));
-            if (shiftNow) {  // constrain to the dominant axis
+            if (shiftNow) {
                 if (std::abs(moveDx) > std::abs(moveDy)) moveDy = 0;
                 else moveDx = 0;
             }
@@ -378,8 +532,7 @@ void Editor::toolDrag(Vec2 p) {
         }
         case Tool::Lasso: {
             Vec2 l = lasso.back();
-            float d = std::hypot(p.x - l.x, p.y - l.y) * zoom;
-            if (d >= 2.f) lasso.push_back(p);
+            if (std::hypot(p.x - l.x, p.y - l.y) * zoom >= 2.f) lasso.push_back(p);
             break;
         }
         case Tool::Crop:
@@ -404,10 +557,20 @@ void Editor::toolDrag(Vec2 p) {
         case Tool::Pencil:
         case Tool::Eraser:
         case Tool::Clone:
+        case Tool::SpotHeal:
             if (live == Live::Stroke) {
-                float spacing = std::max(0.5f, brush().size * (tool == Tool::Pencil ? 0.25f : 0.12f));
-                stroker.to(p, spacing, [this](Vec2 q) { brushDab(q); });
+                float dx = p.x - stroker.last.x, dy = p.y - stroker.last.y;
+                if (dx * dx + dy * dy > 0.25f) strokeDir = std::atan2(dy, dx) * 180.f / kPi;
+                stroker.to(p, spacingPx(), [this](Vec2 q) { brushDab(q); });
             }
+            break;
+        case Tool::Blur:
+        case Tool::Sharpen:
+        case Tool::Smudge:
+        case Tool::Dodge:
+        case Tool::Burn:
+        case Tool::Sponge:
+            if (retouching) stroker.to(p, std::max(1.f, brush().preset.size * 0.12f), [this](Vec2 q) { retouchDab(q); });
             break;
         case Tool::Gradient:
             if (live == Live::Stroke) {
@@ -420,12 +583,8 @@ void Editor::toolDrag(Vec2 p) {
             invalidate(cov.touched);
             cov.clear();
             Vec2 b = p;
-            if (shiftNow) b = shapeKind == ShapeKind::Line ? constrain45(downPt, p) : constrainSquare(downPt, p);
-            switch (shapeKind) {
-                case ShapeKind::Rect: cov.rect(downPt.x, downPt.y, b.x, b.y, shapeFilled, shapeStroke); break;
-                case ShapeKind::Ellipse: cov.ellipse(downPt.x, downPt.y, b.x, b.y, shapeFilled, shapeStroke); break;
-                case ShapeKind::Line: cov.line(downPt.x, downPt.y, b.x, b.y, shapeStroke); break;
-            }
+            if (shiftNow) b = (shapeKind == ShapeKind::Line || shapeKind == ShapeKind::Arrow) ? constrain45(downPt, p) : constrainSquare(downPt, p);
+            drawShapeCoverage(downPt, b);
             invalidate(cov.touched);
             break;
         }
@@ -459,7 +618,7 @@ void Editor::toolUp(Vec2 p) {
             Vec2 b = (shiftNow && !downShift) ? constrainSquare(downPt, p) : p;
             Selection::Op op = selOpFromMods();
             if (std::fabs(b.x - downPt.x) < 1 && std::fabs(b.y - downPt.y) < 1) {
-                if (op == Selection::Op::Replace) cmdDeselect();  // plain click deselects
+                if (op == Selection::Op::Replace) cmdDeselect();
                 break;
             }
             Coverage c;
@@ -480,7 +639,7 @@ void Editor::toolUp(Vec2 p) {
             } else {
                 Coverage c;
                 c.reset(doc->w, doc->h);
-                c.polygon(lasso);
+                c.polygonAA(lasso);
                 combineSelection(std::move(c.v), op);
             }
             lasso.clear();
@@ -497,16 +656,50 @@ void Editor::toolUp(Vec2 p) {
             commitStroke("Штамп");
             cloneSnap = {};
             break;
+        case Tool::SpotHeal:
+            if (live == Live::Stroke && !cov.touched.empty()) {
+                Coverage region = cov;
+                cancelLive();
+                doc->push("Точечное восстановление");
+                Rect r = healRegion(doc->layer().img, region, doc->sel.mask);
+                invalidate(r);
+                thumbsDirty = true;
+            }
+            break;
+        case Tool::Blur:
+        case Tool::Sharpen:
+        case Tool::Smudge:
+        case Tool::Dodge:
+        case Tool::Burn:
+        case Tool::Sponge:
+            retouching = false;
+            thumbsDirty = true;
+            break;
         case Tool::Gradient:
             if (std::hypot(gradB.x - gradA.x, gradB.y - gradA.y) < 1) cancelLive();
             else commitStroke("Градиент");
             break;
         case Tool::Shape:
             if (cov.touched.empty()) cancelLive();
-            else commitStroke("Фигура", shapeNewLayer, "Фигура");
+            else {
+                pushRecentColor(primary);
+                commitStroke("Фигура", shapeNewLayer, "Фигура");
+            }
             break;
         default: break;
     }
+}
+
+void Editor::finishPolyLasso() {
+    Selection::Op op = selOpFromMods();
+    if (lasso.size() >= 3) {
+        Coverage c;
+        c.reset(doc->w, doc->h);
+        c.polygonAA(lasso);
+        combineSelection(std::move(c.v), op);
+    }
+    lasso.clear();
+    polyActive = false;
 }
 
 void Editor::applyCrop() {
@@ -546,8 +739,9 @@ void Editor::commitText() {
     textEditing = false;
     if (textBuf.find_first_not_of(" \n\r\t") == std::string::npos) return cancelLive();
     textEditing = true;
-    textPreview();  // make sure the coverage matches the final text and options
+    textPreview();
     textEditing = false;
+    pushRecentColor(primary);
     commitStroke("Текст", true, utf8Prefix(textBuf.substr(0, textBuf.find('\n')), 24));
 }
 
@@ -608,7 +802,6 @@ void Editor::drawOverlays(ImDrawList* dl) {
         }
     };
 
-    // pixel grid when zoomed in far
     if (showGrid && zoom >= 8.f) {
         ImU32 g = IM_COL32(128, 128, 128, 90);
         Vec2 a = toDoc(cmin), b = toDoc(cmax);
@@ -618,7 +811,6 @@ void Editor::drawOverlays(ImDrawList* dl) {
             dl->AddLine(toScreen({0, float(y)}), toScreen({float(doc->w), float(y)}), g);
     }
 
-    // selection
     if (selOutlineDirty) rebuildAnts();
     bool many = antSegments.size() > 40000;
     for (const ImVec4& s : antSegments) {
@@ -640,54 +832,62 @@ void Editor::drawOverlays(ImDrawList* dl) {
             float rx = std::fabs(c.x - a.x) * 0.5f, ry = std::fabs(c.y - a.y) * 0.5f;
             const int N = 64;
             for (int i = 0; i < N; i++) {
-                float a0 = i * 6.2831853f / N, a1 = (i + 1) * 6.2831853f / N;
+                float a0 = i * 2 * kPi / N, a1 = (i + 1) * 2 * kPi / N;
                 ants(ImVec2(ctr.x + std::cos(a0) * rx, ctr.y + std::sin(a0) * ry),
                      ImVec2(ctr.x + std::cos(a1) * rx, ctr.y + std::sin(a1) * ry));
             }
         }
     }
-    if (tool == Tool::Lasso && lasso.size() > 1)
+    if ((tool == Tool::Lasso || tool == Tool::PolyLasso) && !lasso.empty()) {
         for (size_t i = 1; i < lasso.size(); i++) ants(toScreen(lasso[i - 1]), toScreen(lasso[i]));
+        if (tool == Tool::PolyLasso && polyActive) {
+            ants(toScreen(lasso.back()), io.MousePos);
+            dl->AddCircle(toScreen(lasso.front()), 5, white, 0, 1.5f);
+        }
+    }
 
-    // crop
     if (cropActive && !cropRect.empty()) {
         ImVec2 a = toScreen({float(cropRect.x0), float(cropRect.y0)}), b = toScreen({float(cropRect.x1), float(cropRect.y1)});
         ImVec2 da = toScreen({0, 0}), db = toScreen({float(doc->w), float(doc->h)});
-        ImU32 shade = IM_COL32(0, 0, 0, 140);
+        ImU32 shade = IM_COL32(0, 0, 0, 150);
         dl->AddRectFilled(da, ImVec2(db.x, a.y), shade);
         dl->AddRectFilled(ImVec2(da.x, b.y), db, shade);
         dl->AddRectFilled(ImVec2(da.x, a.y), ImVec2(a.x, b.y), shade);
         dl->AddRectFilled(ImVec2(b.x, a.y), ImVec2(db.x, b.y), shade);
         dl->AddRect(a, b, white, 0, 0, 1.5f);
-        for (int i = 1; i < 3; i++) {  // rule of thirds
+        for (int i = 1; i < 3; i++) {
             float x = a.x + (b.x - a.x) * i / 3, y = a.y + (b.y - a.y) * i / 3;
             dl->AddLine(ImVec2(x, a.y), ImVec2(x, b.y), IM_COL32(255, 255, 255, 70));
             dl->AddLine(ImVec2(a.x, y), ImVec2(b.x, y), IM_COL32(255, 255, 255, 70));
         }
+        float hs = 5;
+        for (ImVec2 c : {a, b, ImVec2(a.x, b.y), ImVec2(b.x, a.y)})
+            dl->AddRectFilled(ImVec2(c.x - hs, c.y - hs), ImVec2(c.x + hs, c.y + hs), white, 2);
         char buf[64];
         std::snprintf(buf, sizeof buf, "%d × %d", cropRect.w(), cropRect.h());
-        dl->AddText(ImVec2(a.x + 4, a.y + 4), white, buf);
+        ImVec2 ts = ImGui::CalcTextSize(buf);
+        dl->AddRectFilled(ImVec2(a.x + 4, a.y + 4), ImVec2(a.x + ts.x + 14, a.y + ts.y + 10), IM_COL32(0, 0, 0, 170), 6);
+        dl->AddText(ImVec2(a.x + 9, a.y + 7), white, buf);
     }
 
-    // gradient line
     if (tool == Tool::Gradient && dragging && live == Live::Stroke) {
         ImVec2 a = toScreen(gradA), b = toScreen(gradB);
         dl->AddLine(a, b, black, 3.f);
         dl->AddLine(a, b, white, 1.f);
-        dl->AddCircleFilled(a, 4, white);
-        dl->AddCircle(b, 4, white);
+        dl->AddCircleFilled(a, 5, white);
+        dl->AddCircle(a, 5, black);
+        dl->AddCircleFilled(b, 5, black);
+        dl->AddCircle(b, 5, white);
     }
 
-    // text box
     if (textEditing) {
         Rect r = cov.touched.empty() ? Rect::of(int(textPos.x), int(textPos.y), int(fontSize * 0.6f), int(fontSize * 1.2f))
                                      : cov.touched;
         r = r.unite(Rect::of(int(textPos.x), int(textPos.y), 1, int(fontSize * 1.2f)));
         ImVec2 a = toScreen({float(r.x0) - 2, float(r.y0) - 2}), b = toScreen({float(r.x1) + 2, float(r.y1) + 2});
-        dl->AddRect(a, b, IM_COL32(61, 139, 253, 255), 0, 0, 1.f);
+        dl->AddRect(a, b, IM_COL32(38, 128, 235, 255), 3, 0, 1.5f);
     }
 
-    // clone source marker
     bool hovered = io.MousePos.x >= cmin.x && io.MousePos.y >= cmin.y && io.MousePos.x < cmax.x && io.MousePos.y < cmax.y;
     if (tool == Tool::Clone && cloneHasSource) {
         Vec2 s = cloneAligned ? Vec2{curPt.x + cloneDx, curPt.y + cloneDy} : cloneSource;
@@ -698,14 +898,25 @@ void Editor::drawOverlays(ImDrawList* dl) {
         dl->AddLine(ImVec2(c.x, c.y - 6), ImVec2(c.x, c.y + 6), white);
     }
 
-    // cursor
     if ((hovered || dragging) && !panning && !ImGui::IsKeyDown(ImGuiKey_Space)) {
         ImVec2 m = io.MousePos;
         if (isBrushTool(tool)) {
-            float r = brush().size * 0.5f * zoom;
+            const BrushPreset& pr = brush().preset;
+            float r = pr.size * 0.5f * zoom;
             if (r >= 3.f) {
-                dl->AddCircle(m, r + 1, black, 0, 1.f);
-                dl->AddCircle(m, r, white, 0, 1.f);
+                if (pr.roundness < 0.98f) {  // show the tip's ellipse
+                    float a = pr.angle * kPi / 180.f;
+                    ImVec2 pts[48];
+                    for (int i = 0; i < 48; i++) {
+                        float th = i * 2 * kPi / 48, u = std::cos(th) * r, v = std::sin(th) * r * pr.roundness;
+                        pts[i] = ImVec2(m.x + u * std::cos(a) - v * std::sin(a), m.y + u * std::sin(a) + v * std::cos(a));
+                    }
+                    dl->AddPolyline(pts, 48, black, ImDrawFlags_Closed, 2.f);
+                    dl->AddPolyline(pts, 48, white, ImDrawFlags_Closed, 1.f);
+                } else {
+                    dl->AddCircle(m, r + 1, black, 0, 1.f);
+                    dl->AddCircle(m, r, white, 0, 1.f);
+                }
             }
         }
         if (tool != Tool::Move && tool != Tool::Hand && tool != Tool::Text && tool != Tool::Zoom) {

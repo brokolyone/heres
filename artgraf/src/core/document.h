@@ -3,9 +3,19 @@
 #include <vector>
 
 #include "blend.h"
+#include "effects.h"
 #include "image.h"
 
 namespace ag {
+
+// Rendered layer style. Copying a layer never copies the cache: the copy re-renders on demand.
+struct FxCache {
+    Image img;
+    bool valid = false;
+    FxCache() = default;
+    FxCache(const FxCache&) {}
+    FxCache& operator=(const FxCache&) { valid = false; img = {}; return *this; }
+};
 
 struct Layer {
     std::string name;
@@ -13,6 +23,12 @@ struct Layer {
     bool visible = true;
     float opacity = 1.f;
     BlendMode blend = BlendMode::Normal;
+    LayerFx fx;
+    mutable FxCache fxCache;
+
+    // Pixels as they appear on screen: with effects applied when the layer has any.
+    const Image& styled() const;
+    void touch() const { fxCache.valid = false; }
 };
 
 // Per-pixel selection weight 0..255. An empty mask means "nothing selected" (= everything editable).
@@ -63,6 +79,7 @@ public:
     void moveLayer(int delta);
     void mergeDown();
     void flattenAll();
+    void touchAll() const { for (auto& l : layers) l.touch(); }
     std::string nextLayerName() const;
 
     // Whole-image operations (all layers)

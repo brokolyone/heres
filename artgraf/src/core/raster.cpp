@@ -26,6 +26,11 @@ void Coverage::put(int x, int y, float c) {
     if (n > d) d = n;
 }
 
+void Coverage::add(int x, int y, float c) {
+    uint8_t& d = v[size_t(y) * w + x];
+    d = clamp8(d + c * (255.f - d));
+}
+
 void Coverage::dab(float cx, float cy, float r, float hard, bool aa) {
     r = std::max(r, 0.5f);
     Rect b = Rect{int(std::floor(cx - r - 1)), int(std::floor(cy - r - 1)), int(std::ceil(cx + r + 1)),
@@ -130,6 +135,47 @@ void Coverage::polygon(const std::vector<Vec2>& pts) {
             touched = touched.unite({xa, y, xb, y + 1});
         }
     }
+}
+
+void Coverage::polygonAA(const std::vector<Vec2>& pts) {
+    if (pts.size() < 3) return;
+    float minX = pts[0].x, maxX = pts[0].x, minY = pts[0].y, maxY = pts[0].y;
+    for (auto& p : pts) {
+        minX = std::min(minX, p.x); maxX = std::max(maxX, p.x);
+        minY = std::min(minY, p.y); maxY = std::max(maxY, p.y);
+    }
+    Rect b = Rect{int(std::floor(minX)), int(std::floor(minY)), int(std::ceil(maxX)) + 1, int(std::ceil(maxY)) + 1}.intersect({0, 0, w, h});
+    if (b.empty()) return;
+    touched = touched.unite(b);
+    const int SUB = 4;
+    std::vector<float> acc(size_t(b.w()));
+    std::vector<float> xs;
+    for (int y = b.y0; y < b.y1; y++) {
+        std::fill(acc.begin(), acc.end(), 0.f);
+        for (int j = 0; j < SUB; j++) {
+            float sy = y + (j + 0.5f) / SUB;
+            xs.clear();
+            for (size_t i = 0, n = pts.size(); i < n; i++) {
+                Vec2 a = pts[i], c = pts[(i + 1) % n];
+                if ((a.y <= sy && c.y > sy) || (c.y <= sy && a.y > sy)) xs.push_back(a.x + (sy - a.y) / (c.y - a.y) * (c.x - a.x));
+            }
+            std::sort(xs.begin(), xs.end());
+            for (size_t i = 0; i + 1 < xs.size(); i += 2) {
+                float xa = std::max(xs[i], float(b.x0)), xb = std::min(xs[i + 1], float(b.x1));
+                for (int x = int(std::floor(xa)); x < int(std::ceil(xb)); x++) {
+                    float ov = std::min(xb, float(x + 1)) - std::max(xa, float(x));
+                    if (ov > 0) acc[size_t(x - b.x0)] += ov / SUB;
+                }
+            }
+        }
+        for (int x = b.x0; x < b.x1; x++)
+            if (acc[size_t(x - b.x0)] > 0) put(x, y, std::min(1.f, acc[size_t(x - b.x0)]));
+    }
+}
+
+void Coverage::polyline(const std::vector<Vec2>& pts, float width, bool closed) {
+    for (size_t i = 0; i + 1 < pts.size(); i++) line(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y, width);
+    if (closed && pts.size() > 2) line(pts.back().x, pts.back().y, pts[0].x, pts[0].y, width);
 }
 
 void Coverage::fillAll() {

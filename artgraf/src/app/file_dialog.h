@@ -16,12 +16,15 @@ public:
         std::string exts;  // comma separated, no dots: "png,jpg"
     };
     using Callback = std::function<void(const std::string& path)>;
+    using MultiCallback = std::function<void(const std::vector<std::string>& paths)>;
 
     FileDialog();
     ~FileDialog();
 
     void request(Mode mode, const std::string& title, std::vector<Filter> filters, const std::string& defaultName,
                  Callback cb);
+    // Several files at once (the built-in browser picks one).
+    void requestMulti(const std::string& title, std::vector<Filter> filters, MultiCallback cb);
     void runPending();
     void draw();
 
@@ -30,11 +33,12 @@ private:
     void refresh();
     bool matches(const std::string& name) const;
 
-    bool pending = false, browserOpen = false;
+    bool pending = false, browserOpen = false, multi = false;
     Mode mode = Mode::Open;
     std::string title, defaultName;
     std::vector<Filter> filters;
     Callback cb;
+    MultiCallback multiCb;
 
     std::filesystem::path dir;
     std::vector<Entry> entries;

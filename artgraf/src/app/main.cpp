@@ -1,6 +1,7 @@
 // ArtGraf — raster graphics editor. Entry point: window, GL context, ImGui, main loop.
 #include <cmath>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -26,13 +27,18 @@ int main(int argc, char** argv) {
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
-    SDL_Window* window = SDL_CreateWindow("ArtGraf", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1440, 900,
-                                          SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+    float scale = 1.f;
+    float ddpi = 0;
+    if (SDL_GetDisplayDPI(0, &ddpi, nullptr, nullptr) == 0 && ddpi > 0) scale = std::clamp(ddpi / 96.f, 1.f, 3.f);
+
+    // The window starts as a borderless splash screen and turns into the main window once loaded.
+    const int splashW = int(960 * scale), splashH = int(560 * scale);
+    SDL_Window* window = SDL_CreateWindow("ArtGraf", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, splashW, splashH,
+                                          SDL_WINDOW_OPENGL | SDL_WINDOW_BORDERLESS | SDL_WINDOW_ALLOW_HIGHDPI);
     if (!window) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ArtGraf", SDL_GetError(), nullptr);
         return 1;
     }
-    SDL_SetWindowMinimumSize(window, 800, 520);
     SDL_GLContext gl = SDL_GL_CreateContext(window);
     if (!gl) {
         std::string msg = std::string("Нужен OpenGL 3.0 или новее.\n\n") + SDL_GetError();
@@ -50,17 +56,13 @@ int main(int argc, char** argv) {
 
     // Panel layout lives in the user's app-data folder.
     static std::string iniPath;
+    std::string prefDir;
     if (char* pref = SDL_GetPrefPath("ArtGraf", "ArtGraf")) {
-        iniPath = std::string(pref) + "layout.ini";
+        prefDir = pref;
         SDL_free(pref);
-    } else {
-        iniPath = "artgraf_layout.ini";
     }
+    iniPath = prefDir + "layout2.ini";
     io.IniFilename = iniPath.c_str();
-
-    float scale = 1.f;
-    float ddpi = 0;
-    if (SDL_GetDisplayDPI(0, &ddpi, nullptr, nullptr) == 0 && ddpi > 0) scale = std::clamp(ddpi / 96.f, 1.f, 3.f);
 
     auto editorPtr = std::make_unique<ag::Editor>(window);
     ag::Editor& editor = *editorPtr;
@@ -69,11 +71,65 @@ int main(int argc, char** argv) {
         editor.layoutReset = !std::filesystem::exists(std::filesystem::u8path(iniPath), ec);
     }
     editor.iniPath = iniPath;
+    editor.prefDir = prefDir;
     editor.loadFonts(scale);
     editor.setupStyle(scale);
 
     ImGui_ImplSDL2_InitForOpenGL(window, gl);
     ImGui_ImplOpenGL3_Init("#version 130");
+    editor.loadAssets();
+
+    auto renderFrame = [&](const std::function<void()>& ui) {
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplSDL2_NewFrame();
+        ImGui::NewFrame();
+        ui();
+        ImGui::Render();
+        glViewport(0, 0, int(io.DisplaySize.x * io.DisplayFramebufferScale.x), int(io.DisplaySize.y * io.DisplayFramebufferScale.y));
+        glClearColor(0.043f, 0.047f, 0.055f, 1.f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        SDL_GL_SwapWindow(window);
+    };
+
+    // ---- splash screen while the rest loads
+    {
+        struct Stage { const char* text; std::function<void()> work; };
+        const Stage stages[] = {
+            {"Запуск модулей…", [] {}},
+            {"Загрузка кистей…", [] {
+                 for (int s = 0; s < int(ag::TipShape::Custom); s++) ag::tipFor(ag::TipShape(s), 0.5f);
+                 ag::builtinBrushes();
+             }},
+            {"Поиск шрифтов…", [&] { editor.scanFonts(); }},
+            {"Загрузка градиентов и стилей…", [] { ag::gradientPresets({0, 0, 0, 255}, {255, 255, 255, 255}); }},
+            {"Чтение настроек…", [&] { editor.loadPrefs(); }},
+            {"Подготовка рабочей среды…", [] {}},
+        };
+        const int n = int(std::size(stages));
+        Uint32 start = SDL_GetTicks();
+        const Uint32 minTime = 1900;  // long enough to actually see the splash
+        int done = 0;
+        while (true) {
+            SDL_Event e;
+            while (SDL_PollEvent(&e)) ImGui_ImplSDL2_ProcessEvent(&e);
+            Uint32 t = SDL_GetTicks() - start;
+            float timeProgress = std::min(1.f, float(t) / minTime);
+            int want = std::min(n, int(timeProgress * n) + 1);
+            while (done < want) stages[done++].work();
+            renderFrame([&] { editor.drawSplash(timeProgress, stages[std::max(0, done - 1)].text); });
+            if (done >= n && t >= minTime) break;
+            SDL_Delay(15);
+        }
+    }
+
+    // ---- switch to the main window
+    SDL_SetWindowBordered(window, SDL_TRUE);
+    SDL_SetWindowResizable(window, SDL_TRUE);
+    SDL_SetWindowMinimumSize(window, 900, 560);
+    SDL_SetWindowSize(window, int(1440 * scale), int(900 * scale));
+    SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+    SDL_MaximizeWindow(window);
 
     if (argc > 1) editor.openPath(argv[1]);
 
@@ -106,16 +162,7 @@ int main(int argc, char** argv) {
         busyFrames--;
 
         editor.beforeFrame();
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame();
-        editor.frame();
-        ImGui::Render();
-        glViewport(0, 0, int(io.DisplaySize.x * io.DisplayFramebufferScale.x), int(io.DisplaySize.y * io.DisplayFramebufferScale.y));
-        glClearColor(0.094f, 0.098f, 0.106f, 1.f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        SDL_GL_SwapWindow(window);
+        renderFrame([&] { editor.frame(); });
     }
 
     editorPtr.reset();  // frees GL textures while the context is alive

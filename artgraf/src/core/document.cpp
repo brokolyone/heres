@@ -74,6 +74,15 @@ void Selection::translate(int dx, int dy) {
 
 // ---------------------------------------------------------------- Document
 
+const Image& Layer::styled() const {
+    if (!fx.any()) return img;
+    if (!fxCache.valid || fxCache.img.w != img.w || fxCache.img.h != img.h) {
+        fxCache.img = renderLayerFx(img, fx);
+        fxCache.valid = true;
+    }
+    return fxCache.img;
+}
+
 Document Document::blank(int w, int h, RGBA bg) {
     Document d;
     d.w = w; d.h = h;
@@ -95,6 +104,9 @@ void Document::composite(Rect r, Image& out, const Image* ov, bool checker) cons
     Rect req = r;
     r = r.intersect({0, 0, w, h});
     if (r.empty()) return;
+    // Render layer styles up front (single-threaded) so the parallel pass only reads.
+    for (size_t i = 0; i < layers.size(); i++)
+        if (layers[i].visible && !(ov && int(i) == active)) layers[i].styled();
     parallelRows(r.y0, r.y1, [&](int ya, int yb) { compositeRows(r, req, ya, yb, out, ov, checker); });
 }
 
@@ -105,7 +117,7 @@ void Document::compositeRows(Rect r, Rect req, int ya, int yb, Image& out, const
             for (size_t i = 0; i < layers.size(); i++) {
                 const Layer& L = layers[i];
                 if (!L.visible || L.opacity <= 0.f) continue;
-                RGBA s = (ov && int(i) == active) ? ov->get(x - req.x0, y - req.y0) : L.img.get(x, y);
+                RGBA s = (ov && int(i) == active) ? ov->get(x - req.x0, y - req.y0) : L.styled().get(x, y);
                 if (s.a) acc = blendPixel(acc, s, L.blend, L.opacity);
             }
             if (checker) {
@@ -162,10 +174,16 @@ void Document::mergeDown() {
     if (active == 0) return;
     Layer& top = layers[active];
     Layer& bottom = layers[active - 1];
+    if (bottom.fx.any()) {  // bake the lower layer's style so it survives the merge
+        bottom.img = bottom.styled();
+        bottom.fx = {};
+    }
+    bottom.touch();
     if (top.visible) {
+        const Image& topPx = top.styled();
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++) {
-                RGBA s = top.img.get(x, y);
+                RGBA s = topPx.get(x, y);
                 if (s.a) bottom.img.set(x, y, blendPixel(bottom.img.get(x, y), s, top.blend, top.opacity));
             }
     }
@@ -186,6 +204,7 @@ void Document::resizeImage(int nw, int nh) {
     for (auto& l : layers) l.img = l.img.resized(nw, nh);
     w = nw; h = nh;
     sel.reset(w, h);
+    touchAll();
 }
 
 void Document::resizeCanvas(int nw, int nh, int offX, int offY) {
@@ -196,6 +215,7 @@ void Document::resizeCanvas(int nw, int nh, int offX, int offY) {
     }
     w = nw; h = nh;
     sel.reset(w, h);
+    touchAll();
 }
 
 void Document::crop(Rect r) {
@@ -204,33 +224,39 @@ void Document::crop(Rect r) {
     for (auto& l : layers) l.img = l.img.crop(r);
     w = r.w(); h = r.h();
     sel.reset(w, h);
+    touchAll();
 }
 
 void Document::rotateCW() {
     for (auto& l : layers) l.img = l.img.rotatedCW();
     std::swap(w, h);
     sel.reset(w, h);
+    touchAll();
 }
 
 void Document::rotateCCW() {
     for (auto& l : layers) l.img = l.img.rotatedCCW();
     std::swap(w, h);
     sel.reset(w, h);
+    touchAll();
 }
 
 void Document::rotate180() {
     for (auto& l : layers) l.img.rotate180();
     sel.clear();
+    touchAll();
 }
 
 void Document::flipH() {
     for (auto& l : layers) l.img.flipH();
     sel.clear();
+    touchAll();
 }
 
 void Document::flipV() {
     for (auto& l : layers) l.img.flipV();
     sel.clear();
+    touchAll();
 }
 
 // ---------------------------------------------------------------- History

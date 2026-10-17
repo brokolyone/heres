@@ -4,6 +4,10 @@
 #include <string>
 
 #include "blend.h"
+#include "brush.h"
+#include "effects.h"
+#include "gradient.h"
+#include "retouch.h"
 #include "document.h"
 #include "filters.h"
 #include "io.h"
@@ -224,7 +228,142 @@ static void testText() {
     std::printf("note: no system font found, text rendering not tested\n");
 }
 
+static void testBrushesAndGradients() {
+    CHECK(builtinBrushes().size() >= 15);
+    Coverage c;
+    c.reset(100, 100);
+    BrushStamper st;
+    for (const BrushPreset& p : builtinBrushes()) {
+        c.clear();
+        BrushPreset q = p;
+        q.size = 40;
+        q.scatter = 0;
+        st.dab(c, q, tipFor(q.shape, q.hardness), 50, 50, 0);
+        int lit = 0;
+        for (uint8_t v : c.v) lit += v > 0;
+        if (lit == 0) std::printf("brush '%s' paints nothing\n", p.name.c_str());
+        CHECK(lit > 0);
+    }
+    // Airbrush accumulates, normal brushes don't.
+    BrushPreset air = builtinBrushes()[3];
+    CHECK(air.buildup);
+    c.clear();
+    st.dab(c, air, tipFor(air.shape, air.hardness), 50, 50, 0);
+    uint8_t once = c.at(50, 50);
+    st.dab(c, air, tipFor(air.shape, air.hardness), 50, 50, 0);
+    CHECK(c.at(50, 50) > once);
+
+    Gradient g{"", {{0, {0, 0, 0, 255}}, {1, {255, 255, 255, 255}}}};
+    CHECK(near(g.sample(0.5f).r, 128));
+    CHECK(g.reversed().sample(0.f).r == 255);
+    CHECK(near(int(gradientT(GradientType::Linear, 0, 0, 10, 0, 5, 3) * 100), 50));
+    CHECK(gradientT(GradientType::Reflected, 0, 0, 10, 0, -5, 0) > 0.4f);
+    Gradient fade{"", {{0, {255, 0, 0, 255}}, {1, {255, 0, 0, 0}}}};
+    RGBA m = fade.sample(0.5f);
+    CHECK(m.r == 255 && near(m.a, 128));
+    CHECK(gradientPresets({1, 2, 3, 255}, {4, 5, 6, 255}).size() > 10);
+}
+
+static void testEffects() {
+    std::vector<uint8_t> in(20 * 10, 0);
+    in[5 * 20 + 5] = 1;
+    auto d = distanceTransform(in, 20, 10);
+    CHECK(d[5 * 20 + 5] == 0.f && near(int(d[5 * 20 + 9] * 10), 40, 1) && near(int(d[8 * 20 + 9] * 10), 50, 1));
+
+    Image img(40, 40);
+    for (int y = 15; y < 25; y++)
+        for (int x = 15; x < 25; x++) img.set(x, y, {255, 0, 0, 255});
+    LayerFx fx;
+    fx.stroke.on = true;
+    fx.stroke.size = 3;
+    fx.stroke.color = {0, 0, 255, 255};
+    Image out = renderLayerFx(img, fx);
+    CHECK(out.get(13, 20).b == 255 && out.get(20, 20).r == 255 && out.get(5, 5).a == 0);
+    fx = {};
+    fx.dropShadow.on = true;
+    fx.dropShadow.distance = 6;
+    fx.dropShadow.angle = 90;  // light from above: shadow below
+    out = renderLayerFx(img, fx);
+    CHECK(out.get(20, 28).a > out.get(20, 12).a + 60);
+    fx = {};
+    fx.colorOverlay.on = true;
+    fx.colorOverlay.color = {0, 255, 0, 255};
+    CHECK(renderLayerFx(img, fx).get(20, 20).g == 255);
+
+    Document doc = Document::blank(40, 40, {255, 255, 255, 255});
+    doc.addLayer("fx", img);
+    doc.layers[1].fx.stroke = LayerFx().stroke;
+    doc.layers[1].fx.stroke.on = true;
+    CHECK(doc.flatten().get(13, 20).r == 0);  // black stroke shows up in the composite
+    std::string err;
+    CHECK(saveProject("fx_test.agf", doc, err));
+    Document back;
+    CHECK(loadProject("fx_test.agf", back, err) && back.layers[1].fx.stroke.on);
+    std::remove("fx_test.agf");
+}
+
+static void testRetouch() {
+    Image img(60, 60, {200, 200, 200, 255});
+    for (int y = 25; y < 35; y++)
+        for (int x = 25; x < 35; x++) img.set(x, y, {0, 0, 0, 255});
+    Coverage hole;
+    hole.reset(60, 60);
+    hole.dab(30, 30, 9, 1.f, true);
+    healRegion(img, hole, {});
+    CHECK(img.get(30, 30).r > 150);  // the dark spot is gone
+
+    Image b(30, 30, {255, 255, 255, 255});
+    for (int y = 0; y < 30; y++) b.set(15, y, {0, 0, 0, 255});
+    Retoucher r;
+    RetouchParams p;
+    p.mode = RetouchMode::Blur;
+    p.radius = 6;
+    p.strength = 1;
+    r.dab(b, 15, 15, p, {});
+    CHECK(b.get(15, 15).r > 0 && b.get(14, 15).r < 255);
+    p.mode = RetouchMode::Burn;
+    Image gray(10, 10, {128, 128, 128, 255});
+    r.dab(gray, 5, 5, p, {});
+    CHECK(gray.get(5, 5).r < 128);
+}
+
+static void testNewFilters() {
+    Image img(32, 32);
+    for (int y = 0; y < 32; y++)
+        for (int x = 0; x < 32; x++) img.set(x, y, {uint8_t(x * 8), uint8_t(y * 8), 100, 255});
+    uint8_t lutTable[256];
+    curveLut({{0, 0}, {255, 255}}, lutTable);
+    CHECK(lutTable[100] == 100);
+    curveLut({{0, 255}, {255, 0}}, lutTable);
+    CHECK(lutTable[0] == 255 && lutTable[255] == 0);
+    auto run = [&](void (*f)(Image&)) { Image c = img; f(c); return c; };
+    (void)run;
+    Image c = img; twirl(c, 90); CHECK(c.w == 32);
+    c = img; spherize(c, 50);
+    c = img; zoomBlur(c, 50);
+    c = img; spinBlur(c, 20);
+    c = img; wave(c, 3, 10);
+    c = img; ripple(c, 3, 8);
+    c = img; polarCoordinates(c, true);
+    c = img; halftone(c, 6);
+    c = img; glitch(c, 6, 4, 1);
+    c = img; renderClouds(c, {0, 0, 0, 255}, {255, 255, 255, 255}, 8, 3); CHECK(c.get(3, 3).a == 255);
+    c = img; lensFlare(c, 10, 10, 100); CHECK(c.get(10, 10).r == 255);
+    c = img; median(c, 1);
+    c = img; crystallize(c, 6, 2);
+    c = img; sketch(c, 100);
+    c = img; vibrance(c, 50, 0);
+    c = img; exposure(c, 1, 0, 1); CHECK(c.get(10, 10).r > img.get(10, 10).r);
+    c = img; blackWhite(c, 40, 60, 40, 60, 20, 80); CHECK(c.get(5, 5).r == c.get(5, 5).g);
+    c = img; gradientMap(c, Gradient{"", {{0, {255, 0, 0, 255}}, {1, {0, 0, 255, 255}}}});
+    CHECK(c.get(0, 0).r > c.get(0, 0).b);
+}
+
 int main() {
+    testBrushesAndGradients();
+    testEffects();
+    testRetouch();
+    testNewFilters();
     testBlend();
     testHistory();
     testLayersAndComposite();

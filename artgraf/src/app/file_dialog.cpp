@@ -44,6 +44,9 @@ FileDialog::~FileDialog() {
 }
 
 void FileDialog::request(Mode m, const std::string& t, std::vector<Filter> f, const std::string& def, Callback c) {
+#ifdef ARTGRAF_NFD
+    multi = false;
+#endif
     mode = m;
     title = t;
     filters = std::move(f);
@@ -52,12 +55,41 @@ void FileDialog::request(Mode m, const std::string& t, std::vector<Filter> f, co
     pending = true;
 }
 
+void FileDialog::requestMulti(const std::string& t, std::vector<Filter> f, MultiCallback c) {
+    multiCb = std::move(c);
+    request(Mode::Open, t, std::move(f), "", [this](const std::string& p) {
+        if (multiCb) multiCb({p});
+    });
+#ifdef ARTGRAF_NFD
+    multi = true;
+#endif
+}
+
 void FileDialog::runPending() {
 #ifdef ARTGRAF_NFD
     if (!pending) return;
     pending = false;
     std::vector<nfdu8filteritem_t> items;
     for (auto& f : filters) items.push_back({f.name.c_str(), f.exts.c_str()});
+    if (multi) {
+        multi = false;
+        const nfdpathset_t* set = nullptr;
+        if (NFD_OpenDialogMultipleU8(&set, items.data(), nfdfiltersize_t(items.size()), nullptr) == NFD_OKAY && set) {
+            std::vector<std::string> paths;
+            nfdpathsetsize_t n = 0;
+            NFD_PathSet_GetCount(set, &n);
+            for (nfdpathsetsize_t i = 0; i < n; i++) {
+                nfdu8char_t* p = nullptr;
+                if (NFD_PathSet_GetPathU8(set, i, &p) == NFD_OKAY && p) {
+                    paths.push_back(p);
+                    NFD_PathSet_FreePathU8(p);
+                }
+            }
+            NFD_PathSet_Free(set);
+            if (multiCb) multiCb(paths);
+        }
+        return;
+    }
     nfdu8char_t* out = nullptr;
     nfdresult_t r;
     if (mode == Mode::Open)

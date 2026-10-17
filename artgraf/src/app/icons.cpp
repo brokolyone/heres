@@ -144,6 +144,54 @@ void drawToolIcon(ImDrawList* dl, Tool tool, ImVec2 center, float size, ImU32 co
             }
             p.line(-0.5f, 0.35f, -0.85f, 0.0f);
             break;
+        case Tool::PolyLasso:
+            p.poly({{-0.8f, 0.3f}, {-0.3f, -0.75f}, {0.75f, -0.4f}, {0.55f, 0.6f}, {-0.2f, 0.8f}}, false);
+            for (ImVec2 v : {ImVec2(-0.8f, 0.3f), ImVec2(-0.3f, -0.75f), ImVec2(0.75f, -0.4f), ImVec2(0.55f, 0.6f)}) p.fillCircle(v.x, v.y, 0.12f);
+            break;
+        case Tool::SpotHeal: {
+            // bandage
+            ImVec2 q[4] = {p.P(-0.85f, 0.35f), p.P(0.35f, -0.85f), p.P(0.85f, -0.35f), p.P(-0.35f, 0.85f)};
+            dl->AddPolyline(q, 4, col, ImDrawFlags_Closed, p.th);
+            p.line(-0.2f, -0.2f, 0.2f, 0.2f, p.th * 0.6f);
+            p.fillCircle(-0.05f, 0.1f, 0.06f);
+            p.fillCircle(0.1f, -0.05f, 0.06f);
+            break;
+        }
+        case Tool::Blur: {
+            ImVec2 pts[20];
+            for (int i = 0; i < 20; i++) {
+                float t = i / 19.f * 2 * 3.14159265f;
+                float x = std::sin(t) * 0.55f * (1 - std::cos(t)) * 0.55f, y = -std::cos(t) * 0.85f;
+                pts[i] = p.P(x * 1.4f, y * 0.95f + 0.05f);
+            }
+            dl->AddPolyline(pts, 20, col, ImDrawFlags_Closed, p.th);
+            break;
+        }
+        case Tool::Sharpen:
+            p.poly({{0, -0.9f}, {0.55f, 0.8f}, {-0.55f, 0.8f}}, false);
+            p.line(0, -0.9f, 0, 0.8f, p.th * 0.6f);
+            break;
+        case Tool::Smudge:
+            p.dl->AddRect(p.P(-0.25f, -0.95f), p.P(0.3f, 0.6f), col, 0.27f * p.s, 0, p.th);
+            p.dl->AddBezierQuadratic(p.P(-0.15f, -0.85f), p.P(0.03f, -0.55f), p.P(0.2f, -0.85f), col, p.th * 0.8f);
+            p.line(-0.6f, 0.9f, 0.6f, 0.9f);
+            break;
+        case Tool::Dodge:
+            p.circle(-0.25f, -0.3f, 0.48f);
+            p.line(0.1f, 0.05f, 0.85f, 0.85f, p.th * 1.5f);
+            break;
+        case Tool::Burn:
+            p.dl->AddBezierCubic(p.P(-0.7f, 0.85f), p.P(-0.9f, -0.2f), p.P(-0.2f, -0.95f), p.P(0.45f, -0.55f), col, p.th);
+            p.dl->AddBezierCubic(p.P(0.45f, -0.55f), p.P(0.9f, -0.25f), p.P(0.6f, 0.25f), p.P(0.15f, 0.1f), col, p.th);
+            p.circle(-0.1f, -0.2f, 0.2f);
+            break;
+        case Tool::Sponge:
+            p.dl->AddRect(p.P(-0.8f, -0.6f), p.P(0.8f, 0.6f), col, 0.3f * p.s, 0, p.th);
+            p.circle(-0.35f, -0.15f, 0.13f);
+            p.circle(0.25f, -0.25f, 0.1f);
+            p.circle(0.05f, 0.25f, 0.15f);
+            p.circle(0.45f, 0.2f, 0.08f);
+            break;
         case Tool::Zoom:
             p.circle(-0.2f, -0.2f, 0.55f);
             p.line(0.2f, 0.2f, 0.85f, 0.85f, p.th * 1.8f);
@@ -154,16 +202,89 @@ void drawToolIcon(ImDrawList* dl, Tool tool, ImVec2 center, float size, ImU32 co
     }
 }
 
+static ImTextureID gLogoTex = 0;
+void setLogoTexture(ImTextureID tex) { gLogoTex = tex; }
+
 void drawLogo(ImDrawList* dl, ImVec2 mn, float size) {
     ImVec2 mx(mn.x + size, mn.y + size);
-    dl->AddRectFilledMultiColor(mn, mx, IM_COL32(61, 139, 253, 255), IM_COL32(139, 92, 246, 255),
-                                IM_COL32(219, 70, 160, 255), IM_COL32(61, 139, 253, 255));
+    if (gLogoTex) {
+        dl->AddImage(gLogoTex, mn, mx);
+        return;
+    }
+    dl->AddRectFilled(mn, mx, IM_COL32(38, 128, 235, 255), size * 0.22f);
     Pen p{dl, ImVec2(mn.x + size * 0.5f, mn.y + size * 0.5f), size * 0.5f, IM_COL32_WHITE, std::max(1.5f, size / 9.f)};
     p.line(-0.5f, 0.6f, 0.0f, -0.6f);
     p.line(0.0f, -0.6f, 0.5f, 0.6f);
     p.line(-0.27f, 0.12f, 0.27f, 0.12f);
-    dl->AddBezierCubic(p.P(-0.7f, 0.82f), p.P(-0.2f, 0.6f), p.P(0.2f, 1.0f), p.P(0.72f, 0.75f), IM_COL32(255, 255, 255, 200),
-                       p.th * 0.7f);
+}
+
+void drawUiIcon(ImDrawList* dl, UiIcon icon, ImVec2 c, float size, ImU32 col) {
+    Pen p{dl, c, size * 0.5f, col, std::max(1.2f, size / 13.f)};
+    switch (icon) {
+        case UiIcon::Eye:
+        case UiIcon::EyeOff: {
+            ImVec2 a = p.P(-0.9f, 0), b = p.P(0.9f, 0);
+            dl->AddBezierQuadratic(a, p.P(0, -0.95f), b, col, p.th);
+            dl->AddBezierQuadratic(a, p.P(0, 0.95f), b, col, p.th);
+            p.fillCircle(0, 0, 0.22f);
+            if (icon == UiIcon::EyeOff) p.line(-0.8f, 0.75f, 0.8f, -0.75f);
+            break;
+        }
+        case UiIcon::Plus: p.line(-0.7f, 0, 0.7f, 0); p.line(0, -0.7f, 0, 0.7f); break;
+        case UiIcon::Duplicate:
+            dl->AddRect(p.P(-0.75f, -0.35f), p.P(0.35f, 0.75f), col, 0.12f * p.s, 0, p.th);
+            dl->AddRect(p.P(-0.35f, -0.75f), p.P(0.75f, 0.35f), col, 0.12f * p.s, 0, p.th);
+            break;
+        case UiIcon::Trash:
+            p.line(-0.75f, -0.55f, 0.75f, -0.55f);
+            p.line(-0.25f, -0.55f, -0.2f, -0.8f); p.line(-0.2f, -0.8f, 0.2f, -0.8f); p.line(0.2f, -0.8f, 0.25f, -0.55f);
+            p.poly({{-0.55f, -0.45f}, {0.55f, -0.45f}, {0.42f, 0.85f}, {-0.42f, 0.85f}}, false);
+            p.line(-0.15f, -0.2f, -0.12f, 0.6f, p.th * 0.8f);
+            p.line(0.15f, -0.2f, 0.12f, 0.6f, p.th * 0.8f);
+            break;
+        case UiIcon::Up: p.line(0, 0.75f, 0, -0.7f); p.line(-0.55f, -0.15f, 0, -0.7f); p.line(0.55f, -0.15f, 0, -0.7f); break;
+        case UiIcon::Down: p.line(0, -0.75f, 0, 0.7f); p.line(-0.55f, 0.15f, 0, 0.7f); p.line(0.55f, 0.15f, 0, 0.7f); break;
+        case UiIcon::Merge:
+            p.line(-0.6f, -0.8f, 0, -0.1f); p.line(0.6f, -0.8f, 0, -0.1f); p.line(0, -0.1f, 0, 0.5f);
+            p.line(-0.7f, 0.8f, 0.7f, 0.8f);
+            break;
+        case UiIcon::Fx:
+            dl->AddBezierQuadratic(p.P(-0.05f, -0.8f), p.P(-0.5f, -0.9f), p.P(-0.45f, -0.3f), col, p.th);
+            p.line(-0.45f, -0.3f, -0.6f, 0.8f);
+            p.line(-0.8f, -0.15f, -0.15f, -0.15f);
+            p.line(0.05f, -0.1f, 0.8f, 0.75f);
+            p.line(0.8f, -0.1f, 0.05f, 0.75f);
+            break;
+        case UiIcon::Folder:
+            p.poly({{-0.85f, -0.6f}, {-0.3f, -0.6f}, {-0.15f, -0.4f}, {0.85f, -0.4f}, {0.85f, 0.7f}, {-0.85f, 0.7f}}, false);
+            p.line(-0.85f, -0.15f, 0.85f, -0.15f);
+            break;
+        case UiIcon::File:
+            p.poly({{-0.6f, -0.85f}, {0.25f, -0.85f}, {0.6f, -0.5f}, {0.6f, 0.85f}, {-0.6f, 0.85f}}, false);
+            p.line(0.25f, -0.85f, 0.25f, -0.5f); p.line(0.25f, -0.5f, 0.6f, -0.5f);
+            break;
+        case UiIcon::Close: p.line(-0.6f, -0.6f, 0.6f, 0.6f); p.line(0.6f, -0.6f, -0.6f, 0.6f); break;
+        case UiIcon::Brush:
+            p.line(0.85f, -0.85f, -0.05f, 0.1f, p.th * 1.4f);
+            p.poly({{-0.15f, 0.0f}, {0.1f, 0.25f}, {-0.3f, 0.75f}, {-0.85f, 0.85f}, {-0.7f, 0.35f}}, true);
+            break;
+    }
+}
+
+bool iconButton(const char* id, UiIcon icon, const char* tooltip, bool enabled, float size) {
+    if (size <= 0) size = ImGui::GetFrameHeight();
+    ImGui::BeginDisabled(!enabled);
+    ImVec2 pos = ImGui::GetCursorScreenPos();
+    bool pressed = ImGui::InvisibleButton(id, ImVec2(size, size));
+    bool hov = ImGui::IsItemHovered(), act = ImGui::IsItemActive();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    if (enabled && (hov || act))
+        dl->AddRectFilled(pos, ImVec2(pos.x + size, pos.y + size), ImGui::GetColorU32(act ? ImGuiCol_ButtonActive : ImGuiCol_ButtonHovered), 6);
+    ImU32 col = ImGui::GetColorU32(enabled ? ImGuiCol_Text : ImGuiCol_TextDisabled);
+    drawUiIcon(dl, icon, ImVec2(pos.x + size * 0.5f, pos.y + size * 0.5f), size * 0.58f, col);
+    ImGui::EndDisabled();
+    if (tooltip && *tooltip) ImGui::SetItemTooltip("%s", tooltip);
+    return pressed && enabled;
 }
 
 }  // namespace ag

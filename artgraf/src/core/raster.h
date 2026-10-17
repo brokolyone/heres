@@ -20,6 +20,7 @@ struct Coverage {
     void clear();
     uint8_t at(int x, int y) const { return v[size_t(y) * w + x]; }
     void put(int x, int y, float c);  // max-combine
+    void add(int x, int y, float c);  // accumulate (airbrush)
 
     // hardness 0..1; aa=false gives hard pixel edges (pencil)
     void dab(float cx, float cy, float radius, float hardness, bool aa);
@@ -27,6 +28,8 @@ struct Coverage {
     void rect(float x0, float y0, float x1, float y1, bool filled, float strokeW);
     void line(float x0, float y0, float x1, float y1, float width);
     void polygon(const std::vector<Vec2>& pts);  // even-odd, no antialiasing
+    void polygonAA(const std::vector<Vec2>& pts);  // even-odd, antialiased
+    void polyline(const std::vector<Vec2>& pts, float width, bool closed);
     void fillAll();
 };
 
