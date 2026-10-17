@@ -5,3 +5,4 @@ out/
 *.iml
 .idea/
 *.blend1
+artgraf/build*/
