@@ -5,3 +5,5 @@ out/
 *.iml
 .idea/
 *.blend1
+art/creek/assets/
+art/creek/creek.blend
