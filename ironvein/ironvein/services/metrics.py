@@ -80,9 +80,13 @@ async def integrity_report(session: AsyncSession) -> dict:
     for o, l, r, q in (await session.execute(
             select(ShipmentCargo.owner_id, Shipment.origin, ShipmentCargo.resource, func.sum(ShipmentCargo.qty))
             .join(Shipment, Shipment.id == ShipmentCargo.shipment_id)
-            .where(Shipment.status == "loading", ShipmentCargo.resource.is_not(None))
+            .where(Shipment.status == "loading", ShipmentCargo.resource.is_not(None), Shipment.contract_id.is_(None))
             .group_by(ShipmentCargo.owner_id, Shipment.origin, ShipmentCargo.resource))).all():
         acc((o, l, r), q)
+    for o, l, q in (await session.execute(
+            select(Shipment.carrier_id, Shipment.origin, func.sum(Shipment.fuel))
+            .where(Shipment.status == "loading").group_by(Shipment.carrier_id, Shipment.origin))).all():
+        acc((o, l, "diesel"), q)
     for o, l, r, q in (await session.execute(
             select(Contract.customer_id, Contract.location_code, Contract.resource, func.sum(Contract.qty))
             .where(Contract.kind == "transport", Contract.status.in_(("open", "accepted", "disputed")),

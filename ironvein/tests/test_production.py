@@ -214,7 +214,7 @@ async def test_idempotent_start_with_op_key(sm):
 
 async def test_truck_assembly_from_modules(sm):
     u = await make_user(sm, 1)
-    ws = await give_item(sm, u, "workshop")
+    await give_item(sm, u, "workshop")
     mods = [await give_item(sm, u, c) for c in ("chassis", "engine_d8", "tank", "body_cargo")]
     await give(sm, u, "rust", "parts", 2)
     with pytest.raises(GameError):

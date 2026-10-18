@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from sqlalchemy import func, select, text
 
-from ironvein.models import LedgerEntry, User, Wallet
+from ironvein.models import User
 from ironvein.services import ledger, users
 from ironvein.services.metrics import integrity_report
 from tests.conftest import make_user
