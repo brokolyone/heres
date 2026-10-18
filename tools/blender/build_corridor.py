@@ -38,34 +38,35 @@ T = {
     "sky_light": (110, 185, 255),
     "sky_light_strength": 3.4,
     # what the camera sees of the sunlit landscape, as linear multipliers
-    "field_mul": (0.262, 0.158, 0.135),
-    "plant_mul": (0.58, 0.366, 0.01),
-    "tree_mul": (0.0595, 0.434, 1.2),
-    "sky_mul": (0.77, 0.638, 0.655),
+    "field_mul": (0.263, 0.159, 0.13),
+    "plant_mul": (0.586, 0.366, 0.01),
+    "tree_mul": (0.01, 0.369, 1.36),
+    "sky_mul": (0.769, 0.637, 0.655),
     "exposure": 0.5,
     "grade_gamma": 1.12,        # compositor: slightly darker, deeper mid-tones
     "floor_window": (100, 135, 145),
-    "floor_sun": (185, 235, 104),
-    "floor_shade": (36, 144, 16),
-    "reflect_window": 0.4129,
+    "floor_sun": (190, 215, 95),
+    "floor_shade": (46, 143, 16),
+    "reflect_window": 0.411,
     "reflect_tint": (0.78, 1.0, 0.74),   # floor and glass mirror a little greener
     "reflect_window_tint": (0.92, 0.94, 1.0),   # by the glass the floor mirrors the sky
     "reflect_sun": 0.1,
     "reflect_shade": 0.05,
-    "ceiling_fill": (0.906, 0.501, 0.794),    # W/m^2 per channel
-    "wall_fill": 1.4654,
+    "ceiling_fill": (0.96, 0.435, 0.775),    # W/m^2 per channel
+    "wall_fill": 1.5031,
     "sun_stripes": (1.8, 0.55, 0.25),   # period (m), lit fraction, light left in the dark bands
-    "sun_patch": (0.357, 0.0721, 0.0598),     # emitted light of the sun band on the floor
-    "frame": (134, 127, 116),
-    "channel": (117, 135, 139),
+    "sun_patch": 0.3362,                        # strength of the sun band painted on the floor
+    "sun_patch_color": (0.9, 0.82, 0.12),
+    "frame": (134, 127, 115),
+    "channel": (116, 134, 139),
     "wall": (222, 232, 235),
     "ceiling": (225, 232, 232),
     "glass_tint": (0.86, 0.97, 0.97),
     "glass_graze": (2, 2, 2),
     "glass_reflect": 0.6,
     "fern_tint": ((50, 90, 15), (150, 195, 40), (215, 235, 110)),
-    "far_mul": (0.559, 0.269, 0.481),
-    "mid_mul": (0.867, 0.379, 0.01),
+    "far_mul": (0.559, 0.268, 0.48),
+    "mid_mul": (0.866, 0.379, 0.01),
     "plant_value": 1.6,
     "rice": ((60, 105, 20), (135, 185, 35), (205, 228, 90)),
 }
@@ -342,8 +343,8 @@ def mat_floor():
     texture = n.new("ShaderNodeMapRange", **{"From Min": 0.3, "From Max": 0.7, "To Min": 0.55, "To Max": 1.2})
     n.set(texture.inputs["Value"], grass)
     light = n.math("MULTIPLY", n.math("MULTIPLY", lit.outputs[0], texture.outputs[0]), sun)
-    em = n.new("ShaderNodeEmission", Color=(*T["sun_patch"], 1.0))
-    n.set(em.inputs["Strength"], light)
+    em = n.new("ShaderNodeEmission", Color=(*T["sun_patch_color"], 1.0))
+    n.set(em.inputs["Strength"], n.math("MULTIPLY", light, T["sun_patch"]))
 
     reflect = n.new("ShaderNodeMix")
     n.set(reflect.inputs[0], shade)

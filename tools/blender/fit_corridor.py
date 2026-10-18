@@ -41,7 +41,7 @@ MULT = {
     "reflect_window": ["floor_blue"],
 }
 CAPS = {"reflect_window": 0.9, "glass_graze": 2.0, "ceiling_fill": 40.0, "wall_fill": 40.0, "sun_patch": 40.0}
-SCALAR = {"wall_fill", "reflect_window"}   # strength only, the colour stays as built
+SCALAR = {"wall_fill", "reflect_window", "sun_patch"}   # strength only, the colour stays as built
 DAMP = 0.85
 
 
