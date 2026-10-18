@@ -836,9 +836,7 @@ TARO = [
     (265, 430, 0.42, 120, -15, 65),
     (60, 440, 0.4, 90, 160, 50),
     # centre, on the bank right of the rock
-    (445, 197, 1.2, 140, 150, 30),
     (630, 230, 1.15, 150, 5, 58),
-    (575, 290, 1.05, 110, -40, 20),
     (790, 270, 1.4, 70, 200, 60),
     # right, far side
     (755, 185, 1.6, 85, 140, 35),
@@ -916,7 +914,7 @@ for px, py, d in FLOWERS:
     base = Vector((head.x + rnd.uniform(-0.02, 0.02), head.y, 0))
     base.z = ground_below(base)
     flower(base, head.z - base.z, rnd.uniform(-0.02, 0.02), rnd.uniform(0, math.tau),
-           px_size(d) * rnd.uniform(18, 26))
+           px_size(d) * rnd.uniform(9, 13))
 
 # backlit yellow grass blades and stalks: (px range, py top range, distance range, count)
 REEDS = [((0, 85), (200, 330), (0.45, 0.6), 8), ((480, 570), (125, 205), (1.2, 1.4), 16),
@@ -1020,10 +1018,17 @@ p2 = unproject(553, 350, 0.98)
 frog("frog_top", on_rock(p1.x, p1.y), -70, 0.048, "frog_green_color.png")
 frog("frog_edge", on_rock(p2.x, p2.y), 150, 0.03, "frog_brown_color.png")
 
-# small taro sprouts growing out of the moss on top of the rock
-for args in ((355, 205, 1.0, 75, 100, 20), (430, 228, 1.0, 62, 45, 30), (245, 232, 0.98, 58, 145, 25),
-             (500, 250, 0.98, 50, 15, 35), (300, 215, 1.0, 48, 80, 40)):
-    taro(*args, lean=0.1, base_at=on_rock)
+# one taro plant growing out of the rock: a single stem base, two big leaves (as in the reference)
+_root = unproject(512, 318, 1.0)
+_root = on_rock(_root.x, _root.y + 0.02)
+taro(445, 197, 1.05, 150, 150, 25, lean=0.0, base_at=lambda gx, gy: _root)
+_, _lit = taro(582, 287, 1.0, 115, -40, 20, lean=0.0, base_at=lambda gx, gy: _root)
+# the right leaf glows yellow with the sun behind it
+_lit_mat = leaf_mat.copy()
+for _n in _lit_mat.node_tree.nodes:
+    if _n.type == "MATH" and _n.operation == "MULTIPLY":
+        _n.inputs[1].default_value = 0.8
+_lit.data.materials[0] = _lit_mat
 
 
 # ---------------------------------------------------------------- lights, world, camera
