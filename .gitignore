@@ -5,3 +5,7 @@ out/
 *.iml
 .idea/
 *.blend1
+__pycache__/
+*.pyc
+.env
+.pytest_cache/
