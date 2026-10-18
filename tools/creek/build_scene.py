@@ -1058,12 +1058,15 @@ frog("frog_edge", on_rock(p2.x, p2.y), 150, 0.03, "frog_brown_color.png")
 _root = unproject(512, 318, 1.0)
 _root = on_rock(_root.x, _root.y + 0.02)
 _s1, _ = taro(445, 197, 1.05, 150, 150, 25, lean=0.0, base_at=lambda gx, gy: _root, stem_scale=1.15)
-# the plant's stems: yellow-green, sunlit through
+# the plant's stem: a darker green, only a little light through
 _stem_lit = stalk_mat.copy()
 _sb = next(n for n in _stem_lit.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
-_sb.inputs["Base Color"].default_value = (0.5, 0.62, 0.12, 1)
+next(n for n in _stem_lit.node_tree.nodes if n.type == "MIX_SHADER").inputs["Fac"].default_value = 0.3
+_sb.inputs["Base Color"].default_value = (0.12, 0.2, 0.04, 1)
+_sb.inputs["Roughness"].default_value = 0.6
+next(n for n in _stem_lit.node_tree.nodes if n.type == "BSDF_TRANSLUCENT").inputs["Color"].default_value = (0.3, 0.4, 0.08, 1)
 _sb.inputs["Emission Color"].default_value = (0.55, 0.65, 0.1, 1)
-_sb.inputs["Emission Strength"].default_value = 0.2
+_sb.inputs["Emission Strength"].default_value = 0.0
 for _s in (_s1,):
     _s.data.materials[0] = _stem_lit
 
