@@ -4,7 +4,8 @@
         [--render out.png] [--scale 1.0] [--samples 256] [--no-save] [--tune overrides.json]
 
 Writes corridor.blend into the given folder (and renders it when --render is given).
-Plants come from the CC0 Poly Haven scans in <folder>/assets (grass_medium_01/02, fern_02).
+The rice is generated here; the weedy ferns by the glass are a CC0 Poly Haven scan in
+<folder>/assets/fern_02.
 Units are metres. +Y runs down the corridor, the glass wall is on -X, floor at z = 0.
 
 The camera was solved from the reference: corridor vanishing point at (925, 283) px of
@@ -34,41 +35,39 @@ T = {
     "sun_strength": 6.0,
     "sun_out_elev": 40.0,
     "sun_out_az": -25.0,        # relative to the camera's forward direction
-    "sun_floor_strength": 12.0,
-    "sun_elev": 35.0,
-    "sun_az": 0.0,
     "sky_light": (110, 185, 255),
     "sky_light_strength": 3.4,
     # what the camera sees of the sunlit landscape, as linear multipliers
-    "field_mul": (0.235, 0.168, 0.145),
-    "plant_mul": (1.28, 0.859, 0.01),
-    "tree_mul": (1.14, 0.839, 1.01),
-    "sky_mul": (0.79, 0.724, 0.72),
+    "field_mul": (0.262, 0.158, 0.135),
+    "plant_mul": (0.58, 0.366, 0.01),
+    "tree_mul": (0.0595, 0.434, 1.2),
+    "sky_mul": (0.77, 0.638, 0.655),
     "exposure": 0.5,
     "grade_gamma": 1.12,        # compositor: slightly darker, deeper mid-tones
-    "floor_window": (130, 150, 150),
+    "floor_window": (100, 135, 145),
     "floor_sun": (185, 235, 104),
-    "floor_shade": (173, 246, 44),
-    "reflect_window": 0.35,
+    "floor_shade": (36, 144, 16),
+    "reflect_window": 0.4129,
     "reflect_tint": (0.78, 1.0, 0.74),   # floor and glass mirror a little greener
+    "reflect_window_tint": (0.92, 0.94, 1.0),   # by the glass the floor mirrors the sky
     "reflect_sun": 0.1,
     "reflect_shade": 0.05,
-    "ceiling_fill": (0.978, 0.565, 0.848),    # W/m^2 per channel
-    "wall_fill": (0.213, 0.01, 1.84),
-    "sun_stripes": (1.8, 0.5, 0.3),   # period (m), lit fraction, albedo of the dark bands
-    "frame": (163, 170, 144),
-    "channel": (114, 200, 207),
-    "wall": (205, 222, 225),
+    "ceiling_fill": (0.906, 0.501, 0.794),    # W/m^2 per channel
+    "wall_fill": 1.4654,
+    "sun_stripes": (1.8, 0.55, 0.25),   # period (m), lit fraction, light left in the dark bands
+    "sun_patch": (0.357, 0.0721, 0.0598),     # emitted light of the sun band on the floor
+    "frame": (134, 127, 116),
+    "channel": (117, 135, 139),
+    "wall": (222, 232, 235),
     "ceiling": (225, 232, 232),
     "glass_tint": (0.86, 0.97, 0.97),
-    "glass_graze": (1.15, 1.15, 1.15),
-    "glass_reflect": 0.22,
-    "grass_tint": ((45, 80, 10), (130, 180, 30), (200, 225, 80)),
+    "glass_graze": (2, 2, 2),
+    "glass_reflect": 0.6,
     "fern_tint": ((50, 90, 15), (150, 195, 40), (215, 235, 110)),
-    "far_grass_tint": ((85, 135, 20), (150, 195, 40), (205, 228, 85)),
-    "far_mul": (0.83, 0.416, 0.948),
-    "mid_mul": (2, 0.824, 0.01),
+    "far_mul": (0.559, 0.269, 0.481),
+    "mid_mul": (0.867, 0.379, 0.01),
     "plant_value": 1.6,
+    "rice": ((60, 105, 20), (135, 185, 35), (205, 228, 90)),
 }
 if "--tune" in argv:
     import json
@@ -97,11 +96,12 @@ MULLIONS = [-0.2 - 3.6 * k for k in range(16, 0, -1)] + [-0.2] + MULLIONS
 PILASTER_STEP = 6.8
 
 YAW = math.atan((VP[0] - REF_W / 2) / FOCAL_PX)
-SUN_ELEV = math.radians(T["sun_elev"])
-SUN_AZ = math.radians(T["sun_az"])   # 0: light crosses the corridor square to the glass
 # the sun patch on the floor is a lengthwise band, as in the reference
 SUN_BAND = (-1.375, 0.0)
-GROUND_Z = -0.35
+# the corridor is a raised walkway: the paddies lie 3.5 m below its floor, which is what
+# makes the field read as a flat carpet of paddies the way it does in the reference
+GROUND_Z = -3.5
+FOREST_R = 2000.0
 # fair-weather clouds as (x, y, width, height) in reference pixels
 CLOUDS = [(288, 168, 72, 22), (345, 178, 62, 15), (372, 192, 46, 14), (160, 178, 36, 24),
           (242, 192, 24, 6), (520, 195, 34, 14), (560, 214, 64, 8), (18, 176, 44, 18)]
@@ -116,6 +116,13 @@ def pixel_ray(px, py):
     fwd = Vector((-math.sin(YAW), math.cos(YAW), 0.0))
     d = right * (px - REF_W / 2) + Vector((0, 0, 1)) * (VP[1] - py) + fwd * FOCAL_PX
     return d.normalized()
+
+
+def canopy(a, R=FOREST_R):
+    """Forest height above ground at azimuth a (radians from +X), fitted to the reference's
+    tree line: it stands taller toward the left edge of the frame."""
+    rel = max(-1.5, min(1.5, (a - math.radians(90) - YAW) / math.radians(23)))
+    return (13.8 + 6.9 * rel) * R / 1000.0 + (EYE - GROUND_Z)
 
 
 def ground_point(px, py):
@@ -287,41 +294,84 @@ def mat_simple(name, color, rough=0.5, spec=0.5, metallic=0.0):
     return m
 
 
-def mat_floor(name, color, reflect, rough=0.06, stripes=None):
-    """Resin floor: diffuse colour plus a mirror layer of fixed strength (the reference
-    shows little of the Fresnel brightening a real glossy floor gets at grazing angles)."""
-    m = bpy.data.materials.new(name)
+def mat_floor():
+    """One glossy resin floor in three soft lengthwise zones, as in the reference: a
+    blue-reflecting strip by the glass, a band of sun in the middle and deeper green
+    toward the inner wall. The sun band is painted in as light (an emission pattern)
+    so it can be as soft and wavy as in the reference instead of hard mullion shadows."""
+    m = bpy.data.materials.new("floor")
     n = Nodes(m)
-    # glossy resin with lengthwise trowel streaks
+    x, y, _ = n.xyz("Object")
+    # zone edges wander a little along the corridor
+    wob = n.math("MULTIPLY", n.math("SUBTRACT", n.noise(n.scaled(n.coords(), (0.2, 0.05, 1.0)), 2.0, 2.0), 0.5), 0.35)
+    u = n.math("ADD", x, wob)
+
+    def ramp_up(lo, hi):
+        r = n.new("ShaderNodeMapRange", **{"From Min": lo, "From Max": hi, "_interpolation_type": "SMOOTHSTEP"})
+        n.set(r.inputs["Value"], u)
+        return r.outputs[0]
+
+    past_window = ramp_up(SUN_BAND[0] - 0.2, SUN_BAND[0] + 0.25)
+    shade = ramp_up(SUN_BAND[1] - 0.15, SUN_BAND[1] + 0.45)
+    sun = n.math("SUBTRACT", past_window, shade, clamp=True)
+
+    def zones(a, b, c):
+        return n.mix(shade, n.mix(past_window, a, b), c)
+
+    col = zones(srgb(*T["floor_window"]), srgb(*T["floor_sun"]), srgb(*T["floor_shade"]))
     streak = n.noise(n.scaled(n.coords(), (1.0, 0.06, 1.0)), 5.0, 4.0, 0.6)
-    col = n.mix(n.math("MULTIPLY", n.math("SUBTRACT", streak, 0.35), 1.2, clamp=True),
-                srgb(*(int(c * 0.6) for c in color)), srgb(*(min(255, c + 45) for c in color)))
-    if stripes:
-        # the reference's sun band is broken into wavy cross stripes, more of them than
-        # the mullions alone would cast; they run square to the line of sight. By the glass
-        # they only show as thin dark lines (duty close to 1).
-        period, duty, dark = stripes
-        x, y, _ = n.xyz("Object")
-        q = n.math("ADD", n.math("MULTIPLY", x, -math.sin(YAW)), n.math("MULTIPLY", y, math.cos(YAW)))
-        wob = n.math("MULTIPLY", n.math("SUBTRACT", n.noise(n.scaled(n.coords(), (0.5, 1.4, 1.0)), 1.5, 4.0, 0.6), 0.5), 1.3)
-        phase = n.math("MULTIPLY", n.math("ADD", q, wob), 2 * math.pi / period)
-        wave = n.math("MULTIPLY", n.math("ADD", n.math("SINE", phase), 1.0), 0.5)
-        lit = n.new("ShaderNodeMapRange", **{"From Min": 1.0 - duty - 0.12, "From Max": 1.0 - duty + 0.12})
-        n.set(lit.inputs["Value"], wave)
-        shade = n.new("ShaderNodeMix", _data_type="RGBA", _blend_type="MULTIPLY")
-        shade.inputs[0].default_value = 1.0
-        n.set(shade.inputs[6], col)
-        shade.inputs[7].default_value = (dark, dark, dark, 1.0)
-        col = n.mix(lit.outputs[0], shade.outputs[2], col)
-    r = n.math("ADD", rough, n.math("MULTIPLY", n.noise(None, 3.0, 2.0), 0.06))
+    tone = n.new("ShaderNodeMix", _data_type="RGBA", _blend_type="MULTIPLY")
+    tone.inputs[0].default_value = 1.0
+    n.set(tone.inputs[6], col)
+    n.set(tone.inputs[7], n.ramp(streak, [(0.3, (0.7, 0.7, 0.7)), (0.7, (1.15, 1.15, 1.15))]))
+    col = tone.outputs[2]
+
+    # sun light: cross stripes square to the line of sight (shadows of the glazing),
+    # warped and broken up by long grassy streaks like the reference's light on the floor
+    q = n.math("ADD", n.math("MULTIPLY", x, -math.sin(YAW)), n.math("MULTIPLY", y, math.cos(YAW)))
+    warp = n.math("MULTIPLY", n.math("SUBTRACT", n.noise(n.scaled(n.coords(), (0.5, 1.4, 1.0)), 1.3, 4.0, 0.6), 0.5), 1.4)
+    period, duty, low = T["sun_stripes"]
+    wave = n.math("MULTIPLY", n.math("ADD", n.math("SINE", n.math("MULTIPLY", n.math("ADD", q, warp),
+                                                                  2 * math.pi / period)), 1.0), 0.5)
+    lit = n.new("ShaderNodeMapRange", **{"From Min": 1.0 - duty - 0.2, "From Max": 1.0 - duty + 0.2,
+                                          "To Min": low, "_interpolation_type": "SMOOTHSTEP"})
+    n.set(lit.inputs["Value"], wave)
+    along = n.new("ShaderNodeMapping", Rotation=(0, 0, YAW), Scale=(0.15, 1.0, 1.0))
+    n.set(along.inputs[0], n.coords())
+    grass = n.noise(along.outputs[0], 7.0, 6.0, 0.65)
+    texture = n.new("ShaderNodeMapRange", **{"From Min": 0.3, "From Max": 0.7, "To Min": 0.55, "To Max": 1.2})
+    n.set(texture.inputs["Value"], grass)
+    light = n.math("MULTIPLY", n.math("MULTIPLY", lit.outputs[0], texture.outputs[0]), sun)
+    em = n.new("ShaderNodeEmission", Color=(*T["sun_patch"], 1.0))
+    n.set(em.inputs["Strength"], light)
+
+    reflect = n.new("ShaderNodeMix")
+    n.set(reflect.inputs[0], shade)
+    n.set(reflect.inputs[2], n.math("ADD", n.math("MULTIPLY", n.math("SUBTRACT", 1.0, past_window), T["reflect_window"] - T["reflect_sun"]), T["reflect_sun"]))
+    reflect.inputs[3].default_value = T["reflect_shade"]
+    rough = n.math("ADD", n.math("MULTIPLY", shade, 0.12), n.math("ADD", 0.04, n.math("MULTIPLY", n.noise(None, 3.0, 2.0), 0.05)))
     diffuse = n.principled(col, 0.6, 0.0)
-    gloss = n.new("ShaderNodeBsdfGlossy", Color=rgb(*T["reflect_tint"]))
-    n.set(gloss.inputs["Roughness"], r)
+    gloss = n.new("ShaderNodeBsdfGlossy")
+    n.set(gloss.inputs["Color"], n.mix(past_window, rgb(*T["reflect_window_tint"]), rgb(*T["reflect_tint"])))
+    n.set(gloss.inputs["Roughness"], rough)
     mix = n.new("ShaderNodeMixShader")
-    mix.inputs[0].default_value = reflect
+    n.set(mix.inputs[0], reflect.outputs[0])
     n.set(mix.inputs[1], diffuse.outputs[0])
     n.set(mix.inputs[2], gloss.outputs[0])
-    n.output(mix)
+    add = n.new("ShaderNodeAddShader")
+    n.set(add.inputs[0], mix.outputs[0])
+    n.set(add.inputs[1], em.outputs[0])
+    n.output(add)
+    return m
+
+
+def mat_metal(name, color, rough=0.3, metallic=0.5, bevel=0.01):
+    """Painted / anodised aluminium: rounded edges that catch the light."""
+    m = bpy.data.materials.new(name)
+    n = Nodes(m)
+    bev = n.new("ShaderNodeBevel", Radius=bevel)
+    bev.samples = 8
+    n.output(n.principled(srgb(*color), rough, 0.5, Metallic=metallic, Normal=bev.outputs[0]))
     return m
 
 
@@ -329,26 +379,28 @@ def mat_ceiling():
     m = bpy.data.materials.new("ceiling")
     n = Nodes(m)
     x, y, _ = n.xyz("Object")
-    lines = n.math("MAXIMUM", n.line_mask(x, 1.2, 0.008, LEFT + 0.3),
-                   n.line_mask(y, 1.2, 0.008))
+    lines = n.math("MAXIMUM", n.line_mask(x, 1.2, 0.005, LEFT + 0.3),
+                   n.line_mask(y, 1.2, 0.005))
+    beams = n.line_mask(y, 7.2, 0.02, 0.6)
     base = srgb(*T["ceiling"])
-    col = n.mix(lines, base, srgb(150, 155, 150))
+    col = n.mix(n.math("MULTIPLY", lines, 0.55), base, srgb(120, 125, 120))
+    col = n.mix(n.math("MULTIPLY", beams, 0.7), col, srgb(110, 115, 110))
     speck = n.noise(None, 400.0, 0.0)
     col = n.mix(n.math("MULTIPLY", speck, 0.15), col, srgb(200, 205, 198))
     bump = n.new("ShaderNodeBump", Strength=0.4, Distance=0.004)
-    n.set(bump.inputs["Height"], n.math("SUBTRACT", 1.0, lines))
+    n.set(bump.inputs["Height"], n.math("SUBTRACT", 1.0, n.math("MAXIMUM", lines, beams)))
     p = n.principled(col, 0.85, 0.2, Normal=bump.outputs[0])
     n.output(p)
     return m
 
 
-def mat_glass(name="glass", tint=T["glass_tint"]):
+def mat_glass(name="glass", tint=T["glass_tint"], graze=None):
     m = bpy.data.materials.new(name)
     n = Nodes(m)
     fres = n.new("ShaderNodeFresnel", IOR=1.5)
     lw = n.new("ShaderNodeLayerWeight", Blend=0.5)
     # longer path through the pane at grazing angles -> stronger green-cyan tint
-    tint_col = n.mix(n.math("POWER", lw.outputs["Facing"], 3.0), rgb(*tint), rgb(*T["glass_graze"]))
+    tint_col = n.mix(n.math("POWER", lw.outputs["Facing"], 3.0), rgb(*tint), rgb(*(graze or T["glass_graze"])))
     tr = n.new("ShaderNodeBsdfTransparent")
     n.set(tr.inputs["Color"], tint_col)
     gl = n.new("ShaderNodeBsdfGlossy", Roughness=0.02, Color=rgb(*T["reflect_tint"]))
@@ -362,10 +414,10 @@ def mat_glass(name="glass", tint=T["glass_tint"]):
 
 
 def aerial(n, col):
-    """Distance haze: the reference field turns into a pale cyan-green mist past ~250 m."""
+    """Distance haze: the reference field turns into a pale cyan-green mist past ~600 m."""
     d = n.new("ShaderNodeCameraData").outputs["View Distance"]
-    near = n.math("SUBTRACT", 1.0, n.math("EXPONENT", n.math("DIVIDE", d, -150.0)))
-    far = n.new("ShaderNodeMapRange", **{"From Min": 170.0, "From Max": 380.0, "_interpolation_type": "SMOOTHSTEP"})
+    near = n.math("SUBTRACT", 1.0, n.math("EXPONENT", n.math("DIVIDE", d, -450.0)))
+    far = n.new("ShaderNodeMapRange", **{"From Min": 480.0, "From Max": 1100.0, "_interpolation_type": "SMOOTHSTEP"})
     n.set(far.inputs["Value"], d)
     haze = n.math("ADD", n.math("MULTIPLY", near, 0.12), n.math("MULTIPLY", far.outputs[0], 0.75))
     return n.mix(haze, col, srgb(150, 198, 172))
@@ -449,76 +501,73 @@ def adapt_plant(mat, alpha_path, tint, gain):
         n.set(base, camera_tint(n, aerial(n, col), gain))
 
 
-def mat_trees():
-    m = bpy.data.materials.new("trees")
-    n = Nodes(m)
-    u, v, _ = n.xyz("UV")
-    # crown silhouette: noisy top edge along the strip
-    vec = n.new("ShaderNodeCombineXYZ")
-    n.set(vec.inputs[0], n.math("MULTIPLY", u, 120.0))
-    edge = n.noise(vec.outputs[0], 1.0, 5.0, 0.6)
-    top = n.math("ADD", 0.86, n.math("MULTIPLY", n.math("SUBTRACT", edge, 0.5), 0.22))
-    alpha = n.math("LESS_THAN", v, top)
-    leaf = n.noise(n.scaled(n.coords(), (1.0, 1.0, 1.0)), 0.3, 3.0)
-    col = n.mix(n.math("MULTIPLY", leaf, 0.6), srgb(18, 50, 38), srgb(30, 70, 50))
-    em = n.principled(camera_tint(n, col, T["tree_mul"]), 1.0, 0.2)
-    tr = n.new("ShaderNodeBsdfTransparent")
-    mix = n.new("ShaderNodeMixShader")
-    n.set(mix.inputs[0], alpha)
-    n.set(mix.inputs[1], tr.outputs[0])
-    n.set(mix.inputs[2], em.outputs[0])
-    n.output(mix)
-    m.blend_method = "CLIP"
-    return m
-
-
 def mat_crowns():
+    """Far canopy: one continuous leafy texture across all crowns (world-space noise),
+    only a slight tint per tree, and occlusion deepening the gaps between crowns."""
     m = bpy.data.materials.new("crowns")
     n = Nodes(m)
     info = n.new("ShaderNodeObjectInfo")
-    leaf = n.noise(n.coords(), 6.0, 4.0, 0.65)
-    col = n.ramp(n.math("ADD", n.math("MULTIPLY", info.outputs["Random"], 0.6),
-                        n.math("MULTIPLY", leaf, 0.4)), [
-        (0.25, srgb(12, 50, 52)), (0.5, srgb(24, 72, 72)), (0.75, srgb(42, 95, 88))])
-    # leaf clumps with dark gaps between them, and occlusion where crowns crowd together
-    clumps = n.noise(n.coords(), 14.0, 4.0, 0.6)
-    gaps = n.new("ShaderNodeMapRange", **{"From Min": 0.35, "From Max": 0.6, "To Min": 0.35, "To Max": 1.0})
+    world = n.new("ShaderNodeNewGeometry").outputs["Position"]
+    canopy_tex = n.noise(world, 0.08, 5.0, 0.6)
+    col = n.ramp(n.math("ADD", n.math("MULTIPLY", info.outputs["Random"], 0.15),
+                        n.math("MULTIPLY", canopy_tex, 0.85)), [
+        (0.3, srgb(14, 54, 54)), (0.5, srgb(24, 72, 72)), (0.7, srgb(38, 90, 84))])
+    clumps = n.noise(world, 0.6, 4.0, 0.6)
+    gaps = n.new("ShaderNodeMapRange", **{"From Min": 0.35, "From Max": 0.6, "To Min": 0.75, "To Max": 1.0})
     n.set(gaps.inputs["Value"], clumps)
     ao = n.new("ShaderNodeAmbientOcclusion", Distance=3.0)
     ao.samples = 8
-    shade = n.math("MULTIPLY", gaps.outputs[0], n.math("ADD", 0.35, n.math("MULTIPLY", ao.outputs["AO"], 0.65)))
+    shade = n.math("MULTIPLY", gaps.outputs[0], n.math("ADD", 0.7, n.math("MULTIPLY", ao.outputs["AO"], 0.3)))
+    comb = n.new("ShaderNodeCombineColor")
+    for i in range(3):
+        n.set(comb.inputs[i], shade)
     dark = n.new("ShaderNodeMix", _data_type="RGBA", _blend_type="MULTIPLY")
     dark.inputs[0].default_value = 1.0
     n.set(dark.inputs[6], col)
-    n.set(dark.inputs[7], n.new("ShaderNodeCombineColor").outputs[0])
-    comb = dark.inputs[7].links[0].from_node
-    for i in range(3):
-        n.set(comb.inputs[i], shade)
-    col = dark.outputs[2]
-    bump = n.new("ShaderNodeBump", Strength=0.4)
+    n.set(dark.inputs[7], comb.outputs[0])
+    bump = n.new("ShaderNodeBump", Strength=0.3)
     n.set(bump.inputs["Height"], clumps)
-    p = n.principled(camera_tint(n, col, T["tree_mul"]), 1.0, 0.1, Normal=bump.outputs[0])
-    n.output(p)
+    # darker, greener toward the forest floor; tops catch the blue of the open sky
+    _, _, wz = n.new("ShaderNodeSeparateXYZ").outputs
+    sep = wz.node
+    n.set(sep.inputs[0], world)
+    height = n.new("ShaderNodeMapRange", **{"From Min": GROUND_Z, "From Max": GROUND_Z + 45.0,
+                                             "_interpolation_type": "SMOOTHSTEP"})
+    n.set(height.inputs["Value"], wz)
+    grade = n.new("ShaderNodeMix", _data_type="RGBA", _blend_type="MULTIPLY")
+    grade.inputs[0].default_value = 1.0
+    n.set(grade.inputs[6], dark.outputs[2])
+    n.set(grade.inputs[7], n.mix(height.outputs[0], rgb(0.6, 0.92, 1.0), rgb(0.95, 1.0, 0.85)))
+    col = camera_tint(n, grade.outputs[2], T["tree_mul"])
+    p = n.principled(col, 1.0, 0.1, Normal=bump.outputs[0])
+    # at two kilometres the haze flattens the lighting: much of what reaches the eye is
+    # airlight in the forest's own tone rather than sun/sky shading
+    flat = n.new("ShaderNodeEmission", Strength=0.6)
+    n.set(flat.inputs["Color"], col)
+    mix = n.new("ShaderNodeMixShader")
+    mix.inputs[0].default_value = 0.65
+    n.set(mix.inputs[1], p.outputs[0])
+    n.set(mix.inputs[2], flat.outputs[0])
+    n.output(mix)
     return m
 
 
 # ---------------------------------------------------------------- geometry
 
 def build_corridor(M):
-    edges = [GLASS_X - 0.05, SUN_BAND[0], SUN_BAND[1], RIGHT]
-    for name, x0, x1 in zip(("floor_window", "floor_sun", "floor_shade"), edges, edges[1:]):
-        quad(name, [(x0, NEAR, 0), (x1, NEAR, 0), (x1, FAR, 0), (x0, FAR, 0)], M[name])
+    quad("floor", [(GLASS_X - 0.05, NEAR, 0), (RIGHT, NEAR, 0), (RIGHT, FAR, 0), (GLASS_X - 0.05, FAR, 0)],
+         M["floor"])
     quad("ceiling", [(LEFT + 0.22, NEAR, HEIGHT), (LEFT + 0.22, FAR, HEIGHT), (RIGHT, FAR, HEIGHT),
                      (RIGHT, NEAR, HEIGHT)], M["ceiling"])
     # window head: white head frame, a plain soffit strip, then a thin dark curtain slot
-    box("head", GLASS_X, LEFT, NEAR, FAR, HEIGHT - 0.11, HEIGHT + 0.12, M["frame"])
+    box("head", GLASS_X, LEFT, NEAR, FAR, HEIGHT - 0.11, HEIGHT + 0.12, M["dark"])
     quad("soffit", [(LEFT, NEAR, HEIGHT), (LEFT, FAR, HEIGHT), (LEFT + 0.12, FAR, HEIGHT),
                     (LEFT + 0.12, NEAR, HEIGHT)], M["ceiling"])
     box("pocket", LEFT + 0.12, LEFT + 0.22, NEAR, FAR, HEIGHT, HEIGHT + 0.12, M["dark"])
 
     # sill: low white frame under the glass with a dark kick recess at the floor
-    box("sill", GLASS_X - 0.05, LEFT, NEAR, FAR, 0.05, SILL_TOP, M["frame"])
-    box("sill_cap", GLASS_X - 0.02, LEFT + 0.025, NEAR, FAR, SILL_TOP - 0.025, SILL_TOP, M["frame"])
+    box("sill", GLASS_X - 0.05, LEFT, NEAR, FAR, 0.05, SILL_TOP, M["sill"])
+    box("sill_cap", GLASS_X - 0.02, LEFT + 0.025, NEAR, FAR, SILL_TOP - 0.025, SILL_TOP, M["sill"])
     box("kick", GLASS_X - 0.05, LEFT - 0.03, NEAR, FAR, 0.0, 0.05, M["dark"])
 
     quad("glass", [(GLASS_X, NEAR, SILL_TOP), (GLASS_X, FAR, SILL_TOP),
@@ -531,6 +580,17 @@ def build_corridor(M):
                 y + MULLION_WIDTH, 0.0, HEIGHT - 0.06)
     mesh_obj("mullions", bm, M["frame"])
     mesh_obj("mullion_channels", bm_ch, M["channel"])
+    # white covers on the upper part of each column, as in the reference
+    bm = bmesh.new()
+    for y in MULLIONS:
+        add_box(bm, GLASS_X - 0.03, GLASS_X + MULLION_DEPTH + 0.008, y - 0.008, y + MULLION_NOSE + 0.008,
+                2.25, HEIGHT - 0.06)
+    mesh_obj("mullion_caps", bm, M["frame"])
+    # inner glass skin in front of the columns (a double facade): at grazing angles it
+    # washes the far columns into the milky glass wall the reference shows
+    skin_x = GLASS_X + MULLION_DEPTH + 0.03
+    quad("glass_inner", [(skin_x, NEAR, SILL_TOP), (skin_x, FAR, SILL_TOP), (skin_x, FAR, HEIGHT - 0.11),
+                         (skin_x, NEAR, HEIGHT - 0.11)], M["glass_inner"])
 
     # right wall with pilasters, skirting and small wall-mounted signs
     quad("right_wall", [(RIGHT, NEAR, 0), (RIGHT, NEAR, HEIGHT), (RIGHT, FAR, HEIGHT),
@@ -573,8 +633,8 @@ def build_corridor(M):
 
 
 def crown_variants(mat):
-    """Broadleaf crowns built from a few overlapping leafy lumps, plus a couple of cedar
-    cones; unit height, base at the origin."""
+    """Canopy pieces for the far forest: a lumpy crown on the upper part of a unit-height,
+    unit-width volume, plus a couple of narrow conifers."""
     import random
     from mathutils import noise
     rng = random.Random(11)
@@ -582,23 +642,24 @@ def crown_variants(mat):
     for i in range(7):
         bm = bmesh.new()
         if i < 5:
-            lumps = [(Vector((0, 0, 0.5)), 0.42)]
-            for _ in range(rng.randint(3, 5)):
+            lumps = [(Vector((0, 0, 0.74)), Vector((0.5, 0.5, 0.25)))]
+            for _ in range(rng.randint(4, 6)):
                 a = rng.uniform(0, 2 * math.pi)
-                r = rng.uniform(0.12, 0.22)
-                lumps.append((Vector((r * math.cos(a), r * math.sin(a), rng.uniform(0.35, 0.75))),
-                              rng.uniform(0.2, 0.3)))
-            for c, r in lumps:
-                geo = bmesh.ops.create_icosphere(bm, subdivisions=3, radius=r)
+                r = rng.uniform(0.12, 0.28)
+                lumps.append((Vector((r * math.cos(a), r * math.sin(a), rng.uniform(0.72, 0.86))),
+                              Vector((0.26, 0.26, 0.14)) * rng.uniform(0.8, 1.2)))
+            for c, rad in lumps:
+                geo = bmesh.ops.create_icosphere(bm, subdivisions=3, radius=1.0)
                 for v in geo["verts"]:
-                    v.co += v.co.normalized() * r * 0.18 * noise.fractal(v.co * 9.0 + c * 5.0, 0.6, 2.0, 3)
+                    d = v.co.normalized()
+                    v.co = Vector((d.x * rad.x, d.y * rad.y, d.z * rad.z))
+                    v.co += d * 0.05 * noise.fractal(d * 4.0 + c * 7.0, 0.6, 2.0, 3)
                     v.co += c
-                    v.co.z = max(v.co.z, 0.02)
+                    v.co.z = max(v.co.z, 0.5)
         else:
-            bmesh.ops.create_cone(bm, cap_ends=True, segments=12, radius1=0.24, radius2=0.0, depth=1.0)
+            bmesh.ops.create_cone(bm, cap_ends=True, segments=12, radius1=0.3, radius2=0.0, depth=1.0)
             for v in bm.verts:
                 v.co.z += 0.5
-                v.co.x *= 1 + 0.2 * noise.noise(v.co * 5.0)
         o = mesh_obj(f"crown{i}", bm, mat)
         for c in o.users_collection:
             c.objects.unlink(o)
@@ -609,26 +670,26 @@ def crown_variants(mat):
 
 
 def build_forest(M):
-    """Rows of individual crowns along the forest edge, taller toward the left of frame."""
+    """A dense canopy of small crowns along the forest edge; its top stays a gently
+    undulating line, taller toward the left of frame, like the reference."""
     import random
     rng = random.Random(5)
-    axis = math.radians(90) + YAW
     verts, scales, kinds, spins = [], [], [], []
-    for row in range(7):
+    for row in range(8):
         a = math.radians(66) + rng.uniform(0, 0.004)
         while a < math.radians(180):
-            rel = max(-1.5, min(1.5, (a - axis) / math.radians(23)))
-            R = 1000.0 + row * 6.0 + rng.uniform(-3, 3)
-            h = (14.4 + 6.4 * rel) * rng.uniform(0.8, 1.08) * (1 + 0.035 * row)
-            w = h * rng.uniform(0.5, 0.75)
-            kind = rng.randrange(7) if rng.random() < 0.3 else rng.randrange(5)
+            R = FOREST_R + row * 12.0 + rng.uniform(-4, 4)
+            swell = 1 + 0.04 * math.sin(a * 37.0) + 0.025 * math.sin(a * 113.0 + 1.3)
+            h = canopy(a, R) * swell * rng.uniform(0.94, 1.04)
+            w = h * rng.uniform(0.55, 0.8)
+            kind = rng.randrange(7) if rng.random() < 0.03 else rng.randrange(5)
             if kind >= 5:
-                w *= 0.6
+                w *= 0.7
             verts.append((R * math.cos(a), R * math.sin(a), GROUND_Z))
             scales.append((w, w, h))
             kinds.append(kind)
             spins.append(rng.uniform(0, 2 * math.pi))
-            a += w * rng.uniform(0.45, 0.7) / R
+            a += w * rng.uniform(0.4, 0.55) / R
     me = bpy.data.meshes.new("forest")
     me.from_pydata(verts, [], [])
     me.attributes.new("tscale", "FLOAT_VECTOR", "POINT").data.foreach_set(
@@ -666,6 +727,69 @@ def build_forest(M):
     lk(inst.outputs[0], go.inputs[0])
     forest.modifiers.new("forest", "NODES").node_group = ng
     return forest
+
+
+def mat_rice(name, mul):
+    """Rice leaves: darker at the base, sunlit yellow-green toward the tips, a little
+    translucent, faded with distance like the rest of the field."""
+    m = bpy.data.materials.new(name)
+    n = Nodes(m)
+    _, _, z = n.xyz("Object")
+    info = n.new("ShaderNodeObjectInfo")
+    tip = n.math("ADD", z, n.math("MULTIPLY", n.math("SUBTRACT", info.outputs["Random"], 0.5), 0.5))
+    col = n.ramp(tip, [(0.0, srgb(*T["rice"][0])), (0.45, srgb(*T["rice"][1])), (0.95, srgb(*T["rice"][2]))])
+    # each paddy grows a slightly different shade; rows run along the camera's right vector
+    rot = n.new("ShaderNodeMapping", Rotation=(0, 0, -YAW))
+    n.set(rot.inputs[0], n.new("ShaderNodeNewGeometry").outputs["Position"])
+    paddy = n.new("ShaderNodeTexBrick", Scale=1.0, **{
+        "Mortar Size": 0.0, "Bias": 0.0, "Brick Width": 4000.0, "Row Height": 32.0,
+        "Color1": (1.0, 1.0, 1.0, 1.0), "Color2": (0.78, 0.92, 0.7, 1.0)})
+    n.set(paddy.inputs["Vector"], rot.outputs[0])
+    shade = n.new("ShaderNodeMix", _data_type="RGBA", _blend_type="MULTIPLY")
+    shade.inputs[0].default_value = 1.0
+    n.set(shade.inputs[6], col)
+    n.set(shade.inputs[7], paddy.outputs["Color"])
+    col = camera_tint(n, aerial(n, shade.outputs[2]), T[mul])
+    leaf = n.principled(col, 0.7, 0.1)
+    glow = n.new("ShaderNodeBsdfTranslucent")
+    n.set(glow.inputs["Color"], col)
+    mix = n.new("ShaderNodeMixShader")
+    mix.inputs[0].default_value = 0.3
+    n.set(mix.inputs[1], leaf.outputs[0])
+    n.set(mix.inputs[2], glow.outputs[0])
+    n.output(mix)
+    return m
+
+
+def rice_clumps(name, mat, variants=4):
+    """Paddy rice hills: 14-20 thin arching leaves each, unit height, base at the origin."""
+    import random
+    rng = random.Random(len(name))
+    coll = bpy.data.collections.new(name)
+    for k in range(variants):
+        bm = bmesh.new()
+        for _ in range(rng.randint(14, 20)):
+            ang = rng.uniform(0, 2 * math.pi)
+            out = Vector((math.cos(ang), math.sin(ang), 0))
+            side = Vector((-out.y, out.x, 0))
+            lean = rng.uniform(0.08, 0.45)
+            h = rng.uniform(0.7, 1.0)
+            w = rng.uniform(0.012, 0.02)
+            base = out * rng.uniform(0.0, 0.04)
+            prev = None
+            for i in range(6):
+                t = i / 5
+                c = base + out * lean * h * t ** 1.7 + Vector((0, 0, h * t * (1 - 0.25 * lean * t)))
+                half = side * w * (1 - 0.9 * t)
+                pair = (bm.verts.new(c - half), bm.verts.new(c + half))
+                if prev:
+                    bm.faces.new((prev[0], pair[0], pair[1], prev[1]))
+                prev = pair
+        o = mesh_obj(f"{name}{k}", bm, mat)
+        for c in o.users_collection:
+            c.objects.unlink(o)
+        coll.objects.link(o)
+    return coll
 
 
 def import_asset(name, tint, mul="plant_mul"):
@@ -772,52 +896,35 @@ def build_outside(M):
     ground = mesh_obj("ground", bm, M["field"])
     ground.location = (0, 0, GROUND_Z)
 
-    # dark understorey behind the crowns so no sky shows between them
-    R, segs = 1040.0, 256
+    # the body of the forest: a continuous wall of foliage up to where the crowns begin
+    R, segs = FOREST_R + 15.0, 384
     a0, a1 = math.radians(66), math.radians(180)
-    bm = bmesh.new()
-    uv = bm.loops.layers.uv.new()
-    ring = []
-    for i in range(segs + 1):
-        a = a0 + (a1 - a0) * i / segs
-        rel = max(-1.5, min(1.5, (a - math.radians(90) - YAW) / math.radians(23)))
-        h = (13.5 + 6.0 * rel) * 0.85 + 2.0
-        ring.append((bm.verts.new((R * math.cos(a), R * math.sin(a), GROUND_Z - 1)),
-                     bm.verts.new((R * math.cos(a), R * math.sin(a), GROUND_Z - 1 + h)), i / segs))
-    for (b0, t0, u0), (b1, t1, u1) in zip(ring, ring[1:]):
-        f = bm.faces.new((b0, b1, t1, t0))
-        for loop, (uu, vv) in zip(f.loops, ((u0, 0), (u1, 0), (u1, 1), (u0, 1))):
-            loop[uv].uv = (uu, vv)
-    trees = mesh_obj("tree_belt", bm, M["trees"])
-    # and a low dark hedge of undergrowth along the front edge
     bm = bmesh.new()
     prev = None
     for i in range(segs + 1):
         a = a0 + (a1 - a0) * i / segs
-        rel = max(-1.5, min(1.5, (a - math.radians(90) - YAW) / math.radians(23)))
-        h = (13.5 + 6.0 * rel) * 0.35
-        c = (996.0 * math.cos(a), 996.0 * math.sin(a))
-        pair = (bm.verts.new((*c, GROUND_Z - 0.5)), bm.verts.new((*c, GROUND_Z + h)))
+        c = Vector((math.cos(a), math.sin(a), 0))
+        pair = (bm.verts.new(c * R + Vector((0, 0, GROUND_Z - 1))),
+                bm.verts.new(c * (R + 25.0) + Vector((0, 0, GROUND_Z + canopy(a, R) * 0.82))))
         if prev:
             bm.faces.new((prev[0], pair[0], pair[1], prev[1]))
         prev = pair
-    hedge = mesh_obj("hedge", bm, M["trees"])
+    trees = mesh_obj("forest_wall", bm, M["crowns"])
     forest = build_forest(M)
 
-    # paddy grass and a few ferns right outside the glass, bushes further out
-    grass = import_asset("grass_medium_01", T["grass_tint"])
-    grass2 = import_asset("grass_medium_02", T["grass_tint"])
+    # rice paddy right outside the glass and on into the distance, a few weedy ferns
+    # against the building, bushes further out
     fern = import_asset("fern_02", T["fern_tint"])
-    scatter("grass_near", grass, -24.0, -3.3, -4.0, 24.0, 34.0, (1.1, 1.8), 3, (9.0, 22.0))
-    scatter("grass_tufts", grass2, -24.0, -3.3, -4.0, 24.0, 5.0, (1.3, 2.0), 7, (9.0, 22.0))
-    scatter("ferns", fern, -12.0, -3.3, 0.0, 16.0, 0.9, (0.9, 1.5), 11, (10.0, 16.0))
-    # further out the paddy is still made of plants, just coarser: tufts, then clumps
-    mid_grass = import_asset("grass_medium_01", T["far_grass_tint"], "mid_mul")
-    far_grass = import_asset("grass_medium_02", T["far_grass_tint"], "far_mul")
-    scatter("grass_mid", mid_grass, -95.0, -3.3, -30.0, 95.0, 4.0, (2.4, 3.6), 13, (60.0, 95.0), (16.0, 24.0),
-            flat=0.6)
-    scatter("grass_far", far_grass, -300.0, -3.3, -80.0, 300.0, 0.5, (4.5, 7.5), 17, (150.0, 260.0),
-            (70.0, 95.0), flat=0.3)
+    rice_near = rice_clumps("rice_near", M["rice_near"])
+    rice_mid = rice_clumps("rice_mid", M["rice_mid"])
+    rice_far = rice_clumps("rice_far", M["rice_far"])
+    scatter("grass_near", rice_near, -95.0, -3.3, -30.0, 95.0, 10.0, (0.6, 0.85), 3, (70.0, 95.0), (18.0, 26.0))
+    scatter("grass_mid", rice_mid, -260.0, -3.3, -80.0, 260.0, 2.5, (1.3, 1.9), 13, (200.0, 260.0), (75.0, 95.0))
+    scatter("grass_far", rice_far, -620.0, -3.3, -200.0, 620.0, 0.4, (3.0, 4.5), 17, (450.0, 620.0),
+            (200.0, 260.0), flat=0.4)
+    # leafy weeds at the foot of the glass, where the reference shows big bright leaves
+    c = ground_point(330, 468)
+    scatter("ferns", fern, c.x - 6, c.x + 6, c.y - 6, c.y + 6, 0.35, (2.0, 3.2), 11, (60.0, 80.0))
     bushes = []
     for i, (px, py, hpx) in enumerate(BUSHES):
         p = ground_point(px, py)
@@ -851,7 +958,7 @@ def build_outside(M):
         c.visible_diffuse = False
         c.visible_glossy = False
     return [ground] + [bpy.data.objects[n] for n in (
-        "grass_near", "grass_tufts", "ferns", "grass_mid", "grass_far")] + bushes
+        "grass_near", "ferns", "grass_mid", "grass_far")] + bushes
 
 
 def build_world():
@@ -914,7 +1021,6 @@ def build_lights(outside):
     add_sun("sun_landscape", T["sun_strength"], math.radians(T["sun_out_elev"]),
             math.radians(90 + math.degrees(YAW) + T["sun_out_az"]), outside,
             blockers=outside)    # the corridor itself casts no shadow onto the field
-    add_sun("sun_floor", T["sun_floor_strength"], SUN_ELEV, SUN_AZ, [bpy.data.objects["floor_sun"]])
 
     # bounce card: the reference ceiling is a cooler, brighter green than the sunlit floor
     # and the paddies alone would bounce up to it
@@ -938,9 +1044,8 @@ def build_lights(outside):
 
     # the same for the inner wall, which the reference keeps a cool pale cyan
     fill = bpy.data.lights.new("wall_fill", "AREA")
-    rgb_fill = T["wall_fill"]
-    peak = max(rgb_fill)
-    fill.color = tuple(c / peak for c in rgb_fill)
+    peak = T["wall_fill"]
+    fill.color = (0.7, 1.0, 1.0)
     fill.shape = "RECTANGLE"
     fill.size, fill.size_y = FAR - NEAR, HEIGHT
     fill.energy = peak * (FAR - NEAR) * HEIGHT
@@ -1009,23 +1114,24 @@ def setup_render():
 def main():
     reset()
     M = {
-        "floor_window": mat_floor("floor_window", T["floor_window"], T["reflect_window"], 0.12,
-                                  stripes=(T["sun_stripes"][0], 0.9, 0.35)),
-        "floor_sun": mat_floor("floor_sun", T["floor_sun"], T["reflect_sun"], 0.05, stripes=T["sun_stripes"]),
-        "floor_shade": mat_floor("floor_shade", T["floor_shade"], T["reflect_shade"], 0.15),
+        "floor": mat_floor(),
         "ceiling": mat_ceiling(),
-        "frame": mat_simple("frame", srgb(*T["frame"]), 0.35, 0.5),
-        "channel": mat_simple("channel", srgb(*T["channel"]), 0.4, 0.5),
+        "frame": mat_metal("frame", T["frame"], 0.22, 0.75),
+        "channel": mat_metal("channel", T["channel"], 0.15, 0.85, 0.004),
+        "sill": mat_metal("sill", (225, 235, 238), 0.35, 0.2),
         "wall": mat_simple("wall", srgb(*T["wall"]), 0.8, 0.3),
         "dark": mat_simple("dark", srgb(30, 40, 42), 0.6),
         "skirting": mat_simple("skirting", srgb(70, 90, 95), 0.4),
         "glass": mat_glass(),
-        "downlight": mat_simple("downlight", srgb(150, 155, 152), 0.3, 0.5, 0.6),
-        "speaker": mat_simple("speaker", srgb(190, 195, 192), 0.6),
-        "diffuser": mat_simple("diffuser", srgb(120, 125, 122), 0.5),
+        "glass_inner": mat_glass("glass_inner", (1.0, 1.0, 1.0), graze=(0.72, 0.95, 0.97)),
+        "downlight": mat_simple("downlight", srgb(175, 180, 176), 0.3, 0.5, 0.6),
+        "speaker": mat_simple("speaker", srgb(200, 205, 200), 0.6),
+        "diffuser": mat_simple("diffuser", srgb(165, 170, 166), 0.5),
         "field": mat_field(),
-        "trees": mat_trees(),
         "crowns": mat_crowns(),
+        "rice_near": mat_rice("rice_near", "plant_mul"),
+        "rice_mid": mat_rice("rice_mid", "mid_mul"),
+        "rice_far": mat_rice("rice_far", "far_mul"),
         "cloud": mat_cloud(),
     }
     build_corridor(M)

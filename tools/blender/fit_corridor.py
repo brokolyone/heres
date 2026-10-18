@@ -28,18 +28,20 @@ REGIONS = {
     "mullion_a_side": (58, 150, 90, 400), "mullion_a_front": (104, 150, 140, 400),
     "mullion_b": (421, 150, 443, 380), "ceiling_near": (640, 10, 900, 60), "ceiling_far": (840, 150, 905, 235),
     "glass_far": (760, 200, 880, 280), "floor_mid": (760, 380, 900, 470), "floor_right": (935, 420, 1000, 470),
-    "right_wall": (955, 250, 1005, 380),
+    "floor_blue": (520, 445, 640, 473), "right_wall": (955, 250, 1005, 380), "cap": (446, 10, 466, 100),
 }
 ALBEDO = {
     "frame": ["mullion_a_side", "mullion_b"], "channel": ["mullion_a_front"],
-    "floor_shade": ["floor_right"], "floor_sun": ["floor_mid"],
+    "floor_shade": ["floor_right"],
 }
 MULT = {
     "field_mul": ["field_far"], "far_mul": ["field_far2"], "mid_mul": ["field_mid"], "plant_mul": ["field_near"],
     "sky_mul": ["sky_top", "sky_mid", "sky_horizon"], "tree_mul": ["trees"], "glass_graze": ["glass_far"],
-    "ceiling_fill": ["ceiling_near", "ceiling_far"], "wall_fill": ["right_wall"],
+    "ceiling_fill": ["ceiling_near", "ceiling_far"], "wall_fill": ["right_wall"], "sun_patch": ["floor_mid"],
+    "reflect_window": ["floor_blue"],
 }
-CAPS = {"glass_graze": 1.15, "ceiling_fill": 40.0, "wall_fill": 40.0}
+CAPS = {"reflect_window": 0.9, "glass_graze": 2.0, "ceiling_fill": 40.0, "wall_fill": 40.0, "sun_patch": 40.0}
+SCALAR = {"wall_fill", "reflect_window"}   # strength only, the colour stays as built
 DAMP = 0.85
 
 
@@ -76,7 +78,8 @@ def current(tune, key):
     table = src[src.index("T = {"):src.index("\n}\n", src.index("T = {")) + 2]
     scope = {}
     exec(table, scope)
-    return list(scope["T"][key])
+    v = scope["T"][key]
+    return v if isinstance(v, (int, float)) else list(v)
 
 
 def main():
@@ -95,6 +98,8 @@ def main():
                 if key in ALBEDO:
                     new = np.clip(lin(current(tune, key)) * ratio, 0.005, 0.92)
                     tune[key] = [int(round(v)) for v in srgb(new)]
+                elif key in SCALAR:
+                    tune[key] = round(float(np.clip(current(tune, key) * ratio.mean(), 0.01, CAPS.get(key, 4.0))), 4)
                 else:
                     new = np.clip(np.asarray(current(tune, key), float) * ratio, 0.01, CAPS.get(key, 4.0))
                     tune[key] = [round(float(v), 4) for v in new]
