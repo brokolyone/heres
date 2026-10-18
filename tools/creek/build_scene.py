@@ -1054,28 +1054,17 @@ p2 = unproject(553, 350, 0.98)
 frog("frog_top", on_rock(p1.x, p1.y), -70, 0.048, "frog_green_color.png")
 frog("frog_edge", on_rock(p2.x, p2.y), 150, 0.03, "frog_brown_color.png")
 
-# one taro plant growing out of the rock: a single stem base, two big leaves (as in the reference)
+# a taro plant growing out of the rock
 _root = unproject(512, 318, 1.0)
 _root = on_rock(_root.x, _root.y + 0.02)
 _s1, _ = taro(445, 197, 1.05, 150, 150, 25, lean=0.0, base_at=lambda gx, gy: _root, stem_scale=1.15)
-_s2, _lit = taro(582, 287, 1.0, 115, -40, 20, lean=0.0, base_at=lambda gx, gy: _root, stem_scale=1.1)
-# the right leaf glows yellow with the sun behind it
-_lit_mat = leaf_mat.copy()
-for _n in _lit_mat.node_tree.nodes:
-    if _n.type == "MATH" and _n.operation == "MULTIPLY":
-        _n.inputs[1].default_value = 0.95
-_lnt = _lit_mat.node_tree
-_lb = next(n for n in _lnt.nodes if n.type == "BSDF_PRINCIPLED")
-_lb.inputs["Emission Color"].default_value = (0.75, 0.8, 0.12, 1)
-_lb.inputs["Emission Strength"].default_value = 0.3
-_lit.data.materials[0] = _lit_mat
 # the plant's stems: yellow-green, sunlit through
 _stem_lit = stalk_mat.copy()
 _sb = next(n for n in _stem_lit.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
 _sb.inputs["Base Color"].default_value = (0.5, 0.62, 0.12, 1)
 _sb.inputs["Emission Color"].default_value = (0.55, 0.65, 0.1, 1)
 _sb.inputs["Emission Strength"].default_value = 0.2
-for _s in (_s1, _s2):
+for _s in (_s1,):
     _s.data.materials[0] = _stem_lit
 
 
