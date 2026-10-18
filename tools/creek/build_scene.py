@@ -441,6 +441,12 @@ def bank_weight(p):
     return 1.0
 
 
+def bald(p):
+    """Small bald patches where the grass thins out."""
+    n = noise.noise(Vector((p.x * 6.0, p.y * 6.0, 11.0)))
+    return 1 - 0.92 * smooth(0.0, 0.2, n)
+
+
 def near_weight(p):
     # thick near the rock and on the visible bank, fading with distance
     if p.z < 0.012:
@@ -465,11 +471,15 @@ def rock_bank_weight(p):
 def back_weight(p):
     if p.z < 0.012 or p.y > 2.6:
         return 0.0
+    return _back_weight(p) * bald(p)
+
+
+def _back_weight(p):
     # tall grass on the far left; thin and short toward the gap above the stream
     return smooth(0.3, 0.6, p.y) * (1 - 0.8 * smooth(-0.6, 0.0, p.x))
 
 
-weight_group(terrain, "grass", near_weight)
+weight_group(terrain, "grass", lambda p: near_weight(p) * bald(p))
 weight_group(terrain, "short", bank_weight)
 weight_group(terrain, "bankmoss", rock_bank_weight)
 weight_group(terrain, "back", back_weight)
@@ -622,10 +632,10 @@ def build_water():
     w = bpy.context.object
     w.name = "water"
     w.scale = (2.8, 5.6, 1)
-    w.location = (0.8, 1.6, 0.0)
+    w.location = (0.8, 1.6, 0.008)
     bpy.ops.object.transform_apply(scale=True)
     link(w, world_coll)
-    for i, (kind, size, strength, stretch) in enumerate((("waves", 0.03, 0.005, 2.5), ("chop", 0.008, 0.0045, 1.8))):
+    for i, (kind, size, strength, stretch) in enumerate((("waves", 0.03, 0.009, 2.5), ("chop", 0.008, 0.0065, 1.8))):
         tx = bpy.data.textures.new("water_" + kind, "CLOUDS")
         tx.noise_scale = size
         tx.noise_depth = 2
@@ -642,7 +652,7 @@ def build_water():
         p.use_smooth = True
     m, nt, out = new_material("water")
     b = node(nt, "ShaderNodeBsdfPrincipled", (0, 0))
-    b.inputs["Base Color"].default_value = (0.85, 0.92, 0.95, 1)
+    b.inputs["Base Color"].default_value = (0.72, 0.86, 1.0, 1)
     b.inputs["Roughness"].default_value = 0.025
     b.inputs["IOR"].default_value = 1.333
     b.inputs["Specular IOR Level"].default_value = 0.42
@@ -780,7 +790,7 @@ def stem_mesh(points, radius):
     return me
 
 
-def taro(px, py, d, size_px, tip, tilt, droop=0.10, fold=0.05, lean=0.25):
+def taro(px, py, d, size_px, tip, tilt, droop=0.10, fold=0.05, lean=0.25, base_at=None):
     """Leaf blade seen at reference pixel (px, py), distance d, length size_px pixels.
 
     tip: direction the tip points in the image, degrees (0 = right, 90 = up).
@@ -793,6 +803,8 @@ def taro(px, py, d, size_px, tip, tilt, droop=0.10, fold=0.05, lean=0.25):
     gy = attach.y + rnd.uniform(0.0, 0.5) * size
     gz = min(ground_height(gx, gy), 0.0) if ground_height(gx, gy) < 0.005 else ground_height(gx, gy)
     base = Vector((gx, gy, gz - 0.01))
+    if base_at is not None:
+        base = Vector(base_at(gx, gy)) - Vector((0, 0, 0.004))
     blade_base = attach - Vector((math.cos(math.radians(tip)), 0, math.sin(math.radians(tip)))) * size * 0.45
     pts = []
     for k in range(13):
@@ -1008,6 +1020,11 @@ p2 = unproject(553, 350, 0.98)
 frog("frog_top", on_rock(p1.x, p1.y), -70, 0.048, "frog_green_color.png")
 frog("frog_edge", on_rock(p2.x, p2.y), 150, 0.03, "frog_brown_color.png")
 
+# small taro sprouts growing out of the moss on top of the rock
+for args in ((355, 205, 1.0, 75, 100, 20), (430, 228, 1.0, 62, 45, 30), (245, 232, 0.98, 58, 145, 25),
+             (500, 250, 0.98, 50, 15, 35), (300, 215, 1.0, 48, 80, 40)):
+    taro(*args, lean=0.1, base_at=on_rock)
+
 
 # ---------------------------------------------------------------- lights, world, camera
 world = bpy.data.worlds.new("sunset")
@@ -1042,7 +1059,7 @@ wn.links.new(lp.outputs["Is Camera Ray"], wmix.inputs["Fac"])
 gl_bg = node(wn, "ShaderNodeBackground", (-100, 200))
 gl_tint = node(wn, "ShaderNodeMix", (-250, 200), data_type="RGBA", blend_type="MULTIPLY")
 gl_tint.inputs["Factor"].default_value = 1.0
-gl_tint.inputs[7].default_value = (0.42, 0.5, 0.6, 1)
+gl_tint.inputs[7].default_value = (0.36, 0.5, 0.72, 1)
 wn.links.new(env.outputs["Color"], gl_tint.inputs[6])
 wn.links.new(gl_tint.outputs[2], gl_bg.inputs["Color"])
 gmix = node(wn, "ShaderNodeMixShader", (-50, 100))
@@ -1110,7 +1127,7 @@ scene.cycles.caustics_reflective = False
 scene.cycles.caustics_refractive = False
 scene.cycles.blur_glossy = 1.0
 scene.view_settings.view_transform = "AgX"
-scene.view_settings.look = "AgX - Medium Low Contrast"
+scene.view_settings.look = "AgX - Medium High Contrast"
 scene.view_settings.exposure = 0.7
 scene.view_layers[0].use_pass_mist = True
 world.mist_settings.start = 1.6
