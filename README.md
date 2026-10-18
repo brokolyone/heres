@@ -80,6 +80,21 @@ blender -b art/precision_rifle.blend --python tools/blender/bake_export.py -- \
     src/main/resources/assets/heres/textures/item/sniper.png 2048 12000
 ```
 
+## Сцена «Стеклянный коридор»
+
+Отдельная Blender-сцена по картинке `art/corridor/reference.png`: коридор со сплошным
+витражом, солнечная полоса на глянцевом полу, рисовые поля и лес за окном.
+
+```
+blender -b --factory-startup --python tools/blender/build_corridor.py -- art/corridor \
+    --render art/corridor/render.png --scale 2 --samples 160
+```
+
+Скрипт собирает `art/corridor/corridor.blend` и рендерит кадр. Камера восстановлена по
+точкам схода референса. Цвета подогнаны по зонам кадра скриптом
+`tools/blender/fit_corridor.py`. Трава и папоротник взяты из сканов Poly Haven
+(лицензия CC0) и лежат в `art/corridor/assets`. Лес собран из ~3200 отдельных крон.
+
 Обычные модели Minecraft собираются только из кубиков. Поэтому мод рисует настоящую
 треугольную сетку через Fabric Renderer API, с нормалями на каждой вершине,
 чтобы ствол, прицел и колёса выглядели круглыми.
