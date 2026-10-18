@@ -475,9 +475,9 @@ weight_group(terrain, "bankmoss", rock_bank_weight)
 weight_group(terrain, "back", back_weight)
 weight_group(terrain, "flower", lambda p: 1.0 if p.z > 0.02 and 0.0 < p.y < 2.5 and p.x < 0.8 else 0.0)
 weight_group(terrain, "far", lambda p: (1.0 if p.z > 0.025 and p.y > 2.2 and -2.5 < p.x < 4.0 else 0.0) * (1 - 0.85 * smooth(-0.8, 0.0, p.x) * (1 - smooth(1.4, 2.4, p.x))))
-scatter(terrain, grass_tall, "grass", 3200, 0.22, 0.4, 0.25, 3)
+scatter(terrain, grass_tall, "grass", 2600, 0.22, 0.4, 0.25, 3)
 scatter(terrain, grass_short, "short", 2000, 0.6, 1.2, 0.2, 9)
-scatter(terrain, grass_tall, "back", 4200, 0.32, 0.6, 0.2, 41)
+scatter(terrain, grass_tall, "back", 3400, 0.32, 0.6, 0.2, 41)
 scatter(terrain, flowers_lib, "flower", 14, 0.22, 0.4, 0.15, 21)
 scatter(terrain, grass_tall, "far", 1600, 0.3, 0.55, 0.2, 33)
 
@@ -845,8 +845,8 @@ for args in TARO:
 petal_mat = tex_material("flower_petal", "flower_petal_color.png", None, "taro_leaf_translucency.png", rough=0.5)
 _pb = next(n for n in petal_mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
 _pc = next(n for n in petal_mat.node_tree.nodes if n.type == "TEX_IMAGE")
-petal_mat.node_tree.links.new(_pc.outputs["Color"], _pb.inputs["Emission Color"])
-_pb.inputs["Emission Strength"].default_value = 1.2
+_pb.inputs["Emission Color"].default_value = (0.95, 0.22, 0.42, 1)
+_pb.inputs["Emission Strength"].default_value = 2.5
 stalk_mat, snt, sout = new_material("stalk")
 sb = node(snt, "ShaderNodeBsdfPrincipled")
 sb.inputs["Base Color"].default_value = (0.55, 0.6, 0.12, 1)
@@ -897,13 +897,14 @@ def ground_below(p):
 FLOWERS = [(135, 48, 2.6), (178, 47, 2.8), (222, 78, 2.0), (168, 95, 1.6), (305, 45, 2.4), (318, 52, 2.4),
            (452, 92, 2.2), (500, 113, 1.7), (512, 118, 1.7), (520, 104, 2.0), (553, 88, 2.8), (528, 205, 1.3),
            (494, 182, 1.3), (85, 98, 2.4), (270, 70, 3.0), (370, 60, 3.2), (420, 75, 2.8), (600, 95, 3.5),
+           (60, 60, 2.4), (250, 100, 2.0), (395, 70, 2.6), (480, 55, 3.0), (640, 120, 3.4), (700, 140, 3.0),
            (1048, 108, 0.9), (1058, 150, 0.9), (1030, 180, 0.9), (955, 98, 4.0), (900, 110, 4.2)]
 for px, py, d in FLOWERS:
     head = unproject(px, py, d)
     base = Vector((head.x + rnd.uniform(-0.02, 0.02), head.y, 0))
     base.z = ground_below(base)
     flower(base, head.z - base.z, rnd.uniform(-0.02, 0.02), rnd.uniform(0, math.tau),
-           px_size(d) * rnd.uniform(12, 17))
+           px_size(d) * rnd.uniform(18, 26))
 
 # backlit yellow grass blades and stalks: (px range, py top range, distance range, count)
 REEDS = [((0, 85), (200, 330), (0.45, 0.6), 8), ((480, 570), (125, 205), (1.2, 1.4), 16),
@@ -1030,10 +1031,10 @@ wn.links.new(env.outputs["Color"], bg.inputs["Color"])
 cam_bg = node(wn, "ShaderNodeBackground", (-100, -200))
 tint = node(wn, "ShaderNodeMix", (-250, -200), data_type="RGBA", blend_type="MULTIPLY")
 tint.inputs["Factor"].default_value = 1.0
-tint.inputs[7].default_value = (1.0, 0.94, 0.8, 1)
+tint.inputs[7].default_value = (1.0, 0.96, 0.86, 1)
 wn.links.new(env.outputs["Color"], tint.inputs[6])
 wn.links.new(tint.outputs[2], cam_bg.inputs["Color"])
-cam_bg.inputs["Strength"].default_value = 2.6
+cam_bg.inputs["Strength"].default_value = 4.0
 lp = node(wn, "ShaderNodeLightPath", (-300, 300))
 wmix = node(wn, "ShaderNodeMixShader", (50, 0))
 wn.links.new(lp.outputs["Is Camera Ray"], wmix.inputs["Fac"])
