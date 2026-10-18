@@ -673,7 +673,43 @@ def build_water():
     vol = node(nt, "ShaderNodeVolumeAbsorption", (0, -400))
     vol.inputs["Color"].default_value = (0.7, 0.78, 0.7, 1)
     vol.inputs["Density"].default_value = 3.0
-    nt.links.new(b.outputs[0], out.inputs["Surface"])
+    geo = node(nt, "ShaderNodeNewGeometry", (-1000, 400))
+    sxyz = node(nt, "ShaderNodeSeparateXYZ", (-800, 400))
+    nt.links.new(geo.outputs["Position"], sxyz.inputs[0])
+    my = node(nt, "ShaderNodeMapRange", (-600, 500))
+    my.inputs["From Min"].default_value, my.inputs["From Max"].default_value = 0.1, -0.4
+    nt.links.new(sxyz.outputs["Y"], my.inputs["Value"])
+    mx = node(nt, "ShaderNodeMapRange", (-600, 300))
+    mx.inputs["From Min"].default_value, mx.inputs["From Max"].default_value = 0.4, 0.0
+    nt.links.new(sxyz.outputs["X"], mx.inputs["Value"])
+    mask = node(nt, "ShaderNodeMath", (-400, 400), operation="MULTIPLY")
+    nt.links.new(my.outputs[0], mask.inputs[0])
+    nt.links.new(mx.outputs[0], mask.inputs[1])
+    sky = node(nt, "ShaderNodeEmission", (0, 300))
+    sky.inputs["Color"].default_value = (0.72, 0.8, 0.9, 1)
+    sky.inputs["Strength"].default_value = 1.1
+    sheen = node(nt, "ShaderNodeMixShader", (300, 100))
+    mfac = node(nt, "ShaderNodeMath", (-200, 400), operation="MULTIPLY")
+    mfac.inputs[1].default_value = 0.4
+    nt.links.new(mask.outputs[0], mfac.inputs[0])
+    # only the ripple crests catch the sky, so the surface keeps its texture
+    crest = node(nt, "ShaderNodeMapRange", (-400, 200))
+    crest.inputs["From Min"].default_value, crest.inputs["From Max"].default_value = 0.42, 0.68
+    rip = node(nt, "ShaderNodeTexNoise", (-700, 100))
+    rip.inputs["Scale"].default_value = 1.0
+    rip.inputs["Detail"].default_value = 3.0
+    rmp = node(nt, "ShaderNodeMapping", (-900, 100))
+    rmp.inputs["Scale"].default_value = (18.0, 70.0, 18.0)   # long crests across the flow, like the rest of the stream
+    nt.links.new(geo.outputs["Position"], rmp.inputs["Vector"])
+    nt.links.new(rmp.outputs[0], rip.inputs["Vector"])
+    nt.links.new(rip.outputs["Fac"], crest.inputs["Value"])
+    mcrest = node(nt, "ShaderNodeMath", (-100, 300), operation="MULTIPLY")
+    nt.links.new(mfac.outputs[0], mcrest.inputs[0])
+    nt.links.new(crest.outputs[0], mcrest.inputs[1])
+    nt.links.new(mcrest.outputs[0], sheen.inputs["Fac"])
+    nt.links.new(b.outputs[0], sheen.inputs[1])
+    nt.links.new(sky.outputs[0], sheen.inputs[2])
+    nt.links.new(sheen.outputs[0], out.inputs["Surface"])
     nt.links.new(vol.outputs[0], out.inputs["Volume"])
     w.data.materials.append(m)
     return w
@@ -790,7 +826,7 @@ def stem_mesh(points, radius):
     return me
 
 
-def taro(px, py, d, size_px, tip, tilt, droop=0.10, fold=0.05, lean=0.25, base_at=None):
+def taro(px, py, d, size_px, tip, tilt, droop=0.10, fold=0.05, lean=0.25, base_at=None, stem_scale=1.0):
     """Leaf blade seen at reference pixel (px, py), distance d, length size_px pixels.
 
     tip: direction the tip points in the image, degrees (0 = right, 90 = up).
@@ -813,7 +849,7 @@ def taro(px, py, d, size_px, tip, tilt, droop=0.10, fold=0.05, lean=0.25, base_a
         p.x = base.x + (blade_base.x - base.x) * t ** 2.2       # rises vertically, bends at the top
         p.y = base.y + (blade_base.y - base.y) * t ** 2.2
         pts.append(p)
-    stem = bpy.data.objects.new("taro_stem", stem_mesh(pts, max(0.0018, size * 0.045)))
+    stem = bpy.data.objects.new("taro_stem", stem_mesh(pts, max(0.0018, size * 0.045) * stem_scale))
     leaf_coll.objects.link(stem)
     leaf = bpy.data.objects.new("taro_leaf", leaf_mesh(size, size * 0.42, fold, droop))
     leaf_coll.objects.link(leaf)
@@ -1021,14 +1057,26 @@ frog("frog_edge", on_rock(p2.x, p2.y), 150, 0.03, "frog_brown_color.png")
 # one taro plant growing out of the rock: a single stem base, two big leaves (as in the reference)
 _root = unproject(512, 318, 1.0)
 _root = on_rock(_root.x, _root.y + 0.02)
-taro(445, 197, 1.05, 150, 150, 25, lean=0.0, base_at=lambda gx, gy: _root)
-_, _lit = taro(582, 287, 1.0, 115, -40, 20, lean=0.0, base_at=lambda gx, gy: _root)
+_s1, _ = taro(445, 197, 1.05, 150, 150, 25, lean=0.0, base_at=lambda gx, gy: _root, stem_scale=1.15)
+_s2, _lit = taro(582, 287, 1.0, 115, -40, 20, lean=0.0, base_at=lambda gx, gy: _root, stem_scale=1.1)
 # the right leaf glows yellow with the sun behind it
 _lit_mat = leaf_mat.copy()
 for _n in _lit_mat.node_tree.nodes:
     if _n.type == "MATH" and _n.operation == "MULTIPLY":
-        _n.inputs[1].default_value = 0.8
+        _n.inputs[1].default_value = 0.95
+_lnt = _lit_mat.node_tree
+_lb = next(n for n in _lnt.nodes if n.type == "BSDF_PRINCIPLED")
+_lb.inputs["Emission Color"].default_value = (0.75, 0.8, 0.12, 1)
+_lb.inputs["Emission Strength"].default_value = 0.3
 _lit.data.materials[0] = _lit_mat
+# the plant's stems: yellow-green, sunlit through
+_stem_lit = stalk_mat.copy()
+_sb = next(n for n in _stem_lit.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+_sb.inputs["Base Color"].default_value = (0.5, 0.62, 0.12, 1)
+_sb.inputs["Emission Color"].default_value = (0.55, 0.65, 0.1, 1)
+_sb.inputs["Emission Strength"].default_value = 0.2
+for _s in (_s1, _s2):
+    _s.data.materials[0] = _stem_lit
 
 
 # ---------------------------------------------------------------- lights, world, camera
