@@ -1,5 +1,6 @@
 #include "editor.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -122,16 +123,74 @@ Editor::~Editor() {
     for (auto& [k, t] : brushPreviewTex) glDeleteTextures(1, &t);
 }
 
-void Editor::touchGesture(float scale, float cx, float cy, float dx, float dy) {
-    if (!doc) return;
-    if (dragging) {  // a second finger turns a starting stroke into a gesture
-        dragging = false;
-        cancelLive();
-        lasso.clear();
+bool Editor::onCanvas(ImVec2 p) const {
+    auto inside = [&](const ImVec4& r) { return p.x >= r.x && p.y >= r.y && p.x < r.z && p.y < r.w; };
+    if (!inside(ImVec4(canvasMin.x, canvasMin.y, canvasMin.x + canvasSize.x, canvasMin.y + canvasSize.y))) return false;
+    if (mobile && (inside(drawerRect) || inside(fabRect))) return false;
+    return !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId);
+}
+
+void Editor::touchEvent(const SDL_Event& e) {
+    // Runs between frames; io.DisplaySize is the UI size of the last frame.
+    ImGuiIO& io = ImGui::GetIO();
+    ImVec2 p(e.tfinger.x * io.DisplaySize.x, e.tfinger.y * io.DisplaySize.y);
+    auto it = std::find_if(fingers.begin(), fingers.end(), [&](const Finger& f) { return f.id == e.tfinger.fingerId; });
+    auto measure = [&](ImVec2& center, float& dist) {
+        ImVec2 a = fingers[0].pos, b = fingers[1].pos;
+        center = ImVec2((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f);
+        dist = std::hypot(b.x - a.x, b.y - a.y);
+    };
+    if (e.type == SDL_FINGERDOWN) {
+        if (fingers.empty()) {
+            gestureStart = e.tfinger.timestamp;
+            gestureMaxFingers = 0;
+            gestureTravel = 0;
+            gestureOnCanvas = doc && onCanvas(p);
+            gestureDoc = doc;
+            gestureUndoDepth = doc ? doc->undoStack.size() : 0;
+        }
+        if (it == fingers.end()) fingers.push_back({e.tfinger.fingerId, p});
+        gestureMaxFingers = std::max(gestureMaxFingers, int(fingers.size()));
+        if (fingers.size() == 2) {
+            measure(gestureCenter, gestureDist);
+            if (gestureOnCanvas && dragging) {  // the second finger turns a starting stroke into a gesture
+                dragging = false;
+                cancelLive();
+                lasso.clear();
+            }
+        }
+    } else if (e.type == SDL_FINGERMOTION && it != fingers.end()) {
+        it->pos = p;
+        if (fingers.size() >= 2 && gestureOnCanvas && doc == gestureDoc && doc) {
+            ImVec2 c;
+            float d;
+            measure(c, d);
+            if (gestureDist > 1.f && d > 1.f) zoomAt(zoom * d / gestureDist, c);
+            pan.x += c.x - gestureCenter.x;
+            pan.y += c.y - gestureCenter.y;
+            gestureTravel += std::hypot(c.x - gestureCenter.x, c.y - gestureCenter.y) + std::fabs(d - gestureDist);
+            gestureCenter = c;
+            gestureDist = d;
+        }
+    } else if (e.type == SDL_FINGERUP && it != fingers.end()) {
+        fingers.erase(it);
+        if (fingers.size() >= 2) measure(gestureCenter, gestureDist);  // keep the remaining pair from jumping
+        if (fingers.empty() && gestureOnCanvas && doc && doc == gestureDoc) {
+            bool tap = e.tfinger.timestamp - gestureStart < 400 && gestureTravel < 20.f;
+            if (tap && (gestureMaxFingers == 2 || gestureMaxFingers == 3)) {
+                // The first finger may already have applied a one-tap tool (fill, wand...): drop that first.
+                while (doc->undoStack.size() > gestureUndoDepth && doc->canUndo()) cmdUndo();
+                if (gestureMaxFingers == 2 && doc->canUndo()) {
+                    status = "Отменено: " + doc->undoStack.back().name;
+                    cmdUndo();
+                } else if (gestureMaxFingers == 3 && doc->canRedo()) {
+                    cmdRedo();
+                    status = "Повторено: " + doc->undoStack.back().name;
+                }
+            }
+        }
     }
-    zoomAt(zoom * scale, ImVec2(cx, cy));
-    pan.x += dx;
-    pan.y += dy;
+    touchFingers = int(fingers.size());
 }
 
 bool Editor::animating() const {

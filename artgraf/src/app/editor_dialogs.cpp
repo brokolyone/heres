@@ -324,6 +324,7 @@ void Editor::drawFilterDialog() {
     if (!filter) return;
     ImVec2 center = ImGui::GetMainViewport()->GetCenter();
     ImGui::SetNextWindowPos(ImVec2(center.x + 260, center.y), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    fitToScreen();
     if (!ImGui::BeginPopupModal("##filter", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) return;
     subheading(filter->title.c_str());
     ImGui::Separator();
@@ -375,6 +376,7 @@ void Editor::drawNewDocument() {
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(ImVec2(960, 600), ImGuiCond_Appearing);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(20, 18));
+    fitToScreen();
     bool open = ImGui::BeginPopupModal("##newdoc", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
     ImGui::PopStyleVar();
     if (!open) return;
@@ -528,6 +530,7 @@ void Editor::drawLayerStyle() {
     ImGui::SetNextWindowPos(ImVec2(center.x + 120, center.y), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(ImVec2(780, 560), ImGuiCond_Appearing);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(18, 16));
+    fitToScreen();
     bool open = ImGui::BeginPopupModal("##layerstyle", nullptr, ImGuiWindowFlags_NoTitleBar);
     ImGui::PopStyleVar();
     if (!open) return;
@@ -717,6 +720,7 @@ void Editor::drawDialogs() {
     ImVec2 center = ImGui::GetMainViewport()->GetCenter();
     auto modal = [&](const char* name) {
         ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+        fitToScreen();
         return ImGui::BeginPopupModal(name, nullptr, ImGuiWindowFlags_AlwaysAutoResize);
     };
     float bw = 120;
@@ -848,6 +852,7 @@ void Editor::drawDialogs() {
 
     if (showAbout) {
         ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+        fitToScreen();
         if (ImGui::Begin("О программе", &showAbout, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoCollapse)) {
             if (splashTex) {
                 float w = 480, h = w * splashH / std::max(1, splashW);
@@ -866,6 +871,7 @@ void Editor::drawDialogs() {
     if (showShortcuts) {
         ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
         ImGui::SetNextWindowSize(ImVec2(620, 560), ImGuiCond_Appearing);
+        fitToScreen();
         if (ImGui::Begin("Горячие клавиши", &showShortcuts, ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoCollapse)) {
             if (ImGui::BeginTable("##keys", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV)) {
                 auto row = [](const char* k, const char* v) {

@@ -1,5 +1,6 @@
 // ArtGraf — raster graphics editor. Entry point: window, GL context, ImGui, main loop.
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -10,6 +11,7 @@
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl2.h>
+#include <imgui_internal.h>
 
 #include "editor.h"
 
@@ -29,16 +31,26 @@ int main(int argc, char** argv) {
 
     float scale = 1.f;
     float ddpi = 0;
+    // Touch layout. ImGui then works in density-independent units: one unit is `dp` physical pixels,
+    // like Android's dp, so every size in the UI code is the same physical size on any screen.
+    bool mobile = false;
+    float dp = 1.f;
 #ifdef __ANDROID__
-    // Phones report ~400 dpi; aim for a UI a bit denser than Android's own 160-dpi "dp" unit.
-    if (SDL_GetDisplayDPI(0, &ddpi, nullptr, nullptr) == 0 && ddpi > 0) scale = std::clamp(ddpi / 160.f * 0.85f, 1.f, 3.5f);
+    mobile = true;
+    if (SDL_GetDisplayDPI(0, &ddpi, nullptr, nullptr) == 0 && ddpi > 0) dp = std::clamp(ddpi / 160.f, 1.f, 4.f);
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
 #else
     if (SDL_GetDisplayDPI(0, &ddpi, nullptr, nullptr) == 0 && ddpi > 0) scale = std::clamp(ddpi / 96.f, 1.f, 3.f);
+    if (const char* m = std::getenv("ARTGRAF_MOBILE")) {  // try the touch layout on a desktop: ARTGRAF_MOBILE=<dp>
+        mobile = true;
+        dp = std::clamp(float(std::atof(m)), 1.f, 4.f);
+        scale = 1.f;
+    }
 #endif
 
     // The window starts as a borderless splash screen and turns into the main window once loaded.
-    const int splashW = int(960 * scale), splashH = int(560 * scale);
+    const float splashK = mobile ? dp : scale;
+    const int splashW = int(960 * splashK), splashH = int(560 * splashK);
 #ifdef __ANDROID__
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
     SDL_Window* window = SDL_CreateWindow("ArtGraf", 0, 0, 0, 0, SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_ALLOW_HIGHDPI);
@@ -64,7 +76,7 @@ int main(int argc, char** argv) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    if (!mobile) io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigWindowsMoveFromTitleBarOnly = true;
 
     // Panel layout lives in the user's app-data folder.
@@ -74,7 +86,7 @@ int main(int argc, char** argv) {
         prefDir = pref;
         SDL_free(pref);
     }
-    iniPath = prefDir + "layout2.ini";
+    iniPath = prefDir + (mobile ? "mobile.ini" : "layout2.ini");
     io.IniFilename = iniPath.c_str();
 
     auto editorPtr = std::make_unique<ag::Editor>(window);
@@ -85,7 +97,8 @@ int main(int argc, char** argv) {
     }
     editor.iniPath = iniPath;
     editor.prefDir = prefDir;
-    editor.loadFonts(scale);
+    editor.mobile = mobile;
+    editor.loadFonts(scale, dp);
     editor.setupStyle(scale);
 
     ImGui_ImplSDL2_InitForOpenGL(window, gl);
@@ -96,10 +109,25 @@ int main(int argc, char** argv) {
 #endif
     editor.loadAssets();
 
+    // In dp mode the backend still reports pixels: convert the display size and the queued mouse positions.
+    int scaledEvents = 0;  // events at the front of the queue that were converted already (trickled from the last frame)
+    auto toDp = [&] {
+        if (dp == 1.f) return;
+        io.DisplaySize = ImVec2(io.DisplaySize.x / dp, io.DisplaySize.y / dp);
+        io.DisplayFramebufferScale = ImVec2(io.DisplayFramebufferScale.x * dp, io.DisplayFramebufferScale.y * dp);
+        ImVector<ImGuiInputEvent>& q = ImGui::GetCurrentContext()->InputEventsQueue;
+        for (int i = scaledEvents; i < q.Size; i++)
+            if (q[i].Type == ImGuiInputEventType_MousePos && q[i].MousePos.PosX != -FLT_MAX) {
+                q[i].MousePos.PosX /= dp;
+                q[i].MousePos.PosY /= dp;
+            }
+    };
     auto renderFrame = [&](const std::function<void()>& ui) {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
+        toDp();
         ImGui::NewFrame();
+        scaledEvents = ImGui::GetCurrentContext()->InputEventsQueue.Size;
         ui();
         ImGui::Render();
         glViewport(0, 0, int(io.DisplaySize.x * io.DisplayFramebufferScale.x), int(io.DisplaySize.y * io.DisplayFramebufferScale.y));
@@ -144,10 +172,15 @@ int main(int argc, char** argv) {
 #ifndef __ANDROID__
     SDL_SetWindowBordered(window, SDL_TRUE);
     SDL_SetWindowResizable(window, SDL_TRUE);
-    SDL_SetWindowMinimumSize(window, 900, 560);
-    SDL_SetWindowSize(window, int(1440 * scale), int(900 * scale));
-    SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
-    SDL_MaximizeWindow(window);
+    if (mobile) {  // a landscape phone
+        SDL_SetWindowSize(window, int(860 * dp), int(400 * dp));
+        SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+    } else {
+        SDL_SetWindowMinimumSize(window, 900, 560);
+        SDL_SetWindowSize(window, int(1440 * scale), int(900 * scale));
+        SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+        SDL_MaximizeWindow(window);
+    }
 #endif
 
     if (argc > 1) editor.openPath(argv[1]);
@@ -167,20 +200,7 @@ int main(int argc, char** argv) {
             if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_CLOSE &&
                 e.window.windowID == SDL_GetWindowID(window))
                 editor.requestQuit();
-            // Touch: count fingers; two fingers pinch-zoom and pan the canvas.
-            if (e.type == SDL_FINGERDOWN) editor.touchFingers++;
-            if (e.type == SDL_FINGERUP) editor.touchFingers = std::max(0, editor.touchFingers - 1);
-            if (e.type == SDL_MULTIGESTURE && e.mgesture.numFingers >= 2) {
-                static float lastX = -1, lastY = -1;
-                static Uint32 lastT = 0;
-                float w = io.DisplaySize.x, h = io.DisplaySize.y;
-                float cx = e.mgesture.x * w, cy = e.mgesture.y * h;
-                if (SDL_GetTicks() - lastT > 200) { lastX = cx; lastY = cy; }  // new gesture
-                lastT = SDL_GetTicks();
-                editor.touchGesture(1.f + e.mgesture.dDist * 2.2f, cx, cy, cx - lastX, cy - lastY);
-                lastX = cx;
-                lastY = cy;
-            }
+            if (e.type == SDL_FINGERDOWN || e.type == SDL_FINGERMOTION || e.type == SDL_FINGERUP) editor.touchEvent(e);
             if (e.type == SDL_DROPFILE) {
                 editor.dropPath(e.drop.file);
                 SDL_free(e.drop.file);

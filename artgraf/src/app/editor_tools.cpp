@@ -889,7 +889,8 @@ void Editor::drawOverlays(ImDrawList* dl) {
         dl->AddRect(a, b, IM_COL32(38, 128, 235, 255), 3, 0, 1.5f);
     }
 
-    bool hovered = io.MousePos.x >= cmin.x && io.MousePos.y >= cmin.y && io.MousePos.x < cmax.x && io.MousePos.y < cmax.y;
+    // On a touch screen the pointer only exists while a finger is down.
+    bool hovered = !mobile && io.MousePos.x >= cmin.x && io.MousePos.y >= cmin.y && io.MousePos.x < cmax.x && io.MousePos.y < cmax.y;
     if (tool == Tool::Clone && cloneHasSource) {
         Vec2 s = cloneAligned ? Vec2{curPt.x + cloneDx, curPt.y + cloneDy} : cloneSource;
         ImVec2 c = toScreen(s);

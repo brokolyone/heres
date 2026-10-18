@@ -108,7 +108,7 @@ void Editor::scanFonts() {
         if (exists(f.second)) fonts.push_back({f.first, f.second});
 }
 
-void Editor::loadFonts(float scale) {
+void Editor::loadFonts(float scale, float density) {
     ImGuiIO& io = ImGui::GetIO();
     static ImVector<ImWchar> ranges;
     if (ranges.empty()) {
@@ -124,7 +124,8 @@ void Editor::loadFonts(float scale) {
             if (!readFile(path, data) || data.empty()) continue;
             ImFontConfig cfg;
             cfg.FontDataOwnedByAtlas = true;
-            cfg.OversampleH = 2;
+            cfg.OversampleH = density > 1.5f ? 1 : 2;
+            cfg.RasterizerDensity = density;  // sharp glyphs when one UI unit spans several pixels
             void* mem = IM_ALLOC(data.size());
             std::memcpy(mem, data.data(), data.size());
             if (ImFont* f = io.Fonts->AddFontFromMemoryTTF(mem, int(data.size()), std::round(px * scale), &cfg, ranges.Data)) return f;
@@ -139,6 +140,7 @@ void Editor::loadFonts(float scale) {
     if (!main) {
         ImFontConfig cfg;
         cfg.SizePixels = std::round(13.f * scale);
+        cfg.RasterizerDensity = density;
         io.Fonts->AddFontDefault(&cfg);
     }
     gMediumFont = add({wf + "segoeuib.ttf", wf + "arialbd.ttf", dv + "DejaVuSans-Bold.ttf", af + "Roboto-Bold.ttf", af + "Roboto-Regular.ttf"}, 17.f);
@@ -215,6 +217,24 @@ void Editor::setupStyle(float scale) {
     c[ImGuiCol_ModalWindowDimBg] = rgb(0, 0, 0, 0.6f);
     c[ImGuiCol_NavHighlight] = rgb(38, 128, 235);
     c[ImGuiCol_TableRowBgAlt] = rgb(255, 255, 255, 0.025f);
+    if (mobile) {
+        // Finger-sized controls: frames are kTouch (48 dp) tall, with a little extra hit area around items.
+        const ImFontAtlas* atlas = ImGui::GetIO().Fonts;  // not built yet: read the size from the config
+        float font = atlas->ConfigData.empty() ? 13.f : atlas->ConfigData[0].SizePixels;
+        s.FramePadding = ImVec2(12, std::round((kTouch - font) * 0.5f));
+        s.ItemSpacing = ImVec2(10, 10);
+        s.ItemInnerSpacing = ImVec2(8, 8);
+        s.WindowPadding = ImVec2(12, 12);
+        s.TouchExtraPadding = ImVec2(4, 4);
+        s.ScrollbarSize = 16;
+        s.GrabMinSize = 18;
+        s.FrameRounding = 10;
+        s.GrabRounding = 10;
+        s.SelectableTextAlign = ImVec2(0, 0.5f);
+        // No hover tooltips: with a finger the "mouse" stays where the last tap was.
+        s.HoverDelayShort = s.HoverDelayNormal = 1e9f;
+        s.HoverStationaryDelay = 1e9f;
+    }
     s.ScaleAllSizes(scale);
 }
 
@@ -230,17 +250,27 @@ void Editor::beforeFrame() {
 
 void Editor::frame() {
     handleShortcuts();
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        touchScrollWin = 0;
+        pressOnButton = false;
+    }
     drawMenuBar();
     drawOptionsBar();
-    drawStatusBar();
-    drawDockspace();
-    drawToolbox();
-    drawCanvas();
-    drawColors();
-    drawBrushes();
-    drawLayers();
-    drawHistory();
-    drawNavigator();
+    if (mobile) {
+        drawToolbox();
+        drawCanvas();
+        drawMobileChrome();
+    } else {
+        drawStatusBar();
+        drawDockspace();
+        drawToolbox();
+        drawCanvas();
+        drawColors();
+        drawBrushes();
+        drawLayers();
+        drawHistory();
+        drawNavigator();
+    }
     drawDialogs();
     files.draw();
     updateTitle();
@@ -278,15 +308,19 @@ void Editor::drawDockspace() {
 // ---------------------------------------------------------------- menu
 
 void Editor::drawMenuBar() {
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8, 7));
+    if (!mobile) ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8, 7));
     bool open = ImGui::BeginMainMenuBar();
-    ImGui::PopStyleVar();
+    if (!mobile) ImGui::PopStyleVar();
     if (!open) return;
+    // Touch: menu rows kTouch apart (a menu item is one text line plus the item spacing).
+    if (mobile) ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(14, kTouch - ImGui::GetFontSize()));
     bool d = doc != nullptr;
     bool sel = d && doc->sel.active();
     float h = ImGui::GetFrameHeight();
-    drawLogo(ImGui::GetWindowDrawList(), ImVec2(ImGui::GetCursorScreenPos().x, ImGui::GetCursorScreenPos().y + 3), h - 6);
-    ImGui::Dummy(ImVec2(h - 2, 0));
+    if (!mobile) {  // a phone needs the width for the menus
+        drawLogo(ImGui::GetWindowDrawList(), ImVec2(ImGui::GetCursorScreenPos().x, ImGui::GetCursorScreenPos().y + 3), h - 6);
+        ImGui::Dummy(ImVec2(h - 2, 0));
+    }
 
     if (ImGui::BeginMenu("Файл")) {
         if (ImGui::MenuItem("Создать…", "Ctrl+N")) cmdNew();
@@ -319,7 +353,7 @@ void Editor::drawMenuBar() {
         if (ImGui::MenuItem("Выход", "Alt+F4")) requestQuit();
         ImGui::EndMenu();
     }
-    if (ImGui::BeginMenu("Редактирование")) {
+    if (ImGui::BeginMenu(mobile ? "Правка" : "Редактирование")) {
         std::string undoLabel = d && doc->canUndo() ? "Отменить: " + doc->undoStack.back().name : "Отменить";
         std::string redoLabel = d && doc->canRedo() ? "Повторить: " + doc->redoStack.back().name : "Повторить";
         if (ImGui::MenuItem(undoLabel.c_str(), "Ctrl+Z", false, d && doc->canUndo())) cmdUndo();
@@ -545,7 +579,7 @@ void Editor::drawMenuBar() {
         ImGui::MenuItem("Пиксельная сетка", "Ctrl+'", &showGrid);
         ImGui::EndMenu();
     }
-    if (ImGui::BeginMenu("Окно")) {
+    if (!mobile && ImGui::BeginMenu("Окно")) {
         ImGui::MenuItem("Настройки кисти", "F5", &showBrushSettings);
         if (ImGui::MenuItem("Сбросить расположение панелей")) layoutReset = true;
         ImGui::EndMenu();
@@ -560,6 +594,7 @@ void Editor::drawMenuBar() {
     ImGui::SetCursorPosX(ImGui::GetWindowWidth() - ib * 2 - 16);
     if (iconButton("##undo", UiIcon::Undo, "Отменить (Ctrl+Z)", d && doc->canUndo(), ib)) cmdUndo();
     if (iconButton("##redo", UiIcon::Redo, "Повторить (Ctrl+Shift+Z)", d && doc->canRedo(), ib)) cmdRedo();
+    if (mobile) ImGui::PopStyleVar();
     ImGui::EndMainMenuBar();
 }
 
@@ -711,6 +746,7 @@ bool Editor::brushPresetButton(const BrushPreset& p, bool selected, float w) {
     h = ih + ImGui::GetFontSize() + 8;  // preview on top, label below
     ImVec2 a = ImGui::GetCursorScreenPos();
     bool pressed = ImGui::InvisibleButton(key.c_str(), ImVec2(w, h));
+    touchItem();
     bool hov = ImGui::IsItemHovered();
     ImDrawList* dl = ImGui::GetWindowDrawList();
     dl->AddRectFilled(a, ImVec2(a.x + w, a.y + h), selected ? IM_COL32(38, 128, 235, 70) : hov ? IM_COL32(255, 255, 255, 16) : IM_COL32(255, 255, 255, 6), 8);
@@ -729,9 +765,10 @@ bool Editor::brushPresetButton(const BrushPreset& p, bool selected, float w) {
 
 void Editor::drawOptionsBar() {
     ImGuiWindowFlags fl = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings;
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10, 6));
+    float padY = mobile ? 4.f : 6.f;
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10, padY));
     ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(19, 20, 24, 255));
-    float h = ImGui::GetFrameHeight() + 12;
+    float h = ImGui::GetFrameHeight() + padY * 2;
     bool open = ImGui::BeginViewportSideBar("##options", ImGui::GetMainViewport(), ImGuiDir_Up, h, fl);
     ImGui::PopStyleColor();
     ImGui::PopStyleVar();
@@ -746,11 +783,13 @@ void Editor::drawOptionsBar() {
         drawToolIcon(ImGui::GetWindowDrawList(), tool, ImVec2(p.x + s * 0.5f, p.y + s * 0.5f), s * 0.6f, IM_COL32_WHITE);
         ImGui::Dummy(ImVec2(s, s));
         ImGui::SameLine();
-        ImGui::AlignTextToFramePadding();
-        if (gMediumFont) ImGui::PushFont(gMediumFont);
-        ImGui::TextUnformatted(toolInfo(tool).name);
-        if (gMediumFont) ImGui::PopFont();
-        ImGui::SameLine(0, 18);
+        if (!mobile) {  // a phone needs the width for the options
+            ImGui::AlignTextToFramePadding();
+            if (gMediumFont) ImGui::PushFont(gMediumFont);
+            ImGui::TextUnformatted(toolInfo(tool).name);
+            if (gMediumFont) ImGui::PopFont();
+            ImGui::SameLine(0, 18);
+        }
     }
     float sliderW = 120;
     auto pct = [&](const char* label, float& v, float lo = 0, float hi = 100) {
@@ -1001,12 +1040,24 @@ void Editor::drawOptionsBar() {
         case Tool::Eyedropper: ImGui::TextDisabled("Берёт цвет со всех видимых слоёв"); break;
         default: break;
     }
+    ImGui::SameLine();
+    ImGui::Dummy(ImVec2(8, 0));
+    touchScroll(true);  // options wider than a phone scroll sideways
     ImGui::End();
 
     if (showBrushSettings) {
-        ImGui::SetNextWindowSize(ImVec2(340, 0), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowPos(ImVec2(ImGui::GetMainViewport()->Pos.x + 100, ImGui::GetMainViewport()->Pos.y + 120), ImGuiCond_FirstUseEver);
-        if (ImGui::Begin("Настройки кисти", &showBrushSettings, ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (mobile) {
+            ImGuiViewport* vp = ImGui::GetMainViewport();
+            ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x + vp->WorkSize.x * 0.5f, vp->WorkPos.y + vp->WorkSize.y * 0.5f), ImGuiCond_Appearing,
+                                    ImVec2(0.5f, 0.5f));
+            ImGui::SetNextWindowSize(ImVec2(460, vp->WorkSize.y - 16), ImGuiCond_Appearing);
+            fitToScreen();
+        } else {
+            ImGui::SetNextWindowSize(ImVec2(340, 0), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowPos(ImVec2(ImGui::GetMainViewport()->Pos.x + 100, ImGui::GetMainViewport()->Pos.y + 120), ImGuiCond_FirstUseEver);
+        }
+        if (ImGui::Begin("Настройки кисти", &showBrushSettings,
+                         ImGuiWindowFlags_NoDocking | (mobile ? ImGuiWindowFlags_NoCollapse : ImGuiWindowFlags_AlwaysAutoResize))) {
             if (!isBrushTool(tool)) {
                 ImGui::TextDisabled("Выберите кисть, ластик или штамп");
             } else {
@@ -1041,6 +1092,7 @@ void Editor::drawOptionsBar() {
                     p.name = c.name;
                 }
             }
+            touchScroll();
         }
         ImGui::End();
     }
@@ -1093,13 +1145,22 @@ void Editor::drawToolbox() {
     ImGuiWindowClass wc;
     wc.DockNodeFlagsOverrideSet = ImGuiDockNodeFlags_NoTabBar;
     ImGui::SetNextWindowClass(&wc);
+    ImGuiWindowFlags fl = ImGuiWindowFlags_NoScrollbar;
+    if (mobile) {  // a fixed one-column strip along the left edge, scrolled with the finger
+        ImGuiViewport* vp = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(vp->WorkPos);
+        ImGui::SetNextWindowSize(ImVec2(stripWidth(), vp->WorkSize.y));
+        fl |= ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus;
+    }
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6, 8));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, mobile ? 0.f : ImGui::GetStyle().WindowRounding);
     ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(19, 20, 24, 255));
-    bool open = ImGui::Begin(kToolsWin, nullptr, ImGuiWindowFlags_NoScrollbar);
+    bool open = ImGui::Begin(kToolsWin, nullptr, fl);
     ImGui::PopStyleColor();
-    ImGui::PopStyleVar();
+    ImGui::PopStyleVar(2);
     if (!open) return ImGui::End();
-    float bs = std::round(ImGui::GetFrameHeight() * 1.25f);
+    float bs = mobile ? kTouch : std::round(ImGui::GetFrameHeight() * 1.25f);
+    if (mobile) ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(3, 3));  // tight column, buttons stay kTouch
     float availW = ImGui::GetContentRegionAvail().x;
     int cols = std::max(1, int((availW + 3) / (bs + 3)));
     ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -1119,7 +1180,8 @@ void Editor::drawToolbox() {
         ImGui::PushID(g);
         ImVec2 p = ImGui::GetCursorScreenPos();
         bool clicked = ImGui::InvisibleButton("##tool", ImVec2(bs, bs), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
-        bool hov = ImGui::IsItemHovered();
+        touchItem();
+        bool hov = ImGui::IsItemHovered() && !mobile;
         bool multi = groups[size_t(g)].size() > 1;
         if (clicked && !ImGui::IsMouseReleased(ImGuiMouseButton_Right)) setTool(t);
         if (multi && (ImGui::IsItemClicked(ImGuiMouseButton_Right) || (ImGui::IsItemActive() && ImGui::GetIO().MouseDownDuration[0] > 0.35f)))
@@ -1161,14 +1223,14 @@ void Editor::drawToolbox() {
     if (col % cols) ImGui::NewLine();
     ImGui::Dummy(ImVec2(0, 8));
     ImVec2 p = ImGui::GetCursorScreenPos();
-    float s = bs * 0.95f;
+    float s = mobile ? std::floor(availW / 1.45f) : bs * 0.95f;
     p.x += std::max(0.f, (availW - s * 1.45f) * 0.5f);
     ImGui::SetCursorScreenPos(ImVec2(p.x + s * 0.45f, p.y + s * 0.45f));
     if (ImGui::ColorButton("##sec", toVec4(secondary), ImGuiColorEditFlags_NoTooltip, ImVec2(s, s))) ImGui::OpenPopup("##secpick");
     ImGui::SetCursorScreenPos(p);
     if (ImGui::ColorButton("##pri", toVec4(primary), ImGuiColorEditFlags_NoTooltip, ImVec2(s, s))) ImGui::OpenPopup("##pripick");
-    ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + s * 1.5f));
-    if (ImGui::SmallButton("⇄")) std::swap(primary, secondary);
+    ImGui::SetCursorScreenPos(ImVec2(mobile ? ImGui::GetCursorScreenPos().x : p.x, p.y + s * 1.5f));
+    if (mobile ? ImGui::Button("⇄", ImVec2(availW, kTouch)) : ImGui::SmallButton("⇄")) std::swap(primary, secondary);
     ImGui::SetItemTooltip("Поменять цвета (X)");
     for (int i = 0; i < 2; i++) {
         if (ImGui::BeginPopup(i ? "##secpick" : "##pripick")) {
@@ -1178,6 +1240,9 @@ void Editor::drawToolbox() {
             ImGui::EndPopup();
         }
     }
+    ImGui::Dummy(ImVec2(0, 4));
+    if (mobile) ImGui::PopStyleVar();
+    touchScroll();
     ImGui::End();
 }
 
@@ -1259,8 +1324,8 @@ void Editor::drawHomeScreen() {
 }
 
 void Editor::drawTabs() {
-    if (tabs.empty()) return;
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(12, 6));
+    if (tabs.empty() || (mobile && tabs.size() < 2)) return;  // a phone shows tabs only when there is a choice
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, mobile ? ImGui::GetStyle().FramePadding : ImVec2(12, 6));
     if (ImGui::BeginTabBar("##docs", ImGuiTabBarFlags_FittingPolicyScroll | ImGuiTabBarFlags_TabListPopupButton)) {
         int closeReq = -1;
         for (int i = 0; i < int(tabs.size()); i++) {
@@ -1288,11 +1353,20 @@ void Editor::drawCanvas() {
     ImGuiWindowClass wc;
     wc.DockNodeFlagsOverrideSet = ImGuiDockNodeFlags_NoTabBar;
     ImGui::SetNextWindowClass(&wc);
+    ImGuiWindowFlags fl = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+    if (mobile) {  // everything right of the tool strip; the panel buttons and the drawer float above it
+        ImGuiViewport* vp = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x + stripWidth(), vp->WorkPos.y));
+        ImGui::SetNextWindowSize(ImVec2(vp->WorkSize.x - stripWidth(), vp->WorkSize.y));
+        fl |= ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus;
+    }
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, mobile ? 0.f : ImGui::GetStyle().WindowRounding);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, mobile ? 0.f : ImGui::GetStyle().WindowBorderSize);
     ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(11, 12, 14, 255));
-    bool open = ImGui::Begin(kCanvasWin, nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    bool open = ImGui::Begin(kCanvasWin, nullptr, fl);
     ImGui::PopStyleColor();
-    ImGui::PopStyleVar();
+    ImGui::PopStyleVar(3);
     if (!open) return ImGui::End();
     drawTabs();
     canvasMin = ImGui::GetCursorScreenPos();
@@ -1322,8 +1396,19 @@ void Editor::drawCanvas() {
     ImGui::SetCursorScreenPos(canvasMin);
     ImGui::InvisibleButton("##canvas", canvasSize,
                            ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonMiddle | ImGuiButtonFlags_MouseButtonRight);
-    bool hovered = ImGui::IsItemHovered();
-    canvasInput(hovered, ImGui::IsItemActive());
+    bool hovered = ImGui::IsItemHovered(), active = ImGui::IsItemActive();
+    if (mobile) {
+        // A tap on the canvas closes the drawer and paints nothing.
+        if (drawerTab >= 0 && ImGui::IsItemActivated()) {
+            drawerTab = -1;
+            swallowCanvas = true;
+        }
+        if (swallowCanvas) {
+            if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) swallowCanvas = false;
+            hovered = active = false;
+        }
+    }
+    canvasInput(hovered, active);
     if (!doc) return ImGui::End();
     dl->PushClipRect(canvasMin, ImVec2(canvasMin.x + canvasSize.x, canvasMin.y + canvasSize.y), true);
     drawOverlays(dl);
@@ -1370,16 +1455,21 @@ void Editor::drawCanvas() {
 
 void Editor::drawColors() {
     if (colorTabFocus > 0 && --colorTabFocus == 0) ImGui::SetWindowFocus(kColorWin);
-    if (!ImGui::Begin(kColorWin)) return ImGui::End();
+    if (!panelBegin(kColorWin)) return panelEnd();
     static bool editSecondary = false;
     if (ImGui::RadioButton("Основной", !editSecondary)) editSecondary = false;
     ImGui::SameLine();
     if (ImGui::RadioButton("Фоновый", editSecondary)) editSecondary = true;
-    ImGui::SameLine();
-    if (ImGui::SmallButton("⇄")) std::swap(primary, secondary);
+    // Touch buttons are kTouch wide and wrap to the next line when the panel is narrow.
+    auto sameLine = [&] {
+        ImGui::SameLine();
+        if (mobile && ImGui::GetContentRegionAvail().x < kTouch) ImGui::NewLine();
+    };
+    sameLine();
+    if (mobile ? ImGui::Button("⇄", ImVec2(kTouch, 0)) : ImGui::SmallButton("⇄")) std::swap(primary, secondary);
     ImGui::SetItemTooltip("Поменять местами (X)");
-    ImGui::SameLine();
-    if (ImGui::SmallButton("Ч/Б")) {
+    sameLine();
+    if (mobile ? ImGui::Button("Ч/Б", ImVec2(kTouch, 0)) : ImGui::SmallButton("Ч/Б")) {
         primary = {0, 0, 0, 255};
         secondary = {255, 255, 255, 255};
     }
@@ -1387,7 +1477,8 @@ void Editor::drawColors() {
     RGBA& c = editSecondary ? secondary : primary;
     ImVec4 v = toVec4(c);
     float fh = ImGui::GetFrameHeightWithSpacing();
-    float pickerW = std::min({ImGui::GetContentRegionAvail().x, 280.f, ImGui::GetContentRegionAvail().y - fh * 5.4f});
+    float pickerW = mobile ? std::min(ImGui::GetContentRegionAvail().x, 230.f)
+                           : std::min({ImGui::GetContentRegionAvail().x, 280.f, ImGui::GetContentRegionAvail().y - fh * 5.4f});
     ImGui::SetNextItemWidth(std::max(pickerW, 120.f));
     if (ImGui::ColorPicker4("##picker", &v.x,
                             ImGuiColorEditFlags_NoAlpha | ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_NoSidePreview |
@@ -1400,13 +1491,14 @@ void Editor::drawColors() {
         {255, 205, 178, 255}, {181, 131, 90, 255},  {44, 62, 80, 255},    {127, 0, 0, 255},     {0, 100, 0, 255},
         {0, 0, 139, 255},     {255, 0, 255, 255},   {0, 255, 255, 255},   {255, 255, 0, 255},
     };
-    float sw = ImGui::GetFrameHeight() * 0.8f;
+    float sw = mobile ? kTouch - 8 : ImGui::GetFrameHeight() * 0.8f;  // + TouchExtraPadding = 48 dp
     int perRow = std::max(1, int(ImGui::GetContentRegionAvail().x / (sw + 4)));
     auto swatches = [&](const RGBA* list, int n, int base) {
         for (int i = 0; i < n; i++) {
             if (i % perRow) ImGui::SameLine(0, 4);
             ImGui::PushID(base + i);
             if (ImGui::ColorButton("##p", toVec4(list[i]), ImGuiColorEditFlags_NoTooltip, ImVec2(sw, sw))) primary = list[i];
+            touchItem();
             if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) secondary = list[i];
             ImGui::PopID();
         }
@@ -1416,11 +1508,12 @@ void Editor::drawColors() {
         ImGui::TextDisabled("Недавние");
         swatches(recentColors.data(), int(recentColors.size()), 100);
     }
-    ImGui::End();
+    touchScroll();
+    panelEnd();
 }
 
 void Editor::drawBrushes() {
-    if (!ImGui::Begin(kBrushesWin)) return ImGui::End();
+    if (!panelBegin(kBrushesWin)) return panelEnd();
     Tool target = isBrushTool(tool) && !isRetouchTool(tool) ? tool : Tool::Brush;
     BrushPreset& cur = tb[target].preset;
     ImGui::SetNextItemWidth(-ImGui::GetFrameHeight() * 2 - 12);
@@ -1445,15 +1538,16 @@ void Editor::drawBrushes() {
             if (tool == Tool::Pencil) dst.aliased = true;
         }
     }
+    touchScroll();
     ImGui::EndChild();
-    ImGui::End();
+    panelEnd();
 }
 
 void Editor::drawLayers() {
-    if (!ImGui::Begin(kLayersWin)) return ImGui::End();
+    if (!panelBegin(kLayersWin)) return panelEnd();
     if (!doc) {
         ImGui::TextDisabled("Нет документа");
-        return ImGui::End();
+        return panelEnd();
     }
     updateThumbs();
     Layer& cur = doc->layer();
@@ -1480,8 +1574,8 @@ void Editor::drawLayers() {
         invalidateAll();
     }
 
-    float rowH = 50;
-    float buttonsH = ImGui::GetFrameHeightWithSpacing() + 6;
+    float rowH = mobile ? 60.f : 50.f;
+    float buttonsH = mobile ? ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y * 2 + 4 : ImGui::GetFrameHeightWithSpacing() + 6;
     ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(15, 16, 19, 255));
     ImGui::BeginChild("##list", ImVec2(0, -buttonsH), ImGuiChildFlags_Borders);
     ImGui::PopStyleColor();
@@ -1506,7 +1600,9 @@ void Editor::drawLayers() {
                 renameBuf = L.name;
             }
         }
-        if (ImGui::BeginDragDropSource()) {
+        touchItem();
+        // Touch reorders with the arrow buttons; a drag on the list scrolls it.
+        if (!mobile && ImGui::BeginDragDropSource()) {
             ImGui::SetDragDropPayload("AG_LAYER", &i, sizeof(int));
             ImGui::Text("%s", L.name.c_str());
             ImGui::EndDragDropSource();
@@ -1536,6 +1632,7 @@ void Editor::drawLayers() {
             doc->dirty = true;
             dirty = {0, 0, doc->w, doc->h};
         }
+        touchItem();
         float tx = rowMin.x + 10 + ib;
         if (size_t(i) < thumbs.size()) {
             float k = std::min(56.f / doc->w, 40.f / doc->h);
@@ -1575,6 +1672,7 @@ void Editor::drawLayers() {
         ImGui::Dummy(ImVec2(0, 0));
         ImGui::PopID();
     }
+    touchScroll();
     ImGui::EndChild();
     if (deferred) deferred();
     if (moveFrom >= 0 && moveTo >= 0 && moveFrom != moveTo) {
@@ -1602,14 +1700,14 @@ void Editor::drawLayers() {
         layerAction("Объединить с нижним", [](Document& d) { d.mergeDown(); });
     ImGui::SameLine(0, 2);
     if (iconButton("##ldel", UiIcon::Trash, "Удалить слой", doc->layers.size() > 1)) layerAction("Удалить слой", [](Document& d) { d.deleteLayer(); });
-    ImGui::End();
+    panelEnd();
 }
 
 void Editor::drawHistory() {
-    if (!ImGui::Begin(kHistoryWin)) return ImGui::End();
+    if (!panelBegin(kHistoryWin)) return panelEnd();
     if (!doc) {
         ImGui::TextDisabled("Нет документа");
-        return ImGui::End();
+        return panelEnd();
     }
     size_t nu = doc->undoStack.size(), nr = doc->redoStack.size();
     int target = -1;
@@ -1621,7 +1719,8 @@ void Editor::drawHistory() {
         bool currentStep = k == nu;
         if (k > nu) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
         ImGui::PushID(int(k));
-        if (ImGui::Selectable(name.c_str(), currentStep)) target = int(k);
+        if (ImGui::Selectable(name.c_str(), currentStep, 0, ImVec2(0, mobile ? kTouch - ImGui::GetStyle().ItemSpacing.y : 0.f))) target = int(k);
+        touchItem();
         if (currentStep && ImGui::IsWindowAppearing()) ImGui::SetScrollHereY();
         ImGui::PopID();
         if (k > nu) ImGui::PopStyleColor();
@@ -1630,19 +1729,20 @@ void Editor::drawHistory() {
         while (int(doc->undoStack.size()) > target) cmdUndo();
         while (int(doc->undoStack.size()) < target && doc->canRedo()) cmdRedo();
     }
-    ImGui::End();
+    touchScroll();
+    panelEnd();
 }
 
 void Editor::drawNavigator() {
-    if (!ImGui::Begin(kNavWin)) return ImGui::End();
+    if (!panelBegin(kNavWin)) return panelEnd();
     if (!doc || !tex) {
         ImGui::TextDisabled("Нет документа");
-        return ImGui::End();
+        return panelEnd();
     }
     ImVec2 avail = ImGui::GetContentRegionAvail();
     avail.y -= ImGui::GetFrameHeightWithSpacing();
     float k = std::min(avail.x / doc->w, avail.y / doc->h);
-    if (k <= 0) return ImGui::End();
+    if (k <= 0) return panelEnd();
     ImVec2 sz(doc->w * k, doc->h * k);
     ImVec2 p = ImGui::GetCursorScreenPos();
     p.x += (avail.x - sz.x) * 0.5f;
@@ -1661,6 +1761,161 @@ void Editor::drawNavigator() {
     ImGui::SetNextItemWidth(-1);
     if (ImGui::SliderFloat("##zoom", &z, 1, 3200, "%.0f%%", ImGuiSliderFlags_Logarithmic))
         zoomAt(z / 100, ImVec2(canvasMin.x + canvasSize.x * 0.5f, canvasMin.y + canvasSize.y * 0.5f));
+    panelEnd();
+}
+
+// ---------------------------------------------------------------- touch layout
+
+bool Editor::panelBegin(const char* name) {
+    if (mobile) return ImGui::BeginChild(name, ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground);
+    return ImGui::Begin(name);
+}
+
+void Editor::panelEnd() {
+    if (mobile) ImGui::EndChild();
+    else ImGui::End();
+}
+
+void Editor::fitToScreen() {
+    if (!mobile) return;
+    ImVec2 ds = ImGui::GetIO().DisplaySize;
+    ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(ds.x - 16, ds.y - 16));
+}
+
+void Editor::touchItem() {
+    if (mobile && ImGui::IsItemActivated()) pressOnButton = true;
+}
+
+// Finger scrolling for the current window: a drag that starts on its background or on a button
+// (marked with touchItem) scrolls instead of clicking. Drags that start on sliders or pickers are left alone.
+void Editor::touchScroll(bool horizontal) {
+    if (!mobile || !ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::GetDragDropPayload()) return;
+    ImGuiContext& g = *GImGui;
+    ImGuiWindow* w = g.CurrentWindow;
+    ImGuiIO& io = g.IO;
+    if (touchScrollWin != w->ID) {
+        if (touchScrollWin || !w->InnerRect.Contains(io.MouseClickedPos[0])) return;
+        if (!ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) return;
+        if (!(g.ActiveId == 0 || g.ActiveId == w->MoveId || pressOnButton)) return;
+        ImVec2 d = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left, 0.f);
+        float along = horizontal ? d.x : d.y, across = horizontal ? d.y : d.x;
+        if (std::fabs(along) < 12.f || std::fabs(along) < std::fabs(across)) return;
+        touchScrollWin = w->ID;
+        ImGui::ClearActiveID();  // the button under the finger must not fire on release
+    }
+    if (horizontal) ImGui::SetScrollX(ImGui::GetScrollX() - io.MouseDelta.x);
+    else ImGui::SetScrollY(ImGui::GetScrollY() - io.MouseDelta.y);
+}
+
+namespace {
+const char* kDrawerTitles[] = {"Цвет", "Кисти", "Слои", "История"};
+}
+
+void Editor::drawMobileChrome() {
+    ImGuiIO& io = ImGui::GetIO();
+    ImGuiViewport* vp = ImGui::GetMainViewport();
+    const int panels = int(std::size(kDrawerTitles));
+
+    // Drawer slide animation
+    float target = drawerTab >= 0 ? 1.f : 0.f;
+    drawerAnim += (target - drawerAnim) * std::min(1.f, io.DeltaTime * 16.f);
+    if (std::fabs(target - drawerAnim) < 0.01f) drawerAnim = target;
+    if (drawerTab >= 0) drawerShown = drawerTab;
+    float ease = 1.f - (1.f - drawerAnim) * (1.f - drawerAnim);
+    float dw = std::clamp(vp->WorkSize.x * 0.45f, 340.f, 420.f);
+    dw = std::min(dw, vp->WorkSize.x - stripWidth() - kTouch - 24);
+    float dx = vp->WorkPos.x + vp->WorkSize.x - dw * ease;
+    drawerRect = ImVec4(0, 0, 0, 0);
+    if (drawerAnim > 0.f) {
+        drawerRect = ImVec4(dx, vp->WorkPos.y, dx + dw, vp->WorkPos.y + vp->WorkSize.y);
+        ImGui::SetNextWindowPos(ImVec2(dx, vp->WorkPos.y));
+        ImGui::SetNextWindowSize(ImVec2(dw, vp->WorkSize.y));
+        drawDrawer();
+    }
+
+    // Panel buttons: a floating column that rides on the drawer's left edge
+    const float pad = 6, gap = 4;
+    ImVec2 fs(kTouch + pad * 2, kTouch * panels + gap * (panels - 1) + pad * 2);
+    ImVec2 fp(dx - fs.x - 10, vp->WorkPos.y + 10);
+    fabRect = ImVec4(fp.x, fp.y, fp.x + fs.x, fp.y + fs.y);
+    ImGui::SetNextWindowPos(fp);
+    ImGui::SetNextWindowSize(fs);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad, pad));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 14.f);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(gap, gap));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(22, 23, 27, 235));
+    ImGui::Begin("##panelbuttons", nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing);
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar(3);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    for (int i = 0; i < panels; i++) {
+        ImGui::PushID(i);
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        if (ImGui::InvisibleButton("##panel", ImVec2(kTouch, kTouch))) drawerTab = drawerTab == i ? -1 : i;
+        bool on = drawerTab == i;
+        if (on) dl->AddRectFilled(p, ImVec2(p.x + kTouch, p.y + kTouch), kAccent, 10);
+        else if (ImGui::IsItemActive()) dl->AddRectFilled(p, ImVec2(p.x + kTouch, p.y + kTouch), IM_COL32(50, 52, 62, 255), 10);
+        ImVec2 c(p.x + kTouch * 0.5f, p.y + kTouch * 0.5f);
+        ImU32 ic = on ? IM_COL32_WHITE : IM_COL32(210, 212, 222, 255);
+        switch (i) {
+            case 0: {  // current colors, like the swatches in the toolbox
+                float r = kTouch * 0.2f;
+                ImVec2 b(c.x + r * 0.55f, c.y + r * 0.55f);
+                dl->AddRectFilled(ImVec2(b.x - r, b.y - r), ImVec2(b.x + r, b.y + r), toU32({secondary.r, secondary.g, secondary.b, 255}), 4);
+                dl->AddRect(ImVec2(b.x - r, b.y - r), ImVec2(b.x + r, b.y + r), IM_COL32(0, 0, 0, 160), 4, 0, 1.5f);
+                ImVec2 a(c.x - r * 0.45f, c.y - r * 0.45f);
+                dl->AddCircleFilled(a, r * 1.05f, toU32({primary.r, primary.g, primary.b, 255}));
+                dl->AddCircle(a, r * 1.05f, on ? IM_COL32_WHITE : IM_COL32(0, 0, 0, 160), 0, 2.f);
+                break;
+            }
+            case 1: drawUiIcon(dl, UiIcon::Brush, c, kTouch * 0.5f, ic); break;
+            case 2: drawUiIcon(dl, UiIcon::Layers, c, kTouch * 0.5f, ic); break;
+            default: drawUiIcon(dl, UiIcon::History, c, kTouch * 0.5f, ic); break;
+        }
+        ImGui::PopID();
+    }
+    ImGui::End();
+
+    // Status messages appear as a short toast (a phone has no status bar)
+    if (status != toastText) {
+        toastText = status;
+        if (!status.empty()) toastUntil = ImGui::GetTime() + 2.5;
+    }
+    double left = toastUntil - ImGui::GetTime();
+    if (left > 0 && !toastText.empty()) {
+        float a = float(std::min(1.0, left / 0.3));
+        ImVec2 ts = ImGui::CalcTextSize(toastText.c_str(), nullptr, false, canvasSize.x * 0.8f);
+        ImVec2 c(canvasMin.x + canvasSize.x * 0.5f, canvasMin.y + canvasSize.y - 28 - ts.y * 0.5f);
+        ImVec2 p0(c.x - ts.x * 0.5f - 18, c.y - ts.y * 0.5f - 12), p1(c.x + ts.x * 0.5f + 18, c.y + ts.y * 0.5f + 12);
+        ImDrawList* fg = ImGui::GetForegroundDrawList();
+        fg->AddRectFilled(p0, p1, IM_COL32(34, 36, 43, int(240 * a)), 14);
+        fg->AddText(nullptr, 0, ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), IM_COL32(235, 236, 242, int(255 * a)), toastText.c_str(), nullptr,
+                    canvasSize.x * 0.8f);
+    }
+}
+
+void Editor::drawDrawer() {
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 16.f);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(24, 25, 30, 255));
+    ImGui::Begin("##drawer", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar();
+    // Header: title and close button
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    float w = ImGui::GetContentRegionAvail().x;
+    if (gMediumFont) ImGui::PushFont(gMediumFont);
+    ImGui::GetWindowDrawList()->AddText(ImVec2(p.x + 4, p.y + (kTouch - ImGui::GetFontSize()) * 0.5f), ImGui::GetColorU32(ImGuiCol_Text),
+                                        kDrawerTitles[drawerShown]);
+    if (gMediumFont) ImGui::PopFont();
+    ImGui::SetCursorScreenPos(ImVec2(p.x + w - kTouch, p.y));
+    if (iconButton("##dclose", UiIcon::Close, nullptr, true, kTouch)) drawerTab = -1;
+    switch (drawerShown) {
+        case 0: drawColors(); break;
+        case 1: drawBrushes(); break;
+        case 2: drawLayers(); break;
+        default: drawHistory(); break;
+    }
     ImGui::End();
 }
 

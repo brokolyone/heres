@@ -279,6 +279,20 @@ void drawUiIcon(ImDrawList* dl, UiIcon icon, ImVec2 c, float size, ImU32 col) {
             p.line(0.85f, -0.85f, -0.05f, 0.1f, p.th * 1.4f);
             p.poly({{-0.15f, 0.0f}, {0.1f, 0.25f}, {-0.3f, 0.75f}, {-0.85f, 0.85f}, {-0.7f, 0.35f}}, true);
             break;
+        case UiIcon::Layers:
+            p.poly({{0, -0.85f}, {0.85f, -0.4f}, {0, 0.05f}, {-0.85f, -0.4f}}, false);
+            p.line(-0.85f, 0.05f, 0, 0.5f); p.line(0, 0.5f, 0.85f, 0.05f);
+            p.line(-0.85f, 0.45f, 0, 0.9f); p.line(0, 0.9f, 0.85f, 0.45f);
+            break;
+        case UiIcon::History:
+            p.circle(0, 0, 0.8f);
+            p.line(0, -0.5f, 0, 0); p.line(0, 0, 0.38f, 0.25f);
+            break;
+        case UiIcon::Palette:
+            p.circle(0, 0, 0.82f);
+            p.fillCircle(-0.35f, -0.3f, 0.14f); p.fillCircle(0.12f, -0.48f, 0.14f);
+            p.fillCircle(0.45f, -0.08f, 0.14f); p.fillCircle(-0.4f, 0.22f, 0.14f);
+            break;
     }
 }
 

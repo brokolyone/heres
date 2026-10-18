@@ -77,9 +77,15 @@ public:
     void requestQuit();
     bool wantsQuit() const { return quitNow; }
     bool animating() const;
-    // Two-finger touch: zoom by `scale` around (cx, cy) and pan by (dx, dy), all in window pixels.
-    void touchGesture(float scale, float cx, float cy, float dx, float dy);
+    // Touch input (SDL_FINGER* events): pinch zooms, two fingers pan, a two-finger tap undoes, three redo.
+    void touchEvent(const SDL_Event& e);
     int touchFingers = 0;
+
+    // Phone/tablet layout: full-screen canvas, a narrow tool strip on the left and the panels
+    // (color, brushes, layers, history) in a drawer that slides in from the right.
+    // In this mode ImGui works in Android dp units, so 48 here is the 48 dp minimum touch target.
+    bool mobile = false;
+    static constexpr float kTouch = 48.f;
 
     // Splash screen (drawn by main while the app finishes loading)
     void drawSplash(float progress, const char* stage);
@@ -225,6 +231,36 @@ public:
     int colorTabFocus = 0;
     float strokeWidth = 4.f;
 
+    // Touch state
+    struct Finger { SDL_FingerID id; ImVec2 pos; };
+    std::vector<Finger> fingers;
+    ImVec2 gestureCenter{0, 0};
+    float gestureDist = 0.f, gestureTravel = 0.f;
+    Uint32 gestureStart = 0;
+    int gestureMaxFingers = 0;
+    bool gestureOnCanvas = false;
+    const Document* gestureDoc = nullptr;
+    size_t gestureUndoDepth = 0;
+    bool onCanvas(ImVec2 p) const;
+    // Mobile chrome
+    int drawerTab = -1;          // panel shown in the drawer, -1 = closed
+    int drawerShown = 0;         // panel drawn while the drawer slides out
+    float drawerAnim = 0.f;      // 0 closed .. 1 open
+    ImVec4 drawerRect{0, 0, 0, 0}, fabRect{0, 0, 0, 0};  // screen rects (x1, y1, x2, y2) that block canvas touches
+    bool swallowCanvas = false;  // the tap that closed the drawer must not paint
+    unsigned int touchScrollWin = 0;
+    bool pressOnButton = false;
+    std::string toastText;
+    double toastUntil = 0;
+    void drawMobileChrome();
+    void drawDrawer();
+    void touchScroll(bool horizontal = false);
+    void touchItem();
+    bool panelBegin(const char* name);
+    void panelEnd();
+    void fitToScreen();  // keeps the next window inside a phone screen
+    float stripWidth() const { return kTouch + 12; }
+
     // ---- editor.cpp: documents, view, commands ----
     void openTab(std::unique_ptr<Document> d);
     void switchTab(int i);
@@ -317,7 +353,7 @@ public:
 
     // ---- editor_ui.cpp: main windows, menus, panels ----
     void setupStyle(float scale);
-    void loadFonts(float scale);
+    void loadFonts(float scale, float density = 1.f);
     void drawMenuBar();
     void drawOptionsBar();
     void drawStatusBar();
@@ -358,7 +394,7 @@ RGBA fromVec4(const ImVec4& v);
 void drawGradientStrip(ImDrawList* dl, ImVec2 a, ImVec2 b, const Gradient& g, float rounding = 4.f);
 
 // Small line icons for UI buttons (not tools).
-enum class UiIcon { Eye, EyeOff, Plus, Duplicate, Trash, Up, Down, Merge, Fx, Folder, File, Close, Brush, Undo, Redo };
+enum class UiIcon { Eye, EyeOff, Plus, Duplicate, Trash, Up, Down, Merge, Fx, Folder, File, Close, Brush, Undo, Redo, Layers, History, Palette };
 void drawUiIcon(ImDrawList* dl, UiIcon icon, ImVec2 center, float size, ImU32 color);
 bool iconButton(const char* id, UiIcon icon, const char* tooltip, bool enabled = true, float size = 0);
 
