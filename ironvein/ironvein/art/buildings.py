@@ -6,6 +6,7 @@
 
 from ironvein.art.backgrounds import smoke
 from ironvein.art.canvas import Canvas, ramp
+from ironvein.art.props import barrel
 
 
 def factory(c: Canvas, x: int, gy: int, w: int = 40, h: int = 21, chimneys: int = 2, col: str = "rust") -> None:
@@ -50,7 +51,7 @@ def factory(c: Canvas, x: int, gy: int, w: int = 40, h: int = 21, chimneys: int 
         c.hline(wx - 1, top + 12, 5, t[0])  # подоконник
     # Ворота с тёплым светом изнутри
     gx = x + w // 2 - 4
-    c.glow(gx + 4, gy - 3, 6, ["lamp0"])
+    c.glow(gx + 4, gy - 6, 6, ["haze1", "lamp0"])
     c.rect(gx, gy - 9, 9, 9, "k")
     c.rect(gx + 1, gy - 8, 7, 8, "fire0")
     c.rect(gx + 2, gy - 6, 5, 6, "fire1")
@@ -64,12 +65,12 @@ def drill_rig(c: Canvas, x: int, gy: int) -> None:
     for i in range(h):
         s = i // 4
         y = gy - 1 - i
-        c.dot(x + s, y, "steel2")
-        c.dot(x + 17 - s, y, "steel1")
+        c.dot(x + s, y, "steel3")
+        c.dot(x + 17 - s, y, "steel2")
         if i % 6 == 0:
-            c.hline(x + s, y, 18 - 2 * s, "steel1")
+            c.hline(x + s, y, 18 - 2 * s, "steel2")
             j = min(i + 6, h - 1)
-            c.line(x + s, y, x + 17 - j // 4, gy - 1 - j, "steel0")
+            c.line(x + s, y, x + 17 - j // 4, gy - 1 - j, "steel1")
     c.box(x + 6, gy - h - 3, 6, 4, "rust", base=2)  # кронблок
     c.vline(x + 9, gy - h + 1, 20, "k")  # трос
     c.box(x + 7, gy - h + 21, 5, 4, "brass", base=1)  # талевый блок
@@ -124,11 +125,7 @@ def pumpjack(c: Canvas, x: int, gy: int, tanks: bool = True) -> None:
     c.dot(x + 23, gy - 7, "lamp2")
     if tanks:
         for i in range(3):
-            bx = x + 40 + i * 8
-            c.box(bx, gy - 9, 7, 9, "oil", base=1)
-            c.hline(bx + 1, gy - 7, 5, "brass1")
-            c.hline(bx + 1, gy - 3, 5, "brass1")
-            c.dot(bx + 1, gy - 7, "brass3")
+            barrel(c, x + 40 + i * 8, gy - 9)
 
 
 def furnace(c: Canvas, x: int, gy: int) -> None:
@@ -176,7 +173,7 @@ def refinery(c: Canvas, x: int, gy: int) -> None:
     c.vline(x + 9, gy - 33, 33, "steel1")  # лестница
     # Факел
     c.rect(x + 3, gy - 41, 2, 6, "steel1")
-    c.glow(x + 4, gy - 44, 8, ["haze0", "fire0", "fire1"])
+    c.glow(x + 4, gy - 44, 7, ["haze0", "haze1", "fire0"])
     c.poly([(x + 2, gy - 41), (x + 4, gy - 47), (x + 6, gy - 41)], "fire2")
     c.vline(x + 4, gy - 44, 3, "fire3")
     # Резервуары
@@ -206,7 +203,7 @@ def workshop(c: Canvas, x: int, gy: int) -> None:
         c.hline(x - 2 + i * 2, gy - 20 - i, 39 - i * 4, "rust1" if i % 2 else "rust2")
     c.line(x - 2, gy - 20, x + 17, gy - 30, "rust3")
     # Проём с тёплым светом
-    c.glow(x + 17, gy - 5, 8, ["lamp0"])
+    c.glow(x + 17, gy - 7, 7, ["haze1", "lamp0"])
     c.rect(x + 12, gy - 12, 11, 12, "k")
     c.rect(x + 13, gy - 11, 9, 11, "lamp0")
     c.rect(x + 14, gy - 9, 7, 9, "lamp1")
@@ -220,10 +217,16 @@ def workshop(c: Canvas, x: int, gy: int) -> None:
     ax = x + 40
     c.box(ax, gy - 6, 11, 3, "steel", base=1)
     c.rect(ax + 3, gy - 3, 5, 3, "steel1", "k")
-    c.glow(ax + 13, gy - 9, 5, ["fire0"])
-    c.sparkle(ax + 12, gy - 9, "fire3", 1, "fire1")
-    c.sparkle(ax + 15, gy - 12, "fire2", 1, "fire0")
-    c.dot(ax + 10, gy - 12, "fire2")
+    fx = ax + 14  # горн-жаровня
+    c.glow(fx + 2, gy - 6, 6, ["haze0", "haze1"])
+    c.box(fx, gy - 5, 5, 5, "steel", base=1)
+    c.hline(fx + 1, gy - 5, 3, "fire2")
+    c.dot(fx + 2, gy - 6, "fire3")
+    c.dot(fx + 1, gy - 6, "fire1")
+    c.dot(fx + 3, gy - 7, "fire2")
+    c.sparkle(ax + 6, gy - 10, "fire3", 1, "fire1")
+    c.dot(ax + 9, gy - 12, "fire2")
+    c.dot(fx + 4, gy - 11, "fire1")
 
 
 def market_hall(c: Canvas, x: int, gy: int, w: int = 54, h: int = 30) -> None:
@@ -289,21 +292,46 @@ def gear(c: Canvas, cx: int, cy: int, r: int = 3, ramp_name: str = "brass") -> N
 
 
 def rock(c: Canvas, x: int, gy: int, res: str) -> None:
-    """Забой: скальная стена с прожилками руды/угля и россыпь кусков у подножия."""
+    """Забой 38×20: скальный холм с прожилками руды/угля, крепь штольни с фонарём, куски породы у подножия."""
     main = {"ore": ("ore0", "ore1", "ore2"), "coal": ("coal0", "coal1", "coal2")}.get(res, ("steel0", "steel1", "steel2"))
-    for i in range(27):
-        hgt = 8 + (i * 13 % 6) + min(i, 26 - i) // 3
-        c.vline(x + i, gy - hgt, hgt, "steel1" if i % 5 else "steel0")
-        c.dot(x + i, gy - hgt, "steel2")
-        c.dot(x + i, gy - hgt + 1, "steel2" if i % 3 else "steel1")
-    for _ in range(18):  # прожилки
-        px, py = x + c.rnd.randrange(2, 25), gy - c.rnd.randrange(2, 11)
-        c.dot(px, py, main[1])
-        c.dot(px + 1, py, main[2])
-        c.dot(px, py + 1, main[0])
-    c.sparkle(x + 9, gy - 8, "white" if res != "coal" else "steel3")
+    hill = [(x, gy), (x + 3, gy - 10), (x + 9, gy - 17), (x + 17, gy - 20), (x + 25, gy - 16), (x + 31, gy - 9),
+            (x + 36, gy)]
+    c.poly(hill, "steel1")
+    # Освещённая кромка сверху-слева и тень справа
+    for i in range(37):
+        top = next((j for j in range(gy - 21, gy) if c.get(x + i, j) == c.rgb("steel1")), None)
+        if top is None:
+            continue
+        c.dot(x + i, top, "steel3" if i < 18 else "steel2")
+        if i < 22:
+            c.dot(x + i, top + 1, "steel2")
+        if i > 22:
+            for j in range(top + 1, gy):
+                if c.threshold(x + i, j, "bayer4") < (i - 22) / 14:
+                    c.dot(x + i, j, "steel0")
+    for _ in range(5):  # трещины
+        px, py = x + c.rnd.randrange(4, 32), gy - c.rnd.randrange(3, 13)
+        c.line(px, py, px + c.rnd.randrange(-2, 3), py + 2, "steel0")
+    for _ in range(16):  # прожилки
+        px, py = x + c.rnd.randrange(3, 33), gy - c.rnd.randrange(2, 14)
+        if c.get(px, py) in (c.rgb("steel1"), c.rgb("steel0")):
+            c.dot(px, py, main[1])
+            c.dot(px + 1, py, main[2])
+            c.dot(px, py + 1, main[0])
+    # Штольня: деревянная крепь, тёмный проём, фонарь
+    ax = x + 11
+    c.rect(ax, gy - 11, 11, 11, "k")
+    c.glow(ax + 5, gy - 3, 4, ["oil2"])
+    c.rect(ax, gy - 12, 11, 2, "wood2", "wood0")
+    c.rect(ax, gy - 10, 2, 10, "wood1")
+    c.vline(ax, gy - 10, 10, "wood2")
+    c.rect(ax + 9, gy - 10, 2, 10, "wood0")
+    c.glow(ax + 5, gy - 8, 3, ["lamp0"])
+    c.dot(ax + 5, gy - 9, "lamp2")
+    c.dot(ax + 5, gy - 10, "k")
+    c.sparkle(x + 28, gy - 12, "white" if res != "coal" else "steel3")
     for i in range(5):  # куски
-        bx, by = x + 29 + i * 4, gy - 2 - (i % 2)
+        bx, by = x + 37 + i * 4, gy - 2 - (i % 2)
         c.rect(bx, by, 3, 2, main[1])
         c.dot(bx, by, main[2])
         c.dot(bx + 2, by + 1, main[0])

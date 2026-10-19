@@ -371,6 +371,13 @@ class Canvas:
                 else:
                     self.rect(wx, wy, ww, wh, off)
 
+    def shadow(self, x: int, y: int, w: int, c: Color = "oil0") -> None:
+        """Контактная тень под предметом: строка y шириной w со «рваными» дизерными краями."""
+        self.hline(x + 2, y, w - 4, c)
+        for xx in (x, x + 1, x + w - 2, x + w - 1):
+            if self.threshold(xx, y, "checker") < 0.5:
+                self.dot(xx, y, c)
+
     def speckle(self, x: int, y: int, w: int, h: int, colors: list[Color], n: int) -> None:
         """n случайных точек цветов colors в области (гравий, крошка руды, пятна ржавчины)."""
         for _ in range(n):

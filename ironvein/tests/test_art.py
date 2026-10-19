@@ -1,5 +1,6 @@
 import io
 
+import pytest
 from PIL import Image
 
 from ironvein.art import SCENES, render_png
@@ -36,3 +37,41 @@ def test_unthemed_scenes_share_one_render():
     assert normalize_scene("assembly@mazut") == "assembly"
     assert render_png("done@rust") == render_png("done@kotlo") == render_png("done")
     assert normalize_scene("truck@mazut") == "truck@mazut" and normalize_scene("zzz@rust") == "start@rust"
+
+
+def test_every_scene_is_fast_and_small():
+    """Каждая сцена (и с каждой локацией) рисуется без кэша быстрее 200 мс и весит меньше 250 КБ."""
+    import time
+
+    from ironvein.art.render import THEMES, UNTHEMED, _render
+    names = [n for n in SCENES] + [f"{n}@{t}" for n in SCENES if n not in UNTHEMED for t in THEMES]
+    for name in names:
+        t0 = time.perf_counter()
+        png = _render.__wrapped__(name)
+        dt = time.perf_counter() - t0
+        assert dt < 0.2, (name, dt)
+        assert len(png) < 250_000, (name, len(png))
+
+
+def test_render_is_deterministic():
+    from ironvein.art.render import _render
+    for name in ("start", "truck@mazut", "item_crest", "market@kotlo"):
+        assert _render.__wrapped__(name) == _render.__wrapped__(name), name
+
+
+@pytest.mark.xfail(reason="сцены inspect/masterwork добавляет арт-workflow (этап композиции)", strict=False)
+def test_every_scene_name_used_by_the_bot_exists():
+    """Имя сцены, которого нет в SCENES, молча превращается в заставку — ловим это тестом по исходникам."""
+    import re
+    from pathlib import Path
+
+    from ironvein.art.render import SCENES as ALL
+    src = Path(__file__).resolve().parents[1] / "ironvein"
+    used = set()
+    for f in list((src / "handlers").glob("*.py")) + [src / "bot.py"]:
+        text = f.read_text()
+        used |= set(re.findall(r'scene\s*=\s*f?"([a-z_]+)', text))
+        used |= set(re.findall(r'"(item_watch|item_paint|item_crest|inspect|masterwork|truck_\w+)"', text))
+    used = {n for n in used if not n.endswith("_")} - {"scene"}  # f"mine_{res}" — префикс, не имя
+    missing = sorted(n for n in used if n not in ALL)
+    assert not missing, missing
