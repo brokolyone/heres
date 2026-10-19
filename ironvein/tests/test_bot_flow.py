@@ -43,6 +43,7 @@ class FakeSession(BaseSession):
         super().__init__()
         self.calls = []
         self.history = []  # не очищается: для проверки отсутствия сбоев за весь тест
+        self.files = {}  # выданный фейковый file_id -> исходный файл (для живого повтора в Telegram)
         self._mid = 100
 
     async def close(self):
@@ -60,6 +61,8 @@ class FakeSession(BaseSession):
         now = datetime.now(UTC)
         if isinstance(method, (SendPhoto, EditMessageMedia)):
             caption = method.caption if isinstance(method, SendPhoto) else method.media.caption
+            src = method.photo if isinstance(method, SendPhoto) else method.media.media
+            self.files[f"f{self._mid}"] = self.files.get(src, src) if isinstance(src, str) else src
             return Message(message_id=self._mid, date=now, chat=chat, caption=caption,
                            photo=[PhotoSize(file_id=f"f{self._mid}", file_unique_id=f"u{self._mid}", width=576, height=324)])
         if isinstance(method, (SendMessage, EditMessageText, SendInvoice)):
