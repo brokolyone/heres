@@ -8,6 +8,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand, CallbackQuery, Message
 from sqlalchemy import select
 
+from ironvein.art import SCENES
 from ironvein.config import get_settings
 from ironvein.db import dispose_engine, get_sessionmaker, init_engine
 from ironvein.domain import quality
@@ -110,7 +111,9 @@ def make_notifier(bot: Bot):
                                      + (f" · прочность {it.max_durability}" if it.max_durability else ""))
                         if tier.code == "master":
                             lines.append("✦ <b>Мастерская работа!</b> Такое на рынке ценят.")
-                        scene = "masterwork" if tier.code == "master" else "inspect"
+                        alt = "masterwork" if tier.code == "master" else "inspect"
+                        if alt in SCENES:  # без сцены остаётся «мастерская»/«сборка», а не заставка
+                            scene = alt
                 elif j.kind == "mine":
                     res = next(iter(j.outputs))
                     scene = f"mine_{res}" if j.manual else "drill" if res != "oil" else "pump"

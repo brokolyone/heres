@@ -77,6 +77,17 @@ def quality_score(item: Item) -> int:
     return int(q.get("score", quality.COMMON_SCORE)) if isinstance(q, dict) else quality.COMMON_SCORE
 
 
+def button_title(item: Item, limit: int = 32) -> str:
+    """Подпись для кнопки: метка качества впереди, укорачивается только название — ступень всегда видна."""
+    d = ITEMS[item.def_code]
+    tier = quality_of(item)
+    mark = f"{quality.stars(tier)} " if tier is not None else ""
+    tail = f" №{item.serial_no:03d}" if item.serial_no is not None and d.kind == "premium" else f" #{item.id}"
+    room = max(4, limit - len(mark) - len(tail))
+    name = d.name if len(d.name) <= room else d.name[: room - 1] + "…"
+    return f"{mark}{name}{tail}"
+
+
 def title(item: Item) -> str:
     d = ITEMS[item.def_code]
     s = f"{d.name} #{item.id}"

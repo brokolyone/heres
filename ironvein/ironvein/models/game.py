@@ -45,6 +45,8 @@ class Job(Base):
         CheckConstraint("runs >= 1", name="runs_positive"),
         Index("ix_jobs_due", "finishes_at", postgresql_where=text("status = 'running'")),
         Index("ix_jobs_started_at", "started_at"),
+        Index("ix_jobs_craft_exp", "actor_user_id", "recipe_code",
+              postgresql_where=text("kind = 'craft' AND status = 'completed'")),
         # Одна ручная смена на игрока одновременно — «рабочие руки» не размножаются.
         Index("uq_jobs_manual_running", "actor_user_id", unique=True,
               postgresql_where=text("manual AND status = 'running'")),

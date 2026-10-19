@@ -164,7 +164,8 @@ async def start_craft(session: AsyncSession, user_id: int, account_id: int, reci
     facility = None
     if rec.facility is not None:
         if facility_id is None:
-            facility_id = await find_idle_facility(session, account_id, location, rec.facility)
+            facility_id = await find_idle_facility(session, account_id, location, rec.facility,
+                                                   min_durability=max(1, rec.wear * runs))
             if facility_id is None:
                 raise GameError(f"Нужна свободная установка «{_facility_name(rec.facility)}» в этой локации.")
         facility = await items.lock_owned(session, facility_id, account_id)
@@ -223,11 +224,13 @@ def _facility_name(f: str) -> str:
 
 async def find_idle_facility(session: AsyncSession, owner_id: int, location: str, facility: str,
                              min_durability: int = 1) -> int | None:
+    """Свободная установка с лучшим состоянием (доля прочности влияет на качество), способная выдержать износ."""
     codes = [c for c, d in ITEMS.items() if d.facility == facility]
+    condition = Item.durability * 1.0 / func.nullif(Item.max_durability, 0)
     return await session.scalar(
         select(Item.id).where(Item.owner_id == owner_id, Item.location_code == location, Item.status == ITEM_IDLE,
                               Item.def_code.in_(codes), Item.durability >= min_durability)
-        .order_by(Item.durability.desc(), Item.id).limit(1))
+        .order_by(condition.desc().nulls_last(), Item.durability.desc(), Item.id).limit(1))
 
 
 # --- Ремонт ------------------------------------------------------------------------------------------

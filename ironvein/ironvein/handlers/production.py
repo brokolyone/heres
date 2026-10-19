@@ -19,7 +19,8 @@ from ironvein.domain.catalog import (
     item_name,
     resource_name,
 )
-from ironvein.domain.errors import GameError
+from ironvein.domain.errors import GameError, StaleButton
+from ironvein.domain.vehicles import truck_stats
 from ironvein.handlers import fmt
 from ironvein.handlers.base import ask, on_input, parse_int
 from ironvein.handlers.ui import (
@@ -311,9 +312,9 @@ async def cb_prod_list(cq: CallbackQuery, callback_data: Nav):
 
 
 def pick_modules(mods) -> dict:
-    """Первый свободный модуль каждого слота (по ID)."""
+    """Модуль по умолчанию для каждого слота: лучший по качеству (при равенстве — меньший ID)."""
     chosen = {}
-    for m in mods:
+    for m in sorted(mods, key=lambda m: (-items.quality_score(m), m.id)):
         chosen.setdefault(ITEMS[m.def_code].stats["slot"], m)
     return chosen
 
@@ -328,27 +329,151 @@ def _fac_key(f):
     return "hand" if f is None else f
 
 
+def enc_ids(ids: list[int]) -> str:
+    """Компактная запись ID модулей для callback_data (base36): четыре ID укладываются в лимит 64 байта."""
+    digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+
+    def b36(n: int) -> str:
+        out = ""
+        while True:
+            n, r_ = divmod(n, 36)
+            out = digits[r_] + out
+            if n == 0:
+                return out
+    return ".".join(b36(i) for i in ids)
+
+
+def dec_ids(text: str) -> list[int]:
+    try:
+        ids = [int(x, 36) for x in text.split(".")]
+    except ValueError:
+        raise StaleButton() from None
+    if len(ids) != 4 or any(i < 0 for i in ids):
+        raise StaleButton()
+    return ids
+
+
+NO_FACILITY_NOTE = "<i>Прогноз качества появится, когда освободится установка.</i>"
+
+
+async def assembly_screen(s, user, loc: str, ids: list[int] | None):
+    """Сборка грузовика: игрок выбирает модуль в каждом слоте, собирается ровно показанный набор."""
+    r = RECIPES["assemble_truck"]
+    acc, _ = await acting(s, user)
+    mods = await idle_modules(s, acc, loc)
+    by_slot: dict[int, list[Item]] = {}
+    for m in sorted(mods, key=lambda m: (-items.quality_score(m), m.id)):
+        by_slot.setdefault(ITEMS[m.def_code].stats["slot"], []).append(m)
+    default = pick_modules(mods)
+    chosen: dict[int, Item] = {}
+    for sl in range(4):
+        want = ids[sl] if ids else 0
+        pick = next((m for m in by_slot.get(sl, []) if m.id == want), None)
+        chosen[sl] = pick or default.get(sl)
+    stock = await free_stock(s, acc, loc)
+    fac_id = await production.find_idle_facility(s, acc, loc, "workshop")
+    facility = await s.get(Item, fac_id) if fac_id else None
+    q = None
+    if facility is not None and all(chosen.values()):
+        q = await production.quality_preview(s, user.id, r.code, facility=facility, modules=list(chosen.values()))
+    lines = [fmt.head(r.name, LOCATIONS[loc].name), recipe_line(r.code), fmt.section("Модули")]
+    rows = []
+    cur = [chosen[sl].id if chosen[sl] else 0 for sl in range(4)]
+    for sl in range(4):
+        m = chosen[sl]
+        cands = by_slot.get(sl, [])
+        if m is None:
+            lines.append(f"▸ {MODULE_SLOTS[sl]}: <b>нет</b> — изготовьте в мастерской")
+            continue
+        lines.append(f"▸ {MODULE_SLOTS[sl]}: {e(items.title(m))}" + (f" · вариантов {len(cands)}" if len(cands) > 1 else ""))
+        if len(cands) > 1:
+            nxt = cands[(cands.index(m) + 1) % len(cands)]
+            alt = list(cur)
+            alt[sl] = nxt.id
+            rows.append([btn(f"⟳ {MODULE_SLOTS[sl]}: {items.button_title(nxt, 30)}", Nav(s="asm", a=f"{loc}:{enc_ids(alt)}"))])
+    lines.append(fmt.kv("Запчасти", f"{stock.get('parts', 0)} из {r.inputs['parts']}") + " · " +
+                 fmt.kv("мастерская", "свободна" if fac_id else "нет свободной"))
+    if q is not None:
+        lines += quality_lines(q, True)
+    elif fac_id is None:
+        lines.append(NO_FACILITY_NOTE)
+    if all(chosen.values()):
+        st = truck_stats([chosen[sl].def_code for sl in range(4)])
+        lines.append(fmt.kv("Характеристики", f"{st.speed_kmh} км/ч · груз {st.payload} · {st.fuel_per_100km}/100 км · "
+                                              f"запас хода {st.range_km} км"))
+        k = nonce()
+        z = f"{loc}:{enc_ids(cur)}"
+        rows.append([btn("🔧 Собрать грузовик", Do(a="asm_go", z=z, k=k))])
+        rows.append([btn("✦ Тщательно: +50% времени", Do(a="asm_go", y=1, z=z, k=k))])
+    return "\n".join(lines), kb(*rows, back("prod_list", arg=f"{loc}:workshop"))
+
+
+@router.callback_query(Nav.filter(F.s == "asm"))
+async def cb_asm(cq: CallbackQuery, callback_data: Nav):
+    loc, packed = parts(callback_data.a, 2)
+    if loc not in LOCATIONS:
+        raise StaleButton()
+    ids = dec_ids(packed) if packed else None
+
+    async def run():
+        async with tx() as s:
+            text, markup = await assembly_screen(s, await current_user(s, cq.from_user), loc, ids)
+        await show(cq, text, markup, scene=f"assembly@{loc}")
+    await guarded(cq, run)
+
+
+@router.callback_query(Do.filter(F.a == "asm_go"))
+async def do_asm_go(cq: CallbackQuery, callback_data: Do):
+    loc, packed = parts(callback_data.z, 2)
+    ids = dec_ids(packed)
+
+    async def run():
+        async with tx() as s:
+            user = await current_user(s, cq.from_user)
+            acc, _ = await acting(s, user)
+            job = await production.start_craft(s, user.id, acc, "assemble_truck", loc, module_ids=ids,
+                                               op_key=op_key(cq.from_user.id, callback_data.k),
+                                               careful=bool(callback_data.y))
+        await show(cq, "\n".join(craft_started_lines(job)), kb([btn("⚙ Задания", Nav(s="production"))], back()),
+                   scene=f"assembly@{loc}")
+    await guarded(cq, run)
+
+
+def craft_started_lines(job) -> list[str]:
+    lines = [fmt.ok(f"Задание #{job.id} запущено"), e(production.describe_job(job)),
+             fmt.kv("Списано", ", ".join(f"{resource_name(k)} {v}" for k, v in job.inputs.items()) or "—"),
+             fmt.kv("Готово через", fmt.left(job.finishes_at))]
+    if "q_base" in (job.params or {}):
+        lo = quality.tier_for(max(0, job.params["q_base"] - quality.ROLL_SPREAD))
+        hi = quality.tier_for(min(100, job.params["q_base"] + quality.ROLL_SPREAD))
+        span = lo.name if lo == hi else f"{lo.name} — {hi.name}"
+        lines.append(fmt.kv("Ожидаемое качество", span) + (" · ✦ тщательно" if job.params.get("careful") else ""))
+    return lines
+
+
 @router.callback_query(Nav.filter(F.s == "prod_rec"))
 async def cb_prod_rec(cq: CallbackQuery, callback_data: Nav):
     loc, code = parts(callback_data.a, 2)
     r = RECIPES.get(code)
     if r is None or loc not in LOCATIONS:
         return await cq.answer("Устаревшая кнопка.", show_alert=True)
+    if r.item_inputs:  # сборка грузовика — отдельный экран с выбором модулей
+        return await cb_asm(cq, Nav(s="asm", a=f"{loc}:"))
     async with tx() as s:
         user = await current_user(s, cq.from_user)
         acc, _ = await acting(s, user)
         stock = await free_stock(s, acc, loc)
-        mods = await idle_modules(s, acc, loc) if r.item_inputs else []
         fac_id = await production.find_idle_facility(s, acc, loc, r.facility) if r.facility else None
         facility = await s.get(Item, fac_id) if fac_id else None
-        chosen_mods = list(pick_modules(mods).values()) if r.item_inputs else []
-        q = await production.quality_preview(s, user.id, code, facility=facility, modules=chosen_mods)
+        q = None
+        if r.facility is None or facility is not None:
+            q = await production.quality_preview(s, user.id, code, facility=facility)
     k = nonce()
     lines = [fmt.head(r.name, LOCATIONS[loc].name), recipe_line(code)]
     if r.inputs:
         lines.append(fmt.section("На складе"))
-        lines.append(fmt.table([(resource_name(res), stock.get(res, 0), f"нужно {q}") for res, q in r.inputs.items()], "lrl"))
-    possible = min([stock.get(res, 0) // q for res, q in r.inputs.items()] or [r.max_runs])
+        lines.append(fmt.table([(resource_name(res), stock.get(res, 0), f"нужно {n}") for res, n in r.inputs.items()], "lrl"))
+    possible = min([stock.get(res, 0) // n for res, n in r.inputs.items()] or [r.max_runs])
     if r.facility:
         lines.append(f"Установка: {FACILITY_RU[r.facility]} — " + ("свободна" if fac_id else "<b>нет свободной</b>")
                      + f", износ {r.wear} за запуск.")
@@ -356,15 +481,9 @@ async def cb_prod_rec(cq: CallbackQuery, callback_data: Nav):
         lines.append("Ручная работа: занимает ваши руки (одна смена одновременно).")
     if q is not None:
         lines += quality_lines(q, r.facility is not None)
-    if r.item_inputs:
-        chosen = pick_modules(mods)
-        lines.append(fmt.section("Модули к сборке"))
-        for sl in range(4):
-            m = chosen.get(sl)
-            lines.append(f"▸ {MODULE_SLOTS[sl]}: " + (e(items.title(m)) if m else "<b>нет</b>"))
-        rows = [[btn("🔧 Собрать грузовик", Do(a="craft", x=1, z=f"{loc}:{code}", k=k))],
-                [btn("✦ Тщательно: +50% времени", Do(a="craft", x=1, y=1, z=f"{loc}:{code}", k=k))]]
-    elif q is not None:
+    elif r.output_item and fac_id is None:
+        lines.append(NO_FACILITY_NOTE)
+    if r.output_item:
         mark = "▶" if possible >= 1 else "·"
         rows = [[btn(f"{mark} Изготовить", Do(a="craft", x=1, z=f"{loc}:{code}", k=k))],
                 [btn("✦ Тщательно: +50% времени", Do(a="craft", x=1, y=1, z=f"{loc}:{code}", k=k))]]
@@ -372,9 +491,8 @@ async def cb_prod_rec(cq: CallbackQuery, callback_data: Nav):
         runs = [n for n in (1, 2, 5, 10) if n <= r.max_runs]
         rows = [[btn(f"▶ ×{n}" if n <= possible else f"×{n}", Do(a="craft", x=n, z=f"{loc}:{code}", k=k)) for n in runs]]
         lines.append(f"Сырья хватает на запусков: <b>{min(possible, r.max_runs)}</b>")
-    scene = "assembly" if r.output_item == "truck" else SCENE_BY_FAC[r.facility]
     await show(cq, "\n".join(lines), kb(*rows, back("prod_list", arg=f"{loc}:{_fac_key(r.facility)}")),
-               scene=f"{scene}@{loc}")
+               scene=f"{SCENE_BY_FAC[r.facility]}@{loc}")
     await cq.answer()
 
 
@@ -394,14 +512,7 @@ async def do_craft(cq: CallbackQuery, callback_data: Do):
                                                careful=bool(callback_data.y))
         r = RECIPES[code]
         scene = "assembly" if r.output_item == "truck" else SCENE_BY_FAC[r.facility]
-        lines = [fmt.ok(f"Задание #{job.id} запущено"), e(production.describe_job(job)),
-                 fmt.kv("Списано", ", ".join(f"{resource_name(k)} {v}" for k, v in job.inputs.items()) or "—"),
-                 fmt.kv("Готово через", fmt.left(job.finishes_at))]
-        if "q_base" in (job.params or {}):
-            lo, hi = quality.tier_for(max(0, job.params["q_base"] - quality.ROLL_SPREAD)), \
-                quality.tier_for(min(100, job.params["q_base"] + quality.ROLL_SPREAD))
-            span = lo.name if lo == hi else f"{lo.name} — {hi.name}"
-            lines.append(fmt.kv("Ожидаемое качество", span) + (" · ✦ тщательно" if job.params.get("careful") else ""))
+        lines = craft_started_lines(job)
         await show(cq, "\n".join(lines), kb([btn("⚙ Задания", Nav(s="production")),
                                              btn("↻ Ещё", Nav(s="prod_rec", a=f"{loc}:{code}"))], back()),
                    scene=f"{scene}@{loc}")
@@ -425,7 +536,7 @@ async def equipment_screen(s, acc: int, label: str):
         where = LOCATIONS[it.location_code].name if it.location_code else "при себе"
         dur = f" · <code>{fmt.gauge(it.durability, it.max_durability, 5)}</code>" if it.max_durability else ""
         lines.append(f"{KIND_ICON.get(d.kind, '▸')} {e(items.title(it))}{dur} · {where} · {items.STATUS_RU[it.status]}")
-        rows.append(btn(f"{KIND_ICON.get(d.kind, '')} {items.title(it)}"[:32], Nav(s="item", a=str(it.id))))
+        rows.append(btn(f"{KIND_ICON.get(d.kind, '')} {items.button_title(it, 30)}", Nav(s="item", a=str(it.id))))
     if not its:
         lines.append("Пусто. Инструменты и установки делаются в ⚙ Производстве.")
     grid = [rows[i:i + 2] for i in range(0, len(rows), 2)]

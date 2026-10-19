@@ -233,7 +233,7 @@ async def trip_card(s, acc: int, shipment_id: int):
         for it in portable:
             if (sh.mode == "foot" and not ITEMS[it.def_code].portable) or transport.item_weight(it.def_code) > free_cap:
                 continue
-            rows.append([btn(f"+ {items.title(it)}"[:40], Do(a="trip_item", x=sh.id, y=it.id, k=k))])
+            rows.append([btn(f"+ {items.button_title(it, 36)}", Do(a="trip_item", x=sh.id, y=it.id, k=k))])
         rows.append([btn("▶ Отправить", Do(a="trip_go", x=sh.id, k=k)), btn("✕ Отменить", Do(a="trip_cancel", x=sh.id, k=k))])
         lines.append("<i>Всё зарезервировано. До отправления рейс можно отменить, в пути — нет.</i>")
     scene = ship_scene([c.resource for c in cargo if c.resource], armored, painted, sh.mode == "foot")

@@ -315,7 +315,7 @@ async def do_fillbid(cq: CallbackQuery, callback_data: Do):
         if not mine:
             raise GameError("У вас нет подходящего свободного предмета в нужной локации.")
         k = nonce()
-        rows = [[btn(f"Отдать {items.title(it)}"[:40], Do(a="fillbid_go", x=o.id, y=it.id, k=k))] for it in mine]
+        rows = [[btn(f"Отдать {items.button_title(it, 34)}", Do(a="fillbid_go", x=o.id, y=it.id, k=k))] for it in mine]
         await show(cq, fmt.head("Продажа по заявке", f"#{o.id}: {item_name(o.item_def)} за {fmt.cr(o.price)}")
                    + "\nКакой экземпляр отдать?",
                    kb(*rows, back("ibook", arg=o.item_def)))

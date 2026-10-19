@@ -349,3 +349,45 @@ async def test_craft_quality_via_buttons_and_notification(env, sm):
     env.session.calls.clear()
     await p.press(Nav(s="item", a=str(tank.id)))
     assert "Качество:" in " ".join(env.texts())
+
+
+async def test_truck_assembly_module_picker(env, sm):
+    from ironvein.handlers.production import dec_ids, enc_ids
+    from ironvein.models import Item, Job
+    from tests.helpers import give_item
+    p = Player(env, 2101, "Сборщик")
+    await p.text("/start")
+    u = await p.db_id(sm)
+    await give_item(sm, u, "workshop")
+    await give(sm, u, "rust", "parts", 4)
+    bad = {"quality": {"score": 10, "tier": "flawed"}}
+    good = {"quality": {"score": 95, "tier": "master"}}
+    bad_ids = [await give_item(sm, u, c, attrs=bad) for c in ("chassis", "engine_d8", "tank", "body_cargo")]
+    good_ids = [await give_item(sm, u, c, attrs=good) for c in ("chassis", "engine_d4", "tank", "body_light")]
+    assert dec_ids(enc_ids([0, 35, 36, 10**12])) == [0, 35, 36, 10**12]
+    env.session.calls.clear()
+    await p.press(Nav(s="prod_rec", a="rust:assemble_truck"))
+    screen = " ".join(env.texts())
+    assert "★★★★" in screen and "вариантов 2" in screen  # по умолчанию — лучшие модули, есть выбор
+    # Игрок явно выбирает «плохой» двигатель Д-8 (тип важнее качества) — собирается ровно выбранный набор.
+    chosen = [good_ids[0], bad_ids[1], good_ids[2], good_ids[3]]
+    await p.press(Nav(s="asm", a=f"rust:{enc_ids(chosen)}"))
+    assert "Двигатель Д-8" in " ".join(env.texts())
+    await p.press(Do(a="asm_go", z=f"rust:{enc_ids(chosen)}", k="asm1"))
+    async with sm() as s:
+        job = await s.scalar(select(Job).where(Job.recipe_code == "assemble_truck"))
+        used = (await s.scalars(select(Item.id).where(Item.id.in_(chosen), Item.status == "busy"))).all()
+    assert sorted(job.consumed_items) == sorted(chosen) and len(used) == 4
+    # Подделанный набор (чужие/несуществующие ID) отвергается понятной ошибкой, без сбоя.
+    env.session.calls.clear()
+    await p.press(Do(a="asm_go", z=f"rust:{enc_ids([1, 2, 3, 999999])}", k="asm2"))
+    assert env.texts()
+
+
+async def test_forecast_waits_for_free_facility(env, sm):
+    p = Player(env, 2201, "Без мастерской")
+    await p.text("/start")
+    env.session.calls.clear()
+    await p.press(Nav(s="prod_rec", a="rust:build_drill"))
+    text = " ".join(env.texts())
+    assert "когда освободится установка" in text and "Отремонтированная" not in text

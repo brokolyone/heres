@@ -110,4 +110,5 @@ def scaled_durability(max_durability: int, tier: Tier) -> int:
 
 
 def stars(tier: Tier) -> str:
-    return "★" * tier.stars if tier.stars else "брак"
+    """Метка ступени: звёзды, для брака — ✗ (название ступени пишется отдельно, без повтора)."""
+    return "★" * tier.stars if tier.stars else "✗"

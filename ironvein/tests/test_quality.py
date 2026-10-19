@@ -142,3 +142,28 @@ async def test_items_without_quality_count_as_common(sm):
     u = await make_user(sm, 1)
     pick = (await user_items(sm, u, "pick"))[0]  # стартовая кирка
     assert quality_of(pick) is None and quality_score(pick) == quality.COMMON_SCORE
+
+
+async def test_facility_auto_selection_prefers_condition(sm):
+    """Новая мастерская 100/150 (67%) лучше изношенной высококачественной 120/195 (62%) — по состоянию, не по числу."""
+    u = await make_user(sm, 1)
+    big = await give_item(sm, u, "workshop", max_durability=195)
+    small = await give_item(sm, u, "workshop")
+    async with sm() as s, s.begin():
+        await s.execute(update(Item).where(Item.id == big).values(durability=120))
+        await s.execute(update(Item).where(Item.id == small).values(durability=100))
+    async with sm() as s:
+        assert await production.find_idle_facility(s, u, "rust", "workshop") == small
+        # Но если износ запуска больше остатка, берётся та, что выдержит.
+        assert await production.find_idle_facility(s, u, "rust", "workshop", min_durability=110) == big
+
+
+def test_labels_for_flawed_and_buttons():
+    from ironvein.models import Item as It
+    from ironvein.services.items import button_title, title
+    flawed = It(id=7, def_code="drill", attrs={"quality": {"score": 10, "tier": "flawed"}})
+    master = It(id=8, def_code="engine_d12", attrs={"quality": {"score": 95, "tier": "master"}})
+    assert quality.stars(quality.TIER_BY_CODE["flawed"]) == "✗"
+    assert title(flawed).endswith("✗") and "брак" not in title(flawed)
+    b = button_title(master, 14)
+    assert b.startswith("★★★★") and b.endswith("#8") and len(b) <= 14 + 1
