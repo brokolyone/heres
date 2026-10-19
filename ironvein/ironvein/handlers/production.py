@@ -40,7 +40,7 @@ from ironvein.handlers.ui import (
 )
 from ironvein.models import ITEM_IDLE, Deposit, Item, Job, Stock
 from ironvein.services import companies, cosmetics, items, market, production, transport
-from ironvein.services.world import effective_regen, regen_deposit
+from ironvein.services.world import effective_regen, players_multiplier, regen_deposit
 
 router = Router(name="production")
 
@@ -100,12 +100,13 @@ async def cb_mine_loc(cq: CallbackQuery, callback_data: Nav):
                                 .with_for_update())).all()
         for d in deps:
             await regen_deposit(s, d)
+        mult = await players_multiplier(s)
     lines = [fmt.head(LOCATIONS[loc].name, LOCATIONS[loc].description)]
     rows = []
     for d in deps:
         lines.append(f"\n{RES_ICON.get(d.resource, '▸')} <b>{e(d.name)}</b> · {resource_name(d.resource)}")
         lines.append(f"<code>{fmt.gauge(d.stock, d.max_stock)}</code> {d.stock}/{d.max_stock} · "
-                     f"+{round(effective_regen(d.regen_per_hour))}/ч")
+                     f"+{round(effective_regen(d.regen_per_hour, mult))}/ч")
         rows.append([btn(f"{RES_ICON.get(d.resource, '')} {d.name}", Nav(s="mine_dep", a=str(d.id)))])
     if not deps:
         lines.append("\nЗдесь нечего добывать: это торговый узел. Добыча — в Ржавой Пади и Мазутном Яре.")

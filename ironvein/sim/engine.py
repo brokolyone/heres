@@ -111,6 +111,7 @@ class Config:
     collectors: int = 0
     premium_items: int = 0
     regen_mult: float = 1.0  # множитель регенерации месторождений (для проверки предлагаемых правок каталога)
+    scale_players: int = 100  # как в игре: регенерация × max(1, активные / scale_players); 0 — без масштабирования
     labor_value: int = 20  # субъективная ценность смены для оценки товаров агентами (не цена бота)
 
 
@@ -280,9 +281,11 @@ class Sim:
         return 0
 
     def regen(self):
+        active = sum(1 for a in self.agents if a.active)
+        players_mult = max(1.0, active / self.cfg.scale_players) if self.cfg.scale_players else 1.0
         for d in self.deposits.values():
             scale = d["scale"] if self.t < self.cfg.crisis_until else 1.0
-            d["acc"] += d["regen"] * scale * TICK_MIN / 60
+            d["acc"] += d["regen"] * scale * players_mult * TICK_MIN / 60
             whole = int(d["acc"])
             d["acc"] -= whole
             cap = int(d["max"] * scale) if self.t < self.cfg.crisis_until else d["max"]

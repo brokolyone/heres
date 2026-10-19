@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     contract_fee_bps: int = 200
     company_fee: int = 500
     warehouse_capacity: int = 2000
+    deposit_scale_players: int = 100  # регенерация × max(1, активные за сутки / N); 0 — без масштабирования
     job_poll_seconds: float = 5.0
     premium_reservation_minutes: int = 30
 

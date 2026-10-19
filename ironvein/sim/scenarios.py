@@ -11,6 +11,7 @@ def scenarios(scale: int = 100, days: int = 3) -> dict[str, Config]:
         "baseline_10": Config(players=10, ticks=t),
         "baseline_100": Config(players=100, ticks=t),
         "baseline_1000": Config(players=1000, ticks=t),
+        "baseline_1000_static": Config(players=1000, ticks=t, scale_players=0),
         "oil_shortage": Config(players=scale, ticks=t, deposit_scale={"oil": 0.05}, crisis_until=t // 2),
         "steel_monopoly": Config(players=scale, ticks=t, monopolist=True),
         "liquidity_shortage": Config(players=scale, ticks=t, starter_cash=50),

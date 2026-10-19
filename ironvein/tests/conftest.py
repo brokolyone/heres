@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from alembic import command
 from ironvein.config import get_settings
 from ironvein.services import clock, users
-from ironvein.services.world import ensure_world
+from ironvein.services.world import ensure_world, reset_multiplier_cache
 
 TEST_DB = os.environ.get("TEST_DATABASE_URL", "postgresql+asyncpg://postgres@127.0.0.1:5432/ironvein_test")
 HERE = os.path.dirname(os.path.dirname(__file__))
@@ -43,6 +43,7 @@ async def sm(engine):
     """Чистый мир для каждого теста."""
     clock.reset()
     get_settings.cache_clear()
+    reset_multiplier_cache()
     os.environ.setdefault("ENVIRONMENT", "development")
     async with engine.begin() as conn:
         tables = (await conn.execute(text(

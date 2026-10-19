@@ -254,3 +254,32 @@ async def test_catalog_change_of_deposit_max_is_safe(sm, monkeypatch):
         await ensure_world(s)
     dep = await deposit(sm, "rust_north")
     assert dep.max_stock == 100 and dep.stock == 100
+
+
+async def test_regeneration_scales_with_active_players(sm, monkeypatch):
+    from sqlalchemy import update
+
+    from ironvein.config import get_settings
+    from ironvein.models import Deposit
+    from ironvein.services.world import (
+        lock_deposit,
+        players_multiplier,
+        reset_multiplier_cache,
+    )
+    monkeypatch.setenv("DEPOSIT_SCALE_PLAYERS", "2")
+    get_settings.cache_clear()
+    reset_multiplier_cache()
+    users_ = [await make_user(sm, 300 + i) for i in range(4)]
+    for u in users_:  # четыре активных игрока при норме 2 → регенерация ×2
+        async with sm() as s, s.begin():
+            await production.start_mining(s, u, u, await deposit_id(sm, "rust_coal3"), None)
+    reset_multiplier_cache()
+    async with sm() as s:
+        assert await players_multiplier(s) == 2.0
+    async with sm() as s, s.begin():
+        await s.execute(update(Deposit).where(Deposit.code == "rust_red").values(stock=0, regen_at=clock.now()))
+    clock.advance(minutes=30)
+    async with sm() as s, s.begin():
+        dep = await lock_deposit(s, await deposit_id(sm, "rust_red"))
+        assert dep.stock == 400  # 400/ч × 0.5 ч × 2
+    get_settings.cache_clear()
