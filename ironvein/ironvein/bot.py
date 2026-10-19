@@ -167,7 +167,12 @@ async def main() -> None:
     sm = init_engine()
     async with sm() as s, s.begin():
         await ensure_world(s)
-    bot = Bot(settings.bot_token)
+    session = None
+    if settings.telegram_api_url:
+        from aiogram.client.session.aiohttp import AiohttpSession
+        from aiogram.client.telegram import TelegramAPIServer
+        session = AiohttpSession(api=TelegramAPIServer.from_base(settings.telegram_api_url))
+    bot = Bot(settings.bot_token, session=session)
     dp = build_dispatcher()
     await bot.set_my_commands([BotCommand(command=c, description=d) for c, d in COMMANDS])
     try:

@@ -32,6 +32,7 @@ from ironvein.handlers.ui import Do, Nav
 from ironvein.models import Item, MarketOrder, PremiumOrder
 from ironvein.models import User as DbUser
 from tests.helpers import give
+from tests.telegram_rules import check_method
 
 TG = 777001
 _DP = None
@@ -51,6 +52,7 @@ class FakeSession(BaseSession):
         yield b""
 
     async def make_request(self, bot, method, timeout=None):
+        check_method(method)  # правила настоящего Bot API: битый HTML, лимиты, callback_data
         self.calls.append(method)
         self.history.append(method)
         self._mid += 1

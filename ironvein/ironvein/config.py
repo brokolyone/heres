@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     bot_token: str = ""
+    telegram_api_url: str = ""  # свой Bot API сервер (Local Bot API); пусто — api.telegram.org
     database_url: str = "postgresql+asyncpg://ironvein:ironvein@localhost:5432/ironvein"
     admin_ids: Annotated[list[int], NoDecode] = Field(default_factory=list)
     environment: str = "development"

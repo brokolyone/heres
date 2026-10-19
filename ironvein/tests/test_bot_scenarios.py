@@ -291,3 +291,29 @@ async def test_runner_does_not_wait_for_slow_notifications(sm):
     assert res["jobs"] == 1  # экономика продвинулась, не дожидаясь уведомления
     gate.set()
     await drain_notifications()
+
+
+async def test_hostile_names_are_escaped_everywhere(env, sm):
+    """Имена с HTML-символами проходят через все экраны, где они показываются (валидатор Bot API в FakeSession)."""
+    evil = Player(env, 1901, "<b>Злой & «Хакер»</b> <script>")
+    admin = Player(env, 9001, "Админ")
+    await evil.text("/start")
+    await admin.text("/start")
+    await evil.press(Do(a="comp_new"))
+    await evil.text("A&B \"Сталь\" 'Ко'")
+    async with sm() as s:
+        comp = await s.scalar(select(Company))
+    assert comp is not None and "&" in comp.name
+    uid = await evil.db_id(sm)
+    await evil.press(Do(a="cinv", x=comp.id))
+    await evil.text("@p9001")
+    for cb in (Nav(s="menu"), Nav(s="profile"), Nav(s="inventory"), Nav(s="company"), Nav(s="comp", a=str(comp.id)),
+               Nav(s="cmembers", a=str(comp.id)), Nav(s="cpay", a=str(comp.id)), Nav(s="equipment")):
+        await evil.press(cb)
+    await admin.press(Nav(s="company"))  # приглашение с названием компании
+    await evil.press(Do(a="support"))
+    await evil.text("<i>не выдали</i> & вообще")
+    await admin.text(f"/admin_user {uid}")
+    await admin.text("/admin")
+    texts = " ".join(env.texts())
+    assert "&lt;b&gt;Злой" in texts and "A&amp;B" in texts
