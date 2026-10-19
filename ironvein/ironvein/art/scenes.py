@@ -82,8 +82,10 @@ def _scene_refinery(c: Canvas) -> None:
 def _scene_workshop(c: Canvas) -> None:
     backdrop(c)
     workshop(c, 18, 58)
-    gear(c, 92, 42, 4, "steel")
-    gear(c, 102, 49, 3, "brass")
+    crate(c, 90, 50, 9)  # ящик с готовыми шестернями у двери
+    gear(c, 94, 46, 4, "steel")
+    gear(c, 101, 47, 3, "brass")
+    barrel(c, 104, 49)
 
 
 def _scene_assembly(c: Canvas) -> None:
@@ -98,9 +100,10 @@ def _scene_repair(c: Canvas) -> None:
     ground(c)
     truck(c, 10, 64, "cargo", "steel", None)
     worker(c, 64, 63, "wrench", flip=True)
-    wrench(c, 80, 52)
-    gear(c, 94, 50, 4, "brass")
-    gear(c, 104, 56, 3, "steel")
+    crate(c, 92, 55, 8)  # ящик с запчастями, инструмент лежит на земле
+    gear(c, 96, 51, 3, "brass")
+    gear(c, 106, 61, 3, "steel")
+    wrench(c, 78, 61, lying=True)
 
 
 def _scene_truck(c: Canvas, body: str = "cargo", cargo: str | None = "crates", paint: str = "rust",
