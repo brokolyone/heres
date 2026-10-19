@@ -18,8 +18,6 @@ def scenarios(scale: int = 100, days: int = 3) -> dict[str, Config]:
         "transport_bottleneck": Config(players=scale, ticks=t, no_trucks=True),
         "workshop_stop": Config(players=scale, ticks=t, workshops_broken=True, crisis_until=t // 2),
         "company_concentration": Config(players=scale, ticks=t, company_size=max(2, scale // 5)),
-        "baseline_100_regen_x10": Config(players=100, ticks=t, regen_mult=10),
-        "baseline_1000_regen_x10": Config(players=1000, ticks=t, regen_mult=10),
         "premium_resale": Config(players=scale, ticks=t, collectors=max(1, scale // 20), premium_items=scale // 5),
     }
 

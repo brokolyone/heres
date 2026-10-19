@@ -2,6 +2,7 @@
 
 import html
 import logging
+import re
 import secrets
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -101,10 +102,23 @@ def _remember(scene: str, msg: Message | None) -> None:
         _photo_ids[scene] = msg.photo[-1].file_id
 
 
-def _fit(text: str, scene: str | None) -> str:
-    if scene and len(text) > CAPTION_LIMIT:
-        return text[: CAPTION_LIMIT - 2] + "…"
-    return text[:4096]
+_TAG = re.compile(r"<[^>]+>")
+
+
+def visible_len(text: str) -> int:
+    return len(html.unescape(_TAG.sub("", text)))
+
+
+def clip(text: str, limit: int = 4096) -> str:
+    """Усечение по границе строки: HTML-теги в наших экранах не переходят через строки, поэтому не ломаются."""
+    if visible_len(text) <= limit and len(text) <= 4096:
+        return text
+    out = []
+    for line in text.split("\n"):
+        if visible_len("\n".join(out + [line, "…"])) > limit or len("\n".join(out + [line])) > 4000:
+            break
+        out.append(line)
+    return "\n".join(out + ["…"])
 
 
 async def show(event: Message | CallbackQuery, text: str, markup: InlineKeyboardMarkup | None = None,
@@ -112,10 +126,16 @@ async def show(event: Message | CallbackQuery, text: str, markup: InlineKeyboard
     """Показывает экран. Для callback редактирует существующее сообщение, а не спамит новыми.
 
     scene — пиксельная картинка для экранов-действий; экраны статистики идут без картинки.
+    Если подпись не помещается в лимит Telegram (1024 видимых символа), экран уходит текстом.
     """
-    text = _fit(text, scene)
+    if scene and visible_len(text) > CAPTION_LIMIT:
+        scene = None
+    text = clip(text)
     if isinstance(event, CallbackQuery):
         msg = event.message
+        if not isinstance(msg, Message):  # слишком старое/недоступное сообщение
+            await _send(event.bot, event.from_user.id, text, markup, scene)
+            return
         try:
             if scene and msg.photo:
                 res = await msg.edit_media(InputMediaPhoto(media=_photo(scene), caption=text, parse_mode="HTML"),
@@ -140,16 +160,17 @@ async def show(event: Message | CallbackQuery, text: str, markup: InlineKeyboard
 
 async def _send(bot: Bot, chat_id: int, text: str, markup, scene: str | None) -> None:
     if scene:
-        res = await bot.send_photo(chat_id, _photo(scene), caption=_fit(text, scene), reply_markup=markup,
-                                   parse_mode="HTML")
+        res = await bot.send_photo(chat_id, _photo(scene), caption=text, reply_markup=markup, parse_mode="HTML")
         _remember(scene, res)
     else:
         await bot.send_message(chat_id, text, reply_markup=markup, parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def notify(bot: Bot, chat_id: int, text: str, scene: str | None = None, markup=None) -> None:
+    if scene and visible_len(text) > CAPTION_LIMIT:
+        scene = None
     try:
-        await _send(bot, chat_id, text, markup, scene)
+        await _send(bot, chat_id, clip(text), markup, scene)
     except Exception:  # пользователь мог заблокировать бота — это не ошибка экономики
         log.info("notify %s failed", chat_id)
 

@@ -376,7 +376,12 @@ class Sim:
             return
         if a.home == "mazut" and not a.equip.get("refinery") and a.has("oil", 12) and self.craft(a, "hand_distill"):
             return
-        if a.home == "rust":
+        needs_fuel = a.home == "rust" and a.trucks and not a.has("diesel", 8) and (self.t + a.id) % 3 == 0
+        if needs_fuel and a.has("oil", 4) and self.craft(a, "hand_distill"):
+            return
+        if a.home == "rust" and needs_fuel:
+            res = "oil"  # Ржавый колодец: топливо для первого рейса
+        elif a.home == "rust":
             res = "ore" if a.stock[(a.home, "ore")] * 3 <= a.stock[(a.home, "coal")] * 4 else "coal"
         else:
             res = "oil"
@@ -405,7 +410,8 @@ class Sim:
                 d = ITEMS[code]
                 for i, dur in enumerate(a.equip.get(code, [])):
                     res = next(iter(d.mine)) if a.home == "rust" else "oil"
-                    if res not in d.mine or dur < 1 or not a.has("diesel", d.mine_fuel):
+                    reserve = 8 if a.trucks else 0  # резерв топлива на рейс машины не трогают
+                    if res not in d.mine or dur < 1 or not a.has("diesel", d.mine_fuel + reserve):
                         continue
                     if self.mine(a, res, d.mine[res]):
                         a.take("diesel", d.mine_fuel)
@@ -513,7 +519,8 @@ class Sim:
             if res is not None:
                 if a.stock[(tr.loc, res)] < TRUCK.payload:
                     self.post(a, "bid", res, tr.loc, buy_at, TRUCK.payload - a.stock[(tr.loc, res)])
-                q = min(TRUCK.payload, a.stock[(tr.loc, res)])
+                spare = a.stock[(tr.loc, res)] - (fuel if res == "diesel" else 0)  # топливо не грузим как товар
+                q = min(TRUCK.payload, spare)
                 if q <= 0:
                     continue
             if tr.durability < trip_wear(km):

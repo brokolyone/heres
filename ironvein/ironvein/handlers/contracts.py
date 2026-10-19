@@ -9,6 +9,7 @@ from ironvein.domain.catalog import FOOT_CAPACITY, LOCATIONS, RESOURCES, resourc
 from ironvein.domain.errors import Forbidden, GameError
 from ironvein.domain.money import fee_for, fmt_cr
 from ironvein.domain.permissions import Perm
+from ironvein.handlers import fmt
 from ironvein.handlers.base import ask, on_input, parse_int
 from ironvein.handlers.production import eta_text
 from ironvein.handlers.ui import Do, Nav, acting, back, btn, current_user, e, guarded, kb, nonce, op_key, show, tx
@@ -23,15 +24,21 @@ EVENT_RU = {"created": "создан", "published": "опубликован, о�
 
 
 def contracts_menu():
-    return kb([btn("Открытые поставки", Nav(s="ctr_list", a="supply")), btn("Открытые перевозки", Nav(s="ctr_list", a="transport"))],
-              [btn("Мои контракты", Nav(s="ctr_list", a="mine"))],
-              [btn("Заказать поставку", Do(a="cnew", z="supply")), btn("Заказать перевозку", Do(a="cnew", z="transport"))],
+    return kb([btn("📦 Открытые поставки", Nav(s="ctr_list", a="supply")),
+               btn("🚚 Открытые перевозки", Nav(s="ctr_list", a="transport"))],
+              [btn("📋 Мои контракты", Nav(s="ctr_list", a="mine"))],
+              [btn("＋ Заказать поставку", Do(a="cnew", z="supply")), btn("＋ Заказать перевозку", Do(a="cnew", z="transport"))],
               back())
 
 
-TEXT = ("<b>Контракты</b>\nДоговоры поставки и перевозки. Заказчик резервирует оплату заранее, "
-        "исполнитель получает её только после подтверждённой сервером поставки или доставки. "
-        "Комиссия 2% уничтожается.")
+TEXT = "\n".join([
+    fmt.head("Контракты", "договоры между игроками и компаниями"),
+    "▸ <b>Поставка</b>: заказчик резервирует оплату, исполнитель привозит товар на склад в месте поставки "
+    "и получает деньги пропорционально — частями можно.",
+    "▸ <b>Перевозка</b>: заказчик резервирует плату и груз, перевозчик забирает его своей машиной; "
+    "оплата — после серверного прибытия.",
+    "▸ Комиссия 2% уничтожается. Свой контракт принять нельзя.",
+])
 
 
 @router.message(Command("contracts"))
@@ -45,10 +52,14 @@ async def cb_contracts(cq: CallbackQuery):
     await cq.answer()
 
 
+STATUS_ICON = {"draft": "✎", "open": "○", "accepted": "◐", "in_progress": "◑", "completed": "✔", "cancelled": "✕",
+               "expired": "⌛", "disputed": "⚠"}
+
+
 def short(c: Contract) -> str:
     route = LOCATIONS[c.location_code].name + (f" → {LOCATIONS[c.dest_code].name}" if c.dest_code else "")
-    kind = "Поставка" if c.kind == "supply" else "Перевозка"
-    return f"#{c.id} {kind}: {resource_name(c.resource)} {c.delivered_qty}/{c.qty} · {route} · {fmt_cr(c.price_total)}"
+    kind = "📦 Поставка" if c.kind == "supply" else "🚚 Перевозка"
+    return f"{kind} #{c.id}: {resource_name(c.resource)} {c.delivered_qty}/{c.qty} · {route} · {fmt_cr(c.price_total)}"
 
 
 @router.callback_query(Nav.filter(F.s == "ctr_list"))
@@ -62,11 +73,12 @@ async def cb_ctr_list(cq: CallbackQuery, callback_data: Nav):
         else:
             lst = await contracts.list_open(s, callback_data.a)
             title = "Открытые " + ("поставки" if callback_data.a == "supply" else "перевозки")
-    lines = [f"<b>{title}</b>"] + [f"▸ {short(c)} · {contracts.STATUS_RU[c.status]}" for c in lst]
+    lines = [fmt.head(title)] + [f"{STATUS_ICON[c.status]} {short(c)} · {contracts.STATUS_RU[c.status]}" for c in lst]
     if not lst:
-        lines.append("Пусто.")
-    rows = [[btn(f"Открыть #{c.id}", Nav(s="ctr", a=str(c.id)))] for c in lst]
-    await show(cq, "\n".join(lines), kb(*rows, back("contracts")))
+        lines.append("Пусто. Создайте свой заказ — его увидят все.")
+    rows = [btn(f"#{c.id}", Nav(s="ctr", a=str(c.id))) for c in lst]
+    await show(cq, "\n".join(lines), kb(*[rows[i:i + 4] for i in range(0, len(rows), 4)], back("contracts")),
+               scene="contract")
     await cq.answer()
 
 
@@ -88,17 +100,21 @@ async def ctr_card(s, user, cid: int):
     cust = await s.get(Account, c.customer_id)
     ex = await s.get(Account, c.executor_id) if c.executor_id else None
     fee = fee_for(c.price_total, c.fee_bps)
-    lines = [f"<b>{short(c)}</b>", f"Статус: {contracts.STATUS_RU[c.status]}",
-             f"Заказчик: {e(cust.name)} · исполнитель: {e(ex.name) if ex else 'не назначен'}",
-             f"Оплата: {fmt_cr(c.price_total)} (исполнителю {fmt_cr(c.price_total - fee)}, комиссия {fmt_cr(fee)})",
-             f"Выплачено: {fmt_cr(c.paid_out)} · в резерве {fmt_cr(c.reserved)}",
-             f"Срок: {c.deadline:%d.%m %H:%M} UTC (осталось {eta_text(c.deadline)})"]
+    lines = [fmt.head(f"Контракт #{c.id}", f"{STATUS_ICON[c.status]} {contracts.STATUS_RU[c.status]}"), short(c),
+             fmt.kv("Заказчик", e(cust.name)) + " · " + fmt.kv("исполнитель", e(ex.name) if ex else "не назначен"),
+             fmt.kv("Оплата", fmt_cr(c.price_total)) + f" (исполнителю {fmt_cr(c.price_total - fee)}, комиссия {fmt_cr(fee)})",
+             fmt.kv("Выплачено", fmt_cr(c.paid_out)) + " · " + fmt.kv("в резерве", fmt_cr(c.reserved))]
+    if c.qty and c.kind == "supply":
+        lines.append(f"<code>{fmt.gauge(c.delivered_qty, c.qty)}</code> поставлено {c.delivered_qty}/{c.qty}")
+    lines.append(fmt.kv("Срок", f"{c.deadline:%d.%m %H:%M} UTC") + (f" · осталось {fmt.left(c.deadline)}"
+                                                                    if c.status in contracts.ACTIVE else ""))
     if c.terms:
         lines.append(f"Условия: {e(c.terms)}")
     if c.kind == "supply":
         lines.append("Поставка частями разрешена, оплата пропорциональна. Товар должен лежать у исполнителя в месте поставки.")
     evs = await contracts.events(s, c.id)
-    lines.append("<b>Журнал</b>: " + "; ".join(f"{ev.created_at:%d.%m %H:%M} {EVENT_RU.get(ev.event, ev.event)}" for ev in evs[-6:]))
+    lines.append(fmt.section("Журнал"))
+    lines += [f"<code>{ev.created_at:%d.%m %H:%M}</code> {EVENT_RU.get(ev.event, ev.event)}" for ev in evs[-6:]]
     k = nonce()
     rows = []
     is_cust = acc == c.customer_id
@@ -170,7 +186,7 @@ async def do_ctr_action(cq: CallbackQuery, callback_data: Do):
                     note = "Контракт принят. Поставляйте товар на склад в месте поставки."
                     scene = "train"
             text, markup = await ctr_card(s, user, callback_data.x)
-        await show(cq, f"{note}\n\n{text}", markup, scene=scene)
+        await show(cq, fmt.ok(note) + "\n" + text, markup, scene=scene)
     await guarded(cq, run)
 
 
@@ -186,7 +202,7 @@ async def in_cdeliver(message: Message, text: str, data: dict):
         user = await current_user(s, message.from_user)
         f = await contracts.deliver(s, user.id, data["cid"], q, op_key=op_key(message.from_user.id, f"m{message.message_id}"))
         text_, markup = await ctr_card(s, user, data["cid"])
-    await show(message, f"Поставлено {q}. Получено {fmt_cr(f.payout)}, комиссия {fmt_cr(f.fee)}.\n\n{text_}", markup,
+    await show(message, fmt.ok(f"Поставлено {q}") + f" · получено {fmt_cr(f.payout)}, комиссия {fmt_cr(f.fee)}\n{text_}", markup,
                scene="train")
 
 
@@ -212,7 +228,7 @@ async def in_cdispute(message: Message, text: str, data: dict):
 async def do_cnew(cq: CallbackQuery, callback_data: Do):
     kind = callback_data.z
     rows = [btn(r.name, Do(a="cnew_res", z=f"{kind}:{code}")) for code, r in RESOURCES.items()]
-    await show(cq, "Какой ресурс?", kb(*[rows[i:i + 3] for i in range(0, len(rows), 3)], back("contracts")))
+    await show(cq, fmt.head("Новый контракт", "шаг 1 из 3 · ресурс"), kb(*[rows[i:i + 3] for i in range(0, len(rows), 3)], back("contracts")))
     await cq.answer()
 
 
@@ -224,7 +240,7 @@ async def do_cnew_res(cq: CallbackQuery, callback_data: Do):
     else:
         rows = [[btn(f"{LOCATIONS[a].name} → {LOCATIONS[b].name}", Do(a="cnew_loc", z=f"{kind}:{res}:{a}:{b}"))]
                 for a in LOCATIONS for b in LOCATIONS if a != b and route_km(a, b)]
-    await show(cq, "Где исполнять?", kb(*rows, back("contracts")))
+    await show(cq, fmt.head("Новый контракт", "шаг 2 из 3 · где исполнять"), kb(*rows, back("contracts")))
     await cq.answer()
 
 
@@ -232,9 +248,9 @@ async def do_cnew_res(cq: CallbackQuery, callback_data: Do):
 async def do_cnew_loc(cq: CallbackQuery, callback_data: Do, state: FSMContext):
     kind, res, loc, dest = callback_data.z.split(":")
     await ask(cq, state, "cnew_terms",
-              "Условия: <code>количество цена_всего часов</code>, например <code>50 2000 48</code>.\n"
+              "<b>Шаг 3 из 3.</b> Условия: <code>количество цена_за_всё часов</code>, например <code>50 2000 48</code>.\n"
               + ("Груз будет заблокирован на вашем складе при публикации." if kind == "transport" else ""),
-              kind=kind, res=res, loc=loc, dest=dest or None)
+              ctype=kind, res=res, loc=loc, dest=dest or None)
 
 
 @on_input("cnew_terms")
@@ -246,7 +262,8 @@ async def in_cnew_terms(message: Message, text: str, data: dict):
     async with tx() as s:
         user = await current_user(s, message.from_user)
         acc, _ = await acting(s, user)
-        c = await contracts.create(s, user.id, acc, kind=data["kind"], resource=data["res"], qty=q, price_total=price,
+        c = await contracts.create(s, user.id, acc, kind=data["ctype"], resource=data["res"], qty=q, price_total=price,
                                    location=data["loc"], dest=data["dest"], deadline_hours=hours)
         text_, markup = await ctr_card(s, user, c.id)
-    await show(message, "Черновик создан. Опубликуйте, чтобы зарезервировать оплату.\n\n" + text_, markup, scene="contract")
+    await show(message, fmt.ok("Черновик создан") + " — опубликуйте, чтобы зарезервировать оплату.\n" + text_, markup,
+               scene="contract")

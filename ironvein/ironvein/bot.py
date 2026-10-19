@@ -11,7 +11,8 @@ from sqlalchemy import select
 from ironvein.config import get_settings
 from ironvein.db import dispose_engine, get_sessionmaker, init_engine
 from ironvein.domain.catalog import LOCATIONS, RECIPES, resource_name
-from ironvein.handlers import admin, base, company, contracts, donate, market, production, transport
+from ironvein.handlers import admin, base, company, contracts, donate, fallback, market, production, transport
+from ironvein.handlers import fmt
 from ironvein.handlers.ui import Nav, btn, e, kb, notify
 from ironvein.jobs.runner import run_forever
 from ironvein.models import Contract, Item, Job, PremiumOrder, Shipment, ShipmentCargo, User
@@ -46,8 +47,9 @@ def build_dispatcher() -> Dispatcher:
     dp.message.outer_middleware(PrivateOnly())
     dp.callback_query.outer_middleware(PrivateOnly())
     for r in (admin.router, base.router, production.router, transport.router, market.router, company.router,
-              contracts.router, donate.router):
+              contracts.router, donate.router, fallback.router):
         dp.include_router(r)
+    dp.errors.register(fallback.on_error)  # ошибки всплывают до диспетчера из любого роутера
     return dp
 
 
@@ -64,40 +66,49 @@ def make_notifier(bot: Bot):
             if kind == "job":
                 j = await s.get(Job, data["id"])
                 u = await s.get(User, j.actor_user_id)
-                text = f"<b>Готово</b> · {e(production_svc.describe_job(j))} · {LOCATIONS[j.location_code].name}"
+                lines = [fmt.ok("Готово"), e(production_svc.describe_job(j)), fmt.kv("Где", LOCATIONS[j.location_code].name)]
                 scene = "done"
                 if j.kind == "craft" and j.result and j.result.get("item_id"):
                     it = await s.get(Item, j.result["item_id"])
-                    text += f"\nНовый предмет: {e(items.title(it))}"
+                    lines.append(fmt.kv("Новый предмет", e(items.title(it))))
                     scene = "assembly" if it.def_code == "truck" else "workshop"
                 elif j.kind == "mine":
                     res = next(iter(j.outputs))
                     scene = f"mine_{res}" if j.manual else "drill" if res != "oil" else "pump"
+                    lines.append("Добыча лежит на складе.")
                 elif j.kind == "repair":
                     scene = "repair"
+                    lines.append(fmt.kv("Прочность", (j.result or {}).get("durability", "—")))
                 elif j.recipe_code and RECIPES[j.recipe_code].facility in ("smelter", "refinery"):
                     scene = RECIPES[j.recipe_code].facility
+                text = "\n".join(lines)
                 targets = {u.tg_id}
-                markup = kb([btn("Склады", Nav(s="inventory")), btn("Производство", Nav(s="production"))])
+                markup = kb([btn("📦 Склады", Nav(s="inventory")), btn("⚙ Производство", Nav(s="production"))])
             elif kind == "shipment":
                 sh = await s.get(Shipment, data["id"])
                 rows = (await s.scalars(select(ShipmentCargo).where(ShipmentCargo.shipment_id == sh.id))).all()
                 what = ", ".join(f"{resource_name(c.resource)} {c.qty}" for c in rows if c.resource) or "предметы"
-                text = (f"<b>Рейс #{sh.id} прибыл</b> в {LOCATIONS[sh.dest].name}.\nГруз: {what} — на складе назначения.")
+                lines = [fmt.ok(f"Рейс #{sh.id} прибыл"), fmt.kv("Куда", LOCATIONS[sh.dest].name),
+                         fmt.kv("Груз", what) + " — на складе назначения."]
+                if sh.contract_id:
+                    c = await s.get(Contract, sh.contract_id)
+                    lines.append(f"Контракт #{c.id} исполнен: перевозчику {fmt.cr(c.paid_out)}, комиссия {fmt.cr(c.fee_paid)}.")
+                text = "\n".join(lines)
                 creator = await s.get(User, sh.created_by_user_id)
                 targets = {creator.tg_id}
-                for c in rows:
-                    t = await tg_of(s, c.recipient_id)
+                for c_ in rows:
+                    t = await tg_of(s, c_.recipient_id)
                     if t:
                         targets.add(t)
                 scene = "foot" if sh.mode == "foot" else "arrive"
-                markup = kb([btn("Склады", Nav(s="inventory")), btn("Перевозки", Nav(s="transport"))])
+                markup = kb([btn("📦 Склады", Nav(s="inventory")), btn("🚚 Перевозки", Nav(s="transport"))])
             elif kind == "contract_expired":
                 c = await s.get(Contract, data["id"])
-                text = f"<b>Контракт #{c.id} просрочен.</b> Неиспользованный резерв вернулся заказчику."
+                text = (fmt.warn(f"<b>Контракт #{c.id} просрочен.</b>") +
+                        f"\nПоставлено {c.delivered_qty}/{c.qty}; неиспользованный резерв вернулся заказчику.")
                 targets = {t for t in (await tg_of(s, c.customer_id), await tg_of(s, c.executor_id)) if t}
                 scene = "contract"
-                markup = kb([btn("Контракты", Nav(s="contracts"))])
+                markup = kb([btn("📜 Контракты", Nav(s="contracts"))])
             elif kind == "refund":
                 o = await s.get(PremiumOrder, data["id"])
                 u = await s.get(User, o.user_id)

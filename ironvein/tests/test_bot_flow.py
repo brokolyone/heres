@@ -32,6 +32,7 @@ class FakeSession(BaseSession):
     def __init__(self):
         super().__init__()
         self.calls = []
+        self.history = []  # не очищается: для проверки отсутствия сбоев за весь тест
         self._mid = 100
 
     async def close(self):
@@ -42,6 +43,7 @@ class FakeSession(BaseSession):
 
     async def make_request(self, bot, method, timeout=None):
         self.calls.append(method)
+        self.history.append(method)
         self._mid += 1
         chat = Chat(id=TG, type="private")
         now = datetime.now(UTC)
@@ -103,6 +105,9 @@ async def env(sm, monkeypatch):
     e = E()
     e.session, e.bot, e.dp, e.text, e.press, e.upd, e.user, e.chat = session, bot, dp, text, press, upd, user, chat
     yield e
+    crashes = [m for m in session.history if any(x in str(getattr(m, "text", "") or "")
+                                                 for x in ("Сбой терминала", "Кнопка устарела", "не понял"))]
+    assert not crashes, "необработанная ошибка в обработчике (см. лог)"
 
 
 async def db_user(sm):

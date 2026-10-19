@@ -62,18 +62,20 @@ async def test_deposit_depletion_and_regeneration(sm):
     assert (await deposit(sm, "rust_red")).stock == 0
     clock.advance(minutes=11)
     await run_due(sm)
-    # За 11 минут при 40/ч восстановилось floor(11*40/60) = 7 единиц.
-    assert (await deposit(sm, "rust_red")).stock in (0, 7)
+    # За 11 минут при 400/ч восстановилось floor(11*400/60) = 73 единицы.
+    from ironvein.services.world import lock_deposit
+    async with sm() as s, s.begin():
+        assert (await lock_deposit(s, await deposit_id(sm, "rust_red"))).stock == 73
     async with sm() as s, s.begin():
         await s.execute(update(Deposit).where(Deposit.code == "rust_red").values(stock=0, regen_at=clock.now()))
     with pytest.raises(GameError, match="истощено"):
         async with sm() as s, s.begin():
             await production.start_mining(s, u, u, await deposit_id(sm, "rust_red"), pick.id)
-    clock.advance(hours=1)
+    clock.advance(minutes=1)
     async with sm() as s, s.begin():
         job = await production.start_mining(s, u, u, await deposit_id(sm, "rust_red"), pick.id)
     assert job.outputs == {"ore": 6}
-    assert (await deposit(sm, "rust_red")).stock == 40 - 6
+    assert (await deposit(sm, "rust_red")).stock == 6 - 6
 
 
 async def test_concurrent_mining_never_drives_deposit_negative(sm):

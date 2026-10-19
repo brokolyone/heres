@@ -21,7 +21,7 @@ async def ensure_world(session: AsyncSession) -> None:
             code=d.code, location_code=d.location, resource=d.resource, name=d.name, stock=d.max_stock,
             max_stock=d.max_stock, regen_per_hour=d.regen_per_hour, regen_at=clock.now()
         ).on_conflict_do_update(index_elements=["code"], set_={
-            "name": d.name, "regen_per_hour": d.regen_per_hour}))
+            "name": d.name, "regen_per_hour": d.regen_per_hour, "max_stock": d.max_stock}))
     for code, allow_neg in ((SYS_EMISSION, True), (SYS_FEES, False)):
         acc_id = await session.scalar(select(Account.id).where(Account.code == code))
         if acc_id is None:
@@ -46,14 +46,23 @@ async def regen_deposit(session: AsyncSession, dep: Deposit) -> None:
     elapsed = now - dep.regen_at
     if elapsed <= timedelta(0):
         return
-    gained = int(elapsed.total_seconds() * dep.regen_per_hour // 3600)
+    rate = effective_regen(dep.regen_per_hour)  # единиц в реальный час с учётом GAME_SPEED
+    if rate <= 0:
+        dep.regen_at = now
+        return
+    gained = int(elapsed.total_seconds() * rate // 3600)
     if gained <= 0:
         return
     if dep.stock >= dep.max_stock:
         dep.regen_at = now
         return
     dep.stock = min(dep.max_stock, dep.stock + gained)
-    dep.regen_at = dep.regen_at + timedelta(seconds=gained * 3600 / dep.regen_per_hour) if dep.stock < dep.max_stock else now
+    dep.regen_at = dep.regen_at + timedelta(seconds=gained * 3600 / rate) if dep.stock < dep.max_stock else now
+
+
+def effective_regen(regen_per_game_hour: int) -> float:
+    from ironvein.config import get_settings
+    return regen_per_game_hour * (get_settings().game_speed or 1.0)
 
 
 async def lock_deposit(session: AsyncSession, deposit_id: int) -> Deposit:

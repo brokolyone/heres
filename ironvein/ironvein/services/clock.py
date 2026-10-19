@@ -25,3 +25,8 @@ def game_minutes(minutes: float) -> timedelta:
     """Длительность игрового процесса с учётом GAME_SPEED."""
     speed = get_settings().game_speed or 1.0
     return timedelta(minutes=minutes / speed)
+
+
+def real_minutes(game_minutes_: float) -> int:
+    """Сколько реальных минут займёт процесс длиной game_minutes_ игровых минут."""
+    return max(1, round(game_minutes(game_minutes_).total_seconds() / 60))

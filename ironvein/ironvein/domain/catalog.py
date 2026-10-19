@@ -216,13 +216,17 @@ class DepositDef:
     regen_per_hour: int
 
 
+# Запасы и регенерация подобраны по результатам `python -m sim`: при исходных значениях (×10 меньше)
+# уголь Ржавой Пади кончался за пару часов уже при 100 игроках. Малый «Ржавый колодец» даёт нефть для
+# кустарного дизеля на месте — первый рейс грузовика больше не требует суточного пешего перехода.
 DEPOSITS: list[DepositDef] = [
-    DepositDef("rust_north", "rust", "ore", "Северная жила", 5000, 60),
-    DepositDef("rust_red", "rust", "ore", "Красный карьер", 3000, 40),
-    DepositDef("rust_coal3", "rust", "coal", "Угольный разрез №3", 4000, 50),
-    DepositDef("mazut_black", "mazut", "oil", "Чёрная скважина", 5000, 60),
-    DepositDef("mazut_lake", "mazut", "oil", "Мазутное озеро", 2000, 30),
-    DepositDef("mazut_shale", "mazut", "coal", "Сланцевый пласт", 1500, 20),
+    DepositDef("rust_north", "rust", "ore", "Северная жила", 10000, 600),
+    DepositDef("rust_red", "rust", "ore", "Красный карьер", 6000, 400),
+    DepositDef("rust_coal3", "rust", "coal", "Угольный разрез №3", 8000, 500),
+    DepositDef("rust_well", "rust", "oil", "Ржавый колодец", 800, 60),
+    DepositDef("mazut_black", "mazut", "oil", "Чёрная скважина", 10000, 600),
+    DepositDef("mazut_lake", "mazut", "oil", "Мазутное озеро", 4000, 300),
+    DepositDef("mazut_shale", "mazut", "coal", "Сланцевый пласт", 3000, 200),
 ]
 
 # Маршруты: расстояние в км (симметричны). Схема допускает будущие ж/д-ветки и караваны.
