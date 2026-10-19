@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from ironvein.config import get_settings
 from ironvein.db import dispose_engine, get_sessionmaker, init_engine
+from ironvein.domain import quality
 from ironvein.domain.catalog import LOCATIONS, RECIPES, resource_name
 from ironvein.handlers import (
     admin,
@@ -102,6 +103,14 @@ def make_notifier(bot: Bot):
                     it = await s.get(Item, j.result["item_id"])
                     lines.append(fmt.kv("Новый предмет", e(items.title(it))))
                     scene = "assembly" if it.def_code == "truck" else "workshop"
+                    tier = items.quality_of(it)
+                    if tier is not None:
+                        lines.append(fmt.kv("Качество", f"{tier.name} {quality.stars(tier)}")
+                                     + f" · оценка {items.quality_score(it)}/100"
+                                     + (f" · прочность {it.max_durability}" if it.max_durability else ""))
+                        if tier.code == "master":
+                            lines.append("✦ <b>Мастерская работа!</b> Такое на рынке ценят.")
+                        scene = "masterwork" if tier.code == "master" else "inspect"
                 elif j.kind == "mine":
                     res = next(iter(j.outputs))
                     scene = f"mine_{res}" if j.manual else "drill" if res != "oil" else "pump"

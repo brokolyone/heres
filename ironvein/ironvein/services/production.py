@@ -9,10 +9,12 @@
 
 import math
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ironvein.config import get_settings
+from ironvein.domain import quality
 from ironvein.domain.catalog import (
     BARE_HANDS_YIELD,
     ITEMS,
@@ -40,6 +42,8 @@ from ironvein.models import (
 from ironvein.services import authz, clock, items, stock
 from ironvein.services.common import audit, claim_operation
 from ironvein.services.world import lock_deposit
+
+ITEM_RECIPES = tuple(code for code, r in RECIPES.items() if r.output_item)  # рецепты, выпускающие предметы
 
 
 async def _new_job(session: AsyncSession, **kw) -> Job:
@@ -119,9 +123,33 @@ async def start_mining(session: AsyncSession, user_id: int, account_id: int, dep
 # --- Производство ------------------------------------------------------------------------------------
 
 
+async def craft_experience(session: AsyncSession, user_id: int, recipe_code: str) -> tuple[int, int]:
+    """(изделий этого рецепта, прочих изделий) — завершённые крафты предметов этим мастером."""
+    rows = (await session.execute(
+        select(Job.recipe_code, func.count()).where(Job.actor_user_id == user_id, Job.kind == "craft",
+                                                    Job.status == JOB_COMPLETED, Job.recipe_code.in_(ITEM_RECIPES))
+        .group_by(Job.recipe_code))).all()
+    same = sum(n for code, n in rows if code == recipe_code)
+    return same, sum(n for _, n in rows) - same
+
+
+async def quality_preview(session: AsyncSession, user_id: int, recipe_code: str, *, facility: Item | None,
+                          modules: list[Item] | None = None, careful: bool = False) -> quality.Breakdown | None:
+    """Разбор будущего качества изделия; None — рецепт выпускает ресурсы, а не предмет."""
+    rec = RECIPES[recipe_code]
+    if not rec.output_item:
+        return None
+    condition = None
+    if rec.facility is not None:
+        condition = facility.durability / facility.max_durability if facility and facility.max_durability else 0.0
+    same, other = await craft_experience(session, user_id, recipe_code)
+    scores = [items.quality_score(m) for m in modules] if modules else None
+    return quality.breakdown(condition, same, other, careful, scores)
+
+
 async def start_craft(session: AsyncSession, user_id: int, account_id: int, recipe_code: str, location: str,
                       runs: int = 1, facility_id: int | None = None, module_ids: list[int] | None = None,
-                      op_key: str | None = None) -> Job:
+                      op_key: str | None = None, careful: bool = False) -> Job:
     await authz.require(session, user_id, account_id, Perm.PRODUCE)
     rec = RECIPES.get(recipe_code)
     if rec is None:
@@ -130,6 +158,8 @@ async def start_craft(session: AsyncSession, user_id: int, account_id: int, reci
         raise GameError(f"Количество запусков: от 1 до {rec.max_runs}.")
     if rec.item_inputs:
         await authz.require(session, user_id, account_id, Perm.EQUIPMENT)
+    if careful and not rec.output_item:
+        raise GameError("Тщательная работа доступна только для изделий.")
     await claim_operation(session, op_key, "craft", user_id)
     facility = None
     if rec.facility is not None:
@@ -145,6 +175,7 @@ async def start_craft(session: AsyncSession, user_id: int, account_id: int, reci
         _wear_check(facility, rec.wear * runs)
 
     consumed: list[int] = []
+    modules: list[Item] = []
     if rec.item_inputs:
         module_ids = module_ids or []
         if len(module_ids) != len(rec.item_inputs):
@@ -158,11 +189,16 @@ async def start_craft(session: AsyncSession, user_id: int, account_id: int, reci
             slots.add(d.stats["slot"])
             m.status = ITEM_BUSY
             consumed.append(m.id)
+            modules.append(m)
         if slots != {SLOT_BY_NAME[n] for n in rec.item_inputs}:
             raise GameError("Нужно по одному модулю каждого типа: шасси, двигатель, бак, кузов.")
 
-    inputs = {r: q * runs for r, q in rec.inputs.items()}
-    outputs = {r: q * runs for r, q in rec.outputs.items()}
+    # Качество считается до износа установки: важна её форма на момент начала работы.
+    q = await quality_preview(session, user_id, rec.code, facility=facility, modules=modules, careful=careful)
+    params = {"q_base": q.base, "careful": careful} if q is not None else {}
+    minutes = rec.minutes * runs * (quality.CAREFUL_TIME_MULT if careful else 1)
+    inputs = {r: q_ * runs for r, q_ in rec.inputs.items()}
+    outputs = {r: q_ * runs for r, q_ in rec.outputs.items()}
     net = sum(outputs.values()) - sum(inputs.values())
     if net > 0:
         await stock.ensure_capacity(session, account_id, location, net)
@@ -174,10 +210,10 @@ async def start_craft(session: AsyncSession, user_id: int, account_id: int, reci
     job = await _new_job(
         session, kind="craft", owner_id=account_id, actor_user_id=user_id, location_code=location,
         recipe_code=rec.code, runs=runs, manual=rec.facility is None, equipment_id=facility.id if facility else None,
-        minutes=rec.minutes * runs, inputs=inputs, outputs=outputs, consumed_items=consumed,
+        minutes=minutes, inputs=inputs, outputs=outputs, consumed_items=consumed, params=params,
     )
     await audit(session, "craft_start", actor_user_id=user_id, account_id=account_id, target_type="job",
-                target_id=job.id, recipe=rec.code, runs=runs)
+                target_id=job.id, recipe=rec.code, runs=runs, careful=careful, q_base=params.get("q_base"))
     return job
 
 
@@ -264,19 +300,29 @@ async def complete_job(session: AsyncSession, job_id: int) -> bool:
         result["resources"] = job.outputs
     if job.kind == "craft":
         rec = RECIPES[job.recipe_code]
+        tier, attrs = None, {}
+        if rec.output_item and "q_base" in (job.params or {}):
+            score = quality.final_score(job.params["q_base"], job.id, get_settings().quality_key())
+            tier = quality.tier_for(score)
+            attrs = {"quality": {"score": score, "tier": tier.code}}
+            result["quality"] = tier.code
         if rec.output_item == "truck":
             mods = (await session.scalars(select(Item).where(Item.id.in_(job.consumed_items)).with_for_update())).all()
             st = truck_stats([m.def_code for m in mods])
+            md = quality.scaled_durability(st.max_durability, tier) if tier else st.max_durability
             truck = await items.create(session, "truck", job.owner_id, job.location_code, "craft",
-                                       origin_ref=f"job:{job.id}", actor=job.actor_user_id,
-                                       max_durability=st.max_durability)
+                                       origin_ref=f"job:{job.id}", actor=job.actor_user_id, max_durability=md,
+                                       attrs=attrs)
             for m in mods:
                 m.status = ITEM_INSTALLED
                 m.parent_id = truck.id
             result["item_id"] = truck.id
         elif rec.output_item:
+            base_md = ITEMS[rec.output_item].max_durability
+            md = quality.scaled_durability(base_md, tier) if tier else base_md
             it = await items.create(session, rec.output_item, job.owner_id, job.location_code, "craft",
-                                    origin_ref=f"job:{job.id}", actor=job.actor_user_id)
+                                    origin_ref=f"job:{job.id}", actor=job.actor_user_id, max_durability=md,
+                                    attrs=attrs)
             result["item_id"] = it.id
     if job.kind == "repair":
         target = await items.lock(session, job.target_item_id)

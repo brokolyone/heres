@@ -6,6 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
 
+from ironvein.domain import quality
 from ironvein.domain.catalog import (
     BARE_HANDS_YIELD,
     ITEMS,
@@ -265,6 +266,24 @@ async def cb_prod_cat(cq: CallbackQuery, callback_data: Nav):
     await cq.answer()
 
 
+def quality_lines(q: quality.Breakdown, with_facility: bool) -> list[str]:
+    """Прогноз качества изделия с разбором факторов — игрок видит, что можно улучшить."""
+    lo, hi = q.expected()
+    span = lo.name if lo == hi else f"{lo.name} — {hi.name}"
+    rows = [("база", f"{quality.BASE}"),
+            ("мастерская" if with_facility else "ручная работа", f"+{q.facility}"),
+            ("опыт мастера", f"+{q.experience}")]
+    if q.modules:
+        rows.append(("модули", f"{q.modules:+d}"))
+    lines = [fmt.section("Качество изделия"), fmt.kv("Ожидается", span) + f" · оценка {q.base} ±{quality.ROLL_SPREAD}",
+             fmt.table(rows, "lr"),
+             f"<i>✦ Тщательно: +{quality.CAREFUL_BONUS} к оценке за +50% времени. Качество меняет только прочность "
+             f"(брак ×0.8 … мастерская работа ×1.3).</i>"]
+    if with_facility and q.facility < quality.FACILITY_MAX_BONUS:
+        lines.append("<i>Отремонтированная мастерская даёт до +15.</i>")
+    return lines
+
+
 def recipe_line(code: str) -> str:
     r = RECIPES[code]
     ins = ", ".join(f"{resource_name(k)} {v}" for k, v in r.inputs.items())
@@ -321,6 +340,9 @@ async def cb_prod_rec(cq: CallbackQuery, callback_data: Nav):
         stock = await free_stock(s, acc, loc)
         mods = await idle_modules(s, acc, loc) if r.item_inputs else []
         fac_id = await production.find_idle_facility(s, acc, loc, r.facility) if r.facility else None
+        facility = await s.get(Item, fac_id) if fac_id else None
+        chosen_mods = list(pick_modules(mods).values()) if r.item_inputs else []
+        q = await production.quality_preview(s, user.id, code, facility=facility, modules=chosen_mods)
     k = nonce()
     lines = [fmt.head(r.name, LOCATIONS[loc].name), recipe_line(code)]
     if r.inputs:
@@ -332,13 +354,20 @@ async def cb_prod_rec(cq: CallbackQuery, callback_data: Nav):
                      + f", износ {r.wear} за запуск.")
     else:
         lines.append("Ручная работа: занимает ваши руки (одна смена одновременно).")
+    if q is not None:
+        lines += quality_lines(q, r.facility is not None)
     if r.item_inputs:
         chosen = pick_modules(mods)
         lines.append(fmt.section("Модули к сборке"))
         for sl in range(4):
             m = chosen.get(sl)
             lines.append(f"▸ {MODULE_SLOTS[sl]}: " + (e(items.title(m)) if m else "<b>нет</b>"))
-        rows = [[btn("🔧 Собрать грузовик", Do(a="craft", x=1, z=f"{loc}:{code}", k=k))]]
+        rows = [[btn("🔧 Собрать грузовик", Do(a="craft", x=1, z=f"{loc}:{code}", k=k))],
+                [btn("✦ Тщательно: +50% времени", Do(a="craft", x=1, y=1, z=f"{loc}:{code}", k=k))]]
+    elif q is not None:
+        mark = "▶" if possible >= 1 else "·"
+        rows = [[btn(f"{mark} Изготовить", Do(a="craft", x=1, z=f"{loc}:{code}", k=k))],
+                [btn("✦ Тщательно: +50% времени", Do(a="craft", x=1, y=1, z=f"{loc}:{code}", k=k))]]
     else:
         runs = [n for n in (1, 2, 5, 10) if n <= r.max_runs]
         rows = [[btn(f"▶ ×{n}" if n <= possible else f"×{n}", Do(a="craft", x=n, z=f"{loc}:{code}", k=k)) for n in runs]]
@@ -361,12 +390,18 @@ async def do_craft(cq: CallbackQuery, callback_data: Do):
             if code in RECIPES and RECIPES[code].item_inputs:
                 module_ids = [m.id for m in pick_modules(await idle_modules(s, acc, loc)).values()]
             job = await production.start_craft(s, user.id, acc, code, loc, runs=callback_data.x,
-                                               module_ids=module_ids, op_key=op_key(cq.from_user.id, callback_data.k))
+                                               module_ids=module_ids, op_key=op_key(cq.from_user.id, callback_data.k),
+                                               careful=bool(callback_data.y))
         r = RECIPES[code]
         scene = "assembly" if r.output_item == "truck" else SCENE_BY_FAC[r.facility]
         lines = [fmt.ok(f"Задание #{job.id} запущено"), e(production.describe_job(job)),
                  fmt.kv("Списано", ", ".join(f"{resource_name(k)} {v}" for k, v in job.inputs.items()) or "—"),
                  fmt.kv("Готово через", fmt.left(job.finishes_at))]
+        if "q_base" in (job.params or {}):
+            lo, hi = quality.tier_for(max(0, job.params["q_base"] - quality.ROLL_SPREAD)), \
+                quality.tier_for(min(100, job.params["q_base"] + quality.ROLL_SPREAD))
+            span = lo.name if lo == hi else f"{lo.name} — {hi.name}"
+            lines.append(fmt.kv("Ожидаемое качество", span) + (" · ✦ тщательно" if job.params.get("careful") else ""))
         await show(cq, "\n".join(lines), kb([btn("⚙ Задания", Nav(s="production")),
                                              btn("↻ Ещё", Nav(s="prod_rec", a=f"{loc}:{code}"))], back()),
                    scene=f"{scene}@{loc}")
@@ -434,6 +469,10 @@ async def item_card(s, user, item_id: int):
                      f"{it.durability}/{it.max_durability}")
     if it.serial_no and d.kind == "premium":
         lines.append(fmt.kv("Серийный номер", f"№{it.serial_no:03d}"))
+    tier = items.quality_of(it)
+    if tier is not None:
+        lines.append(fmt.kv("Качество", f"{tier.name} {quality.stars(tier)}") + f" · оценка {items.quality_score(it)}/100"
+                     + (f" · прочность ×{tier.durability_mult:g}" if it.max_durability else " · влияет на прочность грузовика"))
     if d.mine:
         lines.append("Добыча: " + ", ".join(f"{resource_name(r)} +{q}" for r, q in d.mine.items())
                      + (f" за {fmt.dur_game(d.mine_minutes)}, дизель {d.mine_fuel}" if d.mine_fuel else " за смену"))

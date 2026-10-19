@@ -238,7 +238,11 @@ async def test_truck_assembly_from_modules(sm):
     clock.advance(minutes=16)
     await run_due(sm)
     trucks = await user_items(sm, u, "truck")
-    assert len(trucks) == 1 and trucks[0].max_durability == 120
+    from ironvein.domain import quality
+    from ironvein.services.items import quality_of
+    tier = quality_of(trucks[0])
+    assert len(trucks) == 1 and tier is not None
+    assert trucks[0].max_durability == quality.scaled_durability(120, tier)
     for m in mods:
         it = await get_item(sm, m)
         assert it.status == "installed" and it.parent_id == trucks[0].id

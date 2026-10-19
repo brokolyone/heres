@@ -317,3 +317,35 @@ async def test_hostile_names_are_escaped_everywhere(env, sm):
     await admin.text("/admin")
     texts = " ".join(env.texts())
     assert "&lt;b&gt;Злой" in texts and "A&amp;B" in texts
+
+
+async def test_craft_quality_via_buttons_and_notification(env, sm):
+    from ironvein.bot import make_notifier
+    from ironvein.jobs.runner import run_once
+    from ironvein.models import Item, Job
+    from tests.helpers import give_item
+    p = Player(env, 2001, "Мастер")
+    await p.text("/start")
+    u = await p.db_id(sm)
+    await give_item(sm, u, "workshop")
+    await give(sm, u, "rust", "steel", 30)
+    await give(sm, u, "rust", "parts", 10)
+    env.session.calls.clear()
+    await p.press(Nav(s="prod_rec", a="rust:build_tank"))
+    card = " ".join(env.texts())
+    assert "КАЧЕСТВО ИЗДЕЛИЯ" in card.upper() and "Тщательно" in card and "опыт мастера" in card
+    await p.press(Do(a="craft", x=1, y=1, z="rust:build_tank", k="q1"))  # тщательно
+    assert any("Ожидаемое качество" in t and "тщательно" in t for t in env.texts())
+    async with sm() as s:
+        job = await s.scalar(select(Job).where(Job.recipe_code == "build_tank"))
+    assert job.params["careful"] is True
+    clock.advance(hours=1)
+    env.session.calls.clear()
+    await run_once(sm, make_notifier(env.bot))
+    note = " ".join(env.texts())
+    assert "Качество:" in note and "оценка" in note
+    async with sm() as s:
+        tank = await s.scalar(select(Item).where(Item.def_code == "tank", Item.owner_id == u))
+    env.session.calls.clear()
+    await p.press(Nav(s="item", a=str(tank.id)))
+    assert "Качество:" in " ".join(env.texts())

@@ -3,6 +3,7 @@
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ironvein.domain import quality
 from ironvein.domain.catalog import ITEMS
 from ironvein.domain.errors import Forbidden, GameError, NotFound
 from ironvein.models import ITEM_IDLE, Item, OwnershipHistory
@@ -65,9 +66,23 @@ async def set_location(session: AsyncSession, item: Item, location: str | None) 
         ch.location_code = location
 
 
+def quality_of(item: Item) -> quality.Tier | None:
+    """Ступень качества изготовленного предмета; None — качество не записано (стартовые и премиум-предметы)."""
+    q = (item.attrs or {}).get("quality")
+    return quality.TIER_BY_CODE.get(q.get("tier")) if isinstance(q, dict) else None
+
+
+def quality_score(item: Item) -> int:
+    q = (item.attrs or {}).get("quality")
+    return int(q.get("score", quality.COMMON_SCORE)) if isinstance(q, dict) else quality.COMMON_SCORE
+
+
 def title(item: Item) -> str:
     d = ITEMS[item.def_code]
     s = f"{d.name} #{item.id}"
     if item.serial_no is not None and d.kind == "premium":
         s = f"{d.name} №{item.serial_no:03d} (#{item.id})"
+    tier = quality_of(item)
+    if tier is not None:
+        s += f" {quality.stars(tier)}"
     return s

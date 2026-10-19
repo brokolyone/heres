@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     company_fee: int = 500
     warehouse_capacity: int = 2000
     deposit_scale_players: int = 100  # регенерация × max(1, активные за сутки / N); 0 — без масштабирования
+    quality_secret: str = ""  # секрет разброса качества; пусто — производный от BOT_TOKEN
     job_poll_seconds: float = 5.0
     premium_reservation_minutes: int = 30
 
@@ -32,6 +33,10 @@ class Settings(BaseSettings):
         if isinstance(v, int):
             return [v]
         return v
+
+    def quality_key(self) -> bytes:
+        import hashlib
+        return hashlib.sha256(("quality:" + (self.quality_secret or self.bot_token)).encode()).digest()
 
     @property
     def is_production(self) -> bool:

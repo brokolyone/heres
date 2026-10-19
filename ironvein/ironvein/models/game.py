@@ -34,6 +34,8 @@ class Job(Base):
     inputs: Mapped[dict] = mapped_column(JSONB, default=dict)  # что списано при старте
     outputs: Mapped[dict] = mapped_column(JSONB, default=dict)  # что будет выдано
     consumed_items: Mapped[list] = mapped_column(JSONB, default=list)
+    # Параметры, зафиксированные при старте (база качества, «тщательно»): завершение не зависит от позднего состояния.
+    params: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
     started_at: Mapped[datetime]
     finishes_at: Mapped[datetime]
     finished_at: Mapped[datetime | None]
