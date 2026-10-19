@@ -146,8 +146,11 @@ async def test_bootstrap_chain_from_nothing_to_drill(sm):
     clock.advance(minutes=31)
     await run_due(sm)
     drill = (await user_items(sm, u, "drill"))[0]
-    assert drill.durability == 100 and drill.origin == "craft"
-    assert (await get_item(sm, ws.id)).durability == 150 - 4 - 1
+    from ironvein.domain import quality
+    from ironvein.services.items import quality_of
+    assert drill.origin == "craft" and drill.durability == quality.scaled_durability(100, quality_of(drill))
+    ws_now = await get_item(sm, ws.id)
+    assert ws_now.durability == quality.scaled_durability(150, quality_of(ws_now)) - 4 - 1
 
 
 async def test_machine_mining_needs_fuel_and_wears(sm):
