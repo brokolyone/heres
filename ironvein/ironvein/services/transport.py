@@ -38,7 +38,7 @@ async def vehicle_stats(session: AsyncSession, vehicle_id: int) -> TruckStats:
 async def plan(session: AsyncSession, user_id: int, account_id: int, *, origin: str, dest: str,
                cargo: dict[str, int] | None = None, item_ids: list[int] | None = None,
                vehicle_id: int | None = None, cargo_owner: int | None = None, recipient: int | None = None,
-               contract_id: int | None = None, op_key: str | None = None) -> Shipment:
+               contract_id: int | None = None, op_key: str | None = None, allow_empty: bool = False) -> Shipment:
     """Создаёт рейс в статусе loading и резервирует всё необходимое.
 
     account_id — перевозчик (владелец машины или идущий пешком). cargo_owner — владелец груза
@@ -55,7 +55,7 @@ async def plan(session: AsyncSession, user_id: int, account_id: int, *, origin: 
     km = route_km(origin, dest)
     if km is None:
         raise GameError("Между этими локациями нет дороги.")
-    if not cargo and not item_ids:
+    if not cargo and not item_ids and not allow_empty:
         raise GameError("Пустой рейс: добавьте груз.")
     if any(q < 0 for q in cargo.values()):
         raise GameError("Некорректный груз.")
@@ -125,6 +125,58 @@ async def plan(session: AsyncSession, user_id: int, account_id: int, *, origin: 
     return sh
 
 
+async def capacity_of(session: AsyncSession, sh: Shipment) -> int:
+    if sh.mode == "foot":
+        return FOOT_CAPACITY
+    return (await vehicle_stats(session, sh.vehicle_id)).payload
+
+
+async def load_weight(session: AsyncSession, shipment_id: int) -> int:
+    total = 0
+    for c in await cargo_of(session, shipment_id):
+        total += c.qty if c.resource else item_weight((await session.get(Item, c.item_id)).def_code)
+    return total
+
+
+async def add_cargo(session: AsyncSession, user_id: int, shipment_id: int, *, resource: str | None = None,
+                    qty: int = 0, item_id: int | None = None, op_key: str | None = None) -> Shipment:
+    """Догрузка своего товара в рейс, который ещё стоит под погрузкой."""
+    sh = await _lock(session, shipment_id)
+    await authz.require(session, user_id, sh.carrier_id, Perm.TRANSPORT)
+    if sh.status != "loading" or sh.contract_id is not None:
+        raise GameError("Погрузка в этот рейс закрыта.")
+    await claim_operation(session, op_key, "ship_load", user_id)
+    weight = await load_weight(session, sh.id)
+    cap = await capacity_of(session, sh)
+    if resource is not None:
+        if qty <= 0:
+            raise GameError("Количество должно быть положительным.")
+        if weight + qty > cap:
+            raise GameError(f"Перегруз: {weight + qty} при грузоподъёмности {cap}.")
+        await stock.hold(session, sh.carrier_id, sh.origin, resource, qty, "ship_load", ref_type="shipment",
+                         ref_id=sh.id, actor=user_id)
+        row = await session.scalar(select(ShipmentCargo).where(
+            ShipmentCargo.shipment_id == sh.id, ShipmentCargo.resource == resource).with_for_update())
+        if row is None:
+            session.add(ShipmentCargo(shipment_id=sh.id, owner_id=sh.carrier_id, recipient_id=sh.carrier_id,
+                                      resource=resource, qty=qty))
+        else:
+            row.qty += qty
+    elif item_id is not None:
+        it = await items.lock_owned(session, item_id, sh.carrier_id)
+        d = ITEMS[it.def_code]
+        if d.kind == KIND_VEHICLE or it.location_code != sh.origin:
+            raise GameError("Этот предмет нельзя погрузить в рейс.")
+        if sh.mode == "foot" and not d.portable:
+            raise GameError(f"«{d.name}» слишком тяжёл, чтобы нести его пешком.")
+        if weight + item_weight(it.def_code) > cap:
+            raise GameError("Перегруз.")
+        it.status = ITEM_LOADING
+        session.add(ShipmentCargo(shipment_id=sh.id, owner_id=sh.carrier_id, recipient_id=sh.carrier_id, item_id=it.id))
+    await session.flush()
+    return sh
+
+
 async def _lock(session: AsyncSession, shipment_id: int) -> Shipment:
     sh = (await session.execute(select(Shipment).where(Shipment.id == shipment_id).with_for_update()
                                 .execution_options(populate_existing=True))).scalar_one_or_none()
@@ -152,6 +204,8 @@ async def depart(session: AsyncSession, user_id: int, shipment_id: int, op_key: 
         await authz.require(session, user_id, sh.carrier_id, Perm.TRANSPORT)
     if sh.status != "loading":
         raise GameError("Рейс уже отправлен или отменён.")
+    if not await cargo_of(session, sh.id):
+        raise GameError("Рейс пуст: сначала погрузите товар.")
     await claim_operation(session, op_key, "ship_depart", user_id)
     if sh.fuel:
         await stock.take(session, sh.carrier_id, sh.origin, "diesel", sh.fuel, "fuel_trip", ref_type="shipment",

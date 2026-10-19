@@ -116,8 +116,12 @@ async def pre_checkout(session: AsyncSession, payload: str, tg_user_id: int, tot
 
 
 async def successful_payment(session: AsyncSession, payload: str, tg_user_id: int, total_amount: int,
-                             currency: str, charge_id: str) -> PremiumOrder | None:
-    """Обработка successful_payment. Повторный update с тем же charge_id ничего не делает."""
+                             currency: str, charge_id: str, fulfill_now: bool = True) -> PremiumOrder | None:
+    """Обработка successful_payment. Повторный update с тем же charge_id ничего не делает.
+
+    fulfill_now=False — только зафиксировать оплату (status=paid); выдачу делает fulfill_order отдельной
+    транзакцией или фоновая задача retry_paid, так что сбой выдачи не теряет оплаченный заказ.
+    """
     dup = await session.scalar(select(PremiumOrder).where(PremiumOrder.telegram_charge_id == charge_id))
     if dup is not None:
         await _event(session, dup.id, "payment_duplicate", charge_id=charge_id)
@@ -150,6 +154,14 @@ async def successful_payment(session: AsyncSession, payload: str, tg_user_id: in
             await _event(session, o.id, "sold_out_after_payment")
             return o
     o.status = PO_PAID
+    if fulfill_now:
+        await fulfill(session, o)
+    return o
+
+
+async def fulfill_order(session: AsyncSession, order_id: int) -> PremiumOrder:
+    o = (await session.execute(select(PremiumOrder).where(PremiumOrder.id == order_id).with_for_update()
+                               .execution_options(populate_existing=True))).scalar_one()
     await fulfill(session, o)
     return o
 

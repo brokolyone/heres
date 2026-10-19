@@ -189,3 +189,29 @@ async def test_delivery_survives_restart(sm):
     r2 = await run_once(sm)
     assert r1["shipments"] == 1 and r2["shipments"] == 0
     assert await qty(sm, u, "kotlo", "coal") == 5
+
+
+async def test_incremental_loading_then_depart(sm):
+    u = await make_user(sm, 1)
+    truck = await make_truck(sm, u)
+    await give(sm, u, "rust", "steel", 50)
+    await give(sm, u, "rust", "diesel", 10)
+    async with sm() as s, s.begin():
+        sh = await transport.plan(s, u, u, origin="rust", dest="kotlo", vehicle_id=truck, allow_empty=True)
+    with pytest.raises(GameError, match="пуст"):
+        async with sm() as s, s.begin():
+            await transport.depart(s, u, sh.id)
+    async with sm() as s, s.begin():
+        await transport.add_cargo(s, u, sh.id, resource="steel", qty=25)
+    async with sm() as s, s.begin():
+        await transport.add_cargo(s, u, sh.id, resource="steel", qty=10)
+    with pytest.raises(GameError, match="Перегруз"):
+        async with sm() as s, s.begin():
+            await transport.add_cargo(s, u, sh.id, resource="steel", qty=6)
+    await ok(sm)
+    async with sm() as s, s.begin():
+        await transport.depart(s, u, sh.id)
+    clock.advance(hours=2)
+    await arrive_due(sm)
+    assert await qty(sm, u, "kotlo", "steel") == 35
+    await ok(sm)
