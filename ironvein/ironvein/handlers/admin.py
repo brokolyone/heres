@@ -9,6 +9,7 @@ from ironvein.config import get_settings
 from ironvein.domain.catalog import ITEMS, LOCATIONS, RESOURCES, resource_name
 from ironvein.domain.errors import GameError
 from ironvein.domain.money import fmt_cr
+from ironvein.domain.permissions import ROLE_RU
 from ironvein.handlers import fmt
 from ironvein.handlers.ui import clip, e, guarded, tx
 from ironvein.models import (
@@ -131,7 +132,7 @@ async def admin_user(message: Message, command: CommandObject):
     lines = [fmt.head(u.display_name, f"id {u.id} · tg {u.tg_id} · @{e(u.username or '-')}"
                       + (" · ЗАБЛОКИРОВАН" if u.is_banned else "")),
              f"main {fmt_cr(b.get('main', 0))} · hold {fmt_cr(b.get('hold', 0))}",
-             "Компании: " + (", ".join(f"{e(c.name)}({m.role})" for c, m in ms) or "нет"), fmt.section("Проводки")]
+             "Компании: " + (", ".join(f"{e(c.name)} ({ROLE_RU.get(m.role, m.role)})" for c, m in ms) or "нет"), fmt.section("Проводки")]
     lines += [f"<code>{dt:%d.%m %H:%M} tx{t} {k} {d:+}</code>" for t, k, d, dt in rows]
     await message.answer("\n".join(lines), parse_mode="HTML")
 
