@@ -418,7 +418,7 @@ def _truss(c: Canvas, x: int, gy: int, h: int, col, base: int, top: int, panel: 
     c.line(ax0, gy - 1, ax1, gy - h, col)
     c.line(bx0, gy - 1, bx1, gy - h, col)
     rows = list(range(0, h - 1, panel)) + [h - 1]
-    for k, (i, j) in enumerate(zip(rows, rows[1:])):
+    for k, (i, j) in enumerate(zip(rows, rows[1:], strict=False)):
         a, b = legs(i)
         a2, b2 = legs(j)
         c.hline(a, gy - 1 - i, b - a + 1, col)

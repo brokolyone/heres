@@ -646,7 +646,7 @@ def watch(c: Canvas, cx: int, cy: int, r: int = 12) -> None:
     # цепочка: от ушка дугой вправо и вниз, затем лежит звеньями на постаменте
     chain = _bezier((cx + 2, cy - r - 5), (cx + r + 9, cy - r + 2), (cx + r - 1, cy + r), 40)
     chain += [(cx + r + i, cy + r) for i in range(0, 5)]
-    for i, (px, py) in enumerate(chain):
+    for px, py in chain:
         c.dot(px + 1, py + 1, "k")
     for i, (px, py) in enumerate(chain):
         c.dot(px, py, ("brass3", "brass1", "brass0")[i % 3])

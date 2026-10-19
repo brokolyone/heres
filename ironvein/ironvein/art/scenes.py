@@ -20,10 +20,13 @@ from ironvein.art.buildings import (
 from ironvein.art.canvas import Canvas, W
 from ironvein.art.props import (
     barrel,
+    caliper,
     coin_stack,
     crate,
     crest,
     document,
+    hammer,
+    magnifier,
     paint_can,
     pedestal,
     watch,
@@ -185,6 +188,53 @@ def _scene_done(c: Canvas) -> None:
     coin_stack(c, 96, 58, 3)
 
 
+def _bench(c: Canvas) -> None:
+    """Верстак под лампой: тёмная мастерская, конус света, столешница с инструментом."""
+    c.fill("bg")
+    c.vline(64, 0, 9, "steel1")  # шнур лампы
+    c.box(59, 9, 11, 4, "steel", base=1)
+    c.hline(61, 13, 7, "lamp2")
+    c.glow(64, 30, 34, ["sky2", "haze0", "haze1"], soft=0.6)
+    for x, y in ((8, 10), (12, 22), (114, 14), (118, 26)):  # инструмент на стене
+        c.rect(x, y, 6, 1, "steel1")
+    c.box(14, 50, 100, 6, "wood", base=1)  # столешница
+    c.box(18, 56, 5, 14, "wood", base=0)
+    c.box(105, 56, 5, 14, "wood", base=0)
+    c.dither(10, 70, 108, 2, None, "sky0", 0.5)
+    caliper(c, 24, 46)
+    magnifier(c, 92, 40)
+    hammer(c, 104, 41)
+    worker(c, 2, 70, "wrench")
+
+
+def _part(c: Canvas, cx: int, cy: int) -> None:
+    """Свежевыточенная деталь — шестерня на валу."""
+    c.box(cx - 15, cy + 6, 4, 3, "steel", base=0)  # опоры вала на верстаке
+    c.box(cx + 11, cy + 6, 4, 3, "steel", base=0)
+    c.box(cx - 13, cy + 3, 26, 3, "steel", base=1)  # вал
+    gear(c, cx, cy, 8, "steel")
+    gear(c, cx + 11, cy + 2, 4, "brass")
+
+
+def _scene_inspect(c: Canvas) -> None:
+    _bench(c)
+    _part(c, 62, 41)
+
+
+def _scene_masterwork(c: Canvas) -> None:
+    _bench(c)
+    c.glow(62, 41, 24, ["brass0", "brass1", "brass2"], soft=0.55)
+    _part(c, 62, 41)
+    for x, y, a in ((40, 22, 2), (86, 20, 2), (48, 34, 1), (80, 32, 1), (62, 16, 2), (34, 40, 1), (92, 44, 1)):
+        c.sparkle(x, y, "brass3", a, "white")
+    c.disk(100, 18, 6, "k")  # латунная розетка «мастер»
+    c.disk(100, 18, 5, "brass2")
+    c.disk(100, 18, 3, "brass3")
+    c.dot(100, 18, "red1")
+    c.rect(97, 23, 2, 6, "red1")
+    c.rect(101, 23, 2, 6, "red0")
+
+
 SCENES = {
     "start": _scene_start,
     "mine_ore": lambda c: _scene_mine(c, "ore"),
@@ -212,8 +262,10 @@ SCENES = {
     "item_paint": lambda c: _scene_item(c, "paint"),
     "item_crest": lambda c: _scene_item(c, "crest"),
     "done": _scene_done,
+    "inspect": _scene_inspect,
+    "masterwork": _scene_masterwork,
 }
 
 THEMES = ("rust", "mazut", "kotlo")
 # Сцены без горизонта (интерьер, предмет на постаменте) не зависят от локации.
-UNTHEMED = {"assembly", "repair", "item_watch", "item_paint", "item_crest", "done"}
+UNTHEMED = {"assembly", "repair", "item_watch", "item_paint", "item_crest", "done", "inspect", "masterwork"}

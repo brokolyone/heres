@@ -1,6 +1,5 @@
 import io
 
-import pytest
 from PIL import Image
 
 from ironvein.art import SCENES, render_png
@@ -59,7 +58,6 @@ def test_render_is_deterministic():
         assert _render.__wrapped__(name) == _render.__wrapped__(name), name
 
 
-@pytest.mark.xfail(reason="сцены inspect/masterwork добавляет арт-workflow (этап композиции)", strict=False)
 def test_every_scene_name_used_by_the_bot_exists():
     """Имя сцены, которого нет в SCENES, молча превращается в заставку — ловим это тестом по исходникам."""
     import re

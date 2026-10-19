@@ -100,7 +100,7 @@ def _cyl_levels(n: int, w: int, shift: float = 0.0) -> list[float]:
     for i in range(w):
         f = (i + 0.5) / w
         v = 0.0
-        for (f0, v0), (f1, v1) in zip(_CYL, _CYL[1:]):
+        for (f0, v0), (f1, v1) in zip(_CYL, _CYL[1:], strict=False):
             if f <= f1:
                 v = v0 + (v1 - v0) * (f - f0) / (f1 - f0)
                 break
@@ -415,7 +415,7 @@ def factory(c: Canvas, x: int, gy: int, w: int = 40, h: int = 21, chimneys: int 
         c.vline(px + 1, top + 3, gy - top - 6, t[0])
         c.hline(px - 1 if k else px, top + 3, 3 if k else 2, t[3])
     wy, wh = top + 5, gy - top - 11
-    for a, b in zip(piers, piers[1:]):
+    for a, b in zip(piers, piers[1:], strict=False):
         inner = b - a - 2
         ww = 5 if inner >= 7 else 3
         wx = a + 2 + (inner - ww) // 2
@@ -500,7 +500,7 @@ def drill_rig(c: Canvas, x: int, gy: int) -> None:
     c.line(x - 1, fl - 2, x - 8, gy - 3, "steel1")
     # Вышка: X-раскосы в панелях, пояса, ноги
     girts = list(range(fl - 1, top, -6)) + [top]
-    for y0, y1 in zip(girts, girts[1:]):
+    for y0, y1 in zip(girts, girts[1:], strict=False):
         a0, b0 = legs(y0)
         a1, b1 = legs(y1)
         c.line(a0 + 1, y0, b1 - 1, y1, "steel1")
@@ -1149,7 +1149,7 @@ def market_hall(c: Canvas, x: int, gy: int, w: int = 54, h: int = 30) -> None:
     c.dither(x + 1, top + 6, w - 2, 2, None, "oil1", 0.5)
     ncol = max(3, (w - 4) // 8 + 1)
     cols = [x + 2 + round(i * (w - 7) / (ncol - 1)) for i in range(ncol)]
-    for a, b in zip(cols, cols[1:]):  # арочные окна между колоннами
+    for a, b in zip(cols, cols[1:], strict=False):  # арочные окна между колоннами
         mid = (a + b + 3) // 2
         if abs(mid - cx) <= 3:
             continue
@@ -1355,7 +1355,7 @@ def rock(c: Canvas, x: int, gy: int, res: str, track: int = 66) -> None:
     # Грани: ближайшая «затравка» → грань; тон грани зависит от её положения (свет слева)
     seeds = [(5, 15), (11, 9), (17, 4), (24, 6), (30, 12), (35, 18), (14, 17), (23, 15), (9, 19), (28, 20)]
     tone_of = []
-    for sx, sy in seeds:
+    for sx, _sy in seeds:
         v = 3.3 - sx / 10 + (c.rnd.random() - 0.5) * 0.8
         tone_of.append(max(0, min(3, round(v))))
     owner = {}

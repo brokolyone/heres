@@ -169,7 +169,7 @@ class Canvas:
                 if (ya <= yc < yb) or (yb <= yc < ya):
                     xs.append(xa + (yc - ya) * (xb - xa) / (yb - ya))
             xs.sort()
-            for a, b in zip(xs[::2], xs[1::2]):
+            for a, b in zip(xs[::2], xs[1::2], strict=False):
                 for x in range(math.ceil(a - 0.5), math.floor(b - 0.5) + 1):
                     self.dot(x, y, c)
 
