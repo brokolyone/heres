@@ -148,8 +148,10 @@ async def cb_mine_dep(cq: CallbackQuery, callback_data: Nav):
             lines.append(f"▸ {e(items.title(t))} · прочность {state} · цикл {fmt.dur_game(d.mine_minutes)}: "
                          f"+{out}, дизель {d.mine_fuel}")
             rows.append([btn(f"×{n} → +{out * n}", Do(a="mine", x=dep.id, y=t.id, z=str(n), k=k)) for n in (1, 3, 6, 12)])
-        elif not busy:
-            rows.append([btn(f"⛏ {d.name} #{t.id} · +{out} · {state}", Do(a="mine", x=dep.id, y=t.id, k=k))])
+        else:
+            lines.append(f"▸ {e(items.title(t))} · прочность {state} · смена: +{out}")
+            if not busy:
+                rows.append([btn(f"⛏ {d.name} #{t.id} · +{out}", Do(a="mine", x=dep.id, y=t.id, k=k))])
     if not tools:
         lines.append("<i>Своего инструмента здесь нет — можно работать руками.</i>")
     lines.append(f"<i>Ручная смена: {fmt.dur_game(MANUAL_SHIFT_MINUTES)}.</i>")
@@ -373,7 +375,9 @@ KIND_ICON = {"equipment": "⚙", "module": "🔩", "vehicle": "🚚", "premium":
 
 async def equipment_screen(s, acc: int, label: str):
     its = (await s.scalars(select(Item).where(Item.owner_id == acc, Item.parent_id.is_(None),
-                                              Item.status != "destroyed").order_by(Item.def_code, Item.id))).all()
+                                              Item.status != "destroyed").order_by(Item.id))).all()
+    kinds = list(KIND_ICON)
+    its = sorted(its, key=lambda i: (kinds.index(ITEMS[i.def_code].kind), ITEMS[i.def_code].name, i.id))
     lines = [fmt.head("Техника и предметы", label)]
     rows = []
     for it in its[:40]:

@@ -1,5 +1,6 @@
 """Общие помощники Telegram-интерфейса: рендер экранов, картинки, ошибки, контекст игрока."""
 
+import asyncio
 import html
 import logging
 import re
@@ -18,6 +19,7 @@ from aiogram.types import (
     InputMediaPhoto,
     Message,
 )
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ironvein.art import render_png
@@ -200,10 +202,30 @@ async def notify(bot: Bot, chat_id: int, text: str, scene: str | None = None, ma
         log.info("notify %s failed", chat_id)
 
 
+RETRYABLE_PGCODES = {"40P01", "40001"}  # deadlock_detected, serialization_failure
+
+
+def _retryable(ex: Exception) -> bool:
+    orig = getattr(ex, "orig", None)
+    code = getattr(orig, "pgcode", None) or getattr(getattr(orig, "__cause__", None), "sqlstate", None)
+    return isinstance(ex, DBAPIError) and code in RETRYABLE_PGCODES
+
+
+async def run_retrying(fn: Callable[[], Awaitable[None]], attempts: int = 3) -> None:
+    """Транзакция, проигравшая гонку блокировок, повторяется целиком; ключи идемпотентности исключают двойное выполнение."""
+    for i in range(attempts):
+        try:
+            return await fn()
+        except DBAPIError as ex:
+            if not _retryable(ex) or i == attempts - 1:
+                raise
+            await asyncio.sleep(0.05 * (i + 1))
+
+
 async def guarded(event: Message | CallbackQuery, fn: Callable[[], Awaitable[None]]) -> None:
     """Выполняет действие, превращая игровые ошибки в понятные ответы."""
     try:
-        await fn()
+        await run_retrying(fn)
         if isinstance(event, CallbackQuery):
             try:
                 await event.answer()

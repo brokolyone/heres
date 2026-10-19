@@ -64,9 +64,9 @@ async def transport_screen(s, acc: int, label: str):
     lines = [fmt.head("Перевозки", label), fmt.section(f"Гараж · {len(trucks)}")]
     rows = []
     for t in trucks:
-        where = LOCATIONS[t.location_code].name if t.location_code else "в пути"
+        where = f"{LOCATIONS[t.location_code].name} · {items.STATUS_RU[t.status]}" if t.location_code else "в пути"
         st = await transport.vehicle_stats(s, t.id)
-        lines.append(f"🚚 <b>#{t.id}</b> {where} · {items.STATUS_RU[t.status]} · "
+        lines.append(f"🚚 <b>#{t.id}</b> {where} · "
                      f"<code>{fmt.gauge(t.durability, t.max_durability, 5)}</code>\n"
                      f"    груз {st.payload} · {st.speed_kmh} км/ч · запас хода {st.range_km} км")
         rows.append(btn(f"🚚 #{t.id}", Nav(s="item", a=str(t.id))))
@@ -227,7 +227,7 @@ async def trip_card(s, acc: int, shipment_id: int):
                                                        Item.status == ITEM_IDLE, Item.def_code != "truck")
                                     .order_by(Item.id).limit(6))).all()
         for it in portable:
-            if sh.mode == "foot" and not ITEMS[it.def_code].portable:
+            if (sh.mode == "foot" and not ITEMS[it.def_code].portable) or transport.item_weight(it.def_code) > free_cap:
                 continue
             rows.append([btn(f"+ {items.title(it)}"[:40], Do(a="trip_item", x=sh.id, y=it.id, k=k))])
         rows.append([btn("▶ Отправить", Do(a="trip_go", x=sh.id, k=k)), btn("✕ Отменить", Do(a="trip_cancel", x=sh.id, k=k))])
@@ -308,7 +308,7 @@ async def do_trip_go(cq: CallbackQuery, callback_data: Do):
             sh = await transport.depart(s, user.id, callback_data.x, op_key=op_key(cq.from_user.id, callback_data.k))
             text, _, scene = await trip_card(s, acc, sh.id)
         await show(cq, fmt.ok("Отправлен") + f" · прибытие через {fmt.left(sh.eta)}\n{text}\n<i>Развернуть в пути нельзя.</i>",
-                   kb([btn("Перевозки", Nav(s="transport"))], back()), scene=scene)
+                   kb([btn("🚚 Перевозки", Nav(s="transport"))], back()), scene=scene)
     await guarded(cq, run)
 
 

@@ -169,6 +169,14 @@ async def main() -> None:
     bot = Bot(settings.bot_token)
     dp = build_dispatcher()
     await bot.set_my_commands([BotCommand(command=c, description=d) for c, d in COMMANDS])
+    try:
+        await bot.set_my_short_description("Дизельпанк-экономика: добыча, заводы, грузовики, компании и рынок игроков.")
+        await bot.set_my_description(
+            "IronVein — промышленная песочница в мире смога, нефти и стали 1930–50-х.\n"
+            "Добывайте руду, уголь и нефть, плавьте сталь, собирайте грузовики, возите грузы между городами, "
+            "основывайте компании и заключайте контракты. Цены назначают только игроки.\nНажмите «Старт».")
+    except Exception:  # описание — косметика, бот работает и без него
+        log.warning("could not set bot description")
     jobs = asyncio.create_task(run_forever(sm, settings.job_poll_seconds, make_notifier(bot), make_refunder(bot)))
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())

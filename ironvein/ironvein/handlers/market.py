@@ -79,7 +79,7 @@ async def cb_mkt_loc(cq: CallbackQuery, callback_data: Nav):
             a = bk["asks"][0].price if bk["asks"] else "—"
             b = bk["bids"][0].price if bk["bids"] else "—"
             last = bk["last"].price if bk["last"] else "—"
-            table.append((r.name[:12], a, b, last))
+            table.append((r.name, a, b, last))
             rows.append(btn(r.name, Nav(s="book", a=f"{loc}:{code}")))
     lines = [fmt.head(f"Биржа · {LOCATIONS[loc].name}"), fmt.table(table, "lrrr"),
              "<i>«—» — заявок или сделок не было. Выдуманных цен здесь нет.</i>"]

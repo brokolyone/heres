@@ -9,10 +9,21 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import func, select
 
-from ironvein.domain.catalog import LOCATIONS, resource_name
+from ironvein.domain.catalog import LOCATIONS, RESOURCES, resource_name
 from ironvein.domain.errors import AlreadyDone, GameError
 from ironvein.handlers import fmt
-from ironvein.handlers.ui import Nav, acting, back, btn, current_user, e, kb, show, tx
+from ironvein.handlers.ui import (
+    Nav,
+    acting,
+    back,
+    btn,
+    current_user,
+    e,
+    kb,
+    run_retrying,
+    show,
+    tx,
+)
 from ironvein.models import Item, Job, Shipment
 from ironvein.repositories.stocks import stocks_of
 from ironvein.repositories.wallets import balances
@@ -59,7 +70,7 @@ async def got_input(message: Message, state: FSMContext):
     if handler is None:
         return
     try:
-        await handler(message, message.text.strip(), data)
+        await run_retrying(lambda: handler(message, message.text.strip(), data))
     except AlreadyDone:
         await message.answer("Уже выполнено.")
     except GameError as ex:
@@ -248,7 +259,10 @@ async def inventory_text(s, account_id: int, label: str) -> str:
     from ironvein.repositories.stocks import used_capacity
     lines = [fmt.head("Склады", label)]
     by_loc: dict[str, list] = {}
-    for st in await stocks_of(s, account_id):
+    order = list(RESOURCES)
+    any_held = False
+    for st in sorted(await stocks_of(s, account_id), key=lambda x: (x.location_code, order.index(x.resource))):
+        any_held |= st.held > 0
         by_loc.setdefault(st.location_code, []).append(
             (resource_name(st.resource), st.free, f"+{st.held}" if st.held else ""))
     cap = get_settings().warehouse_capacity
@@ -258,7 +272,7 @@ async def inventory_text(s, account_id: int, label: str) -> str:
         lines.append(fmt.table(rows, "lrl"))
     if not by_loc:
         lines.append("\nСклады пусты. Начните с ⛏ Добычи.")
-    else:
+    elif any_held:
         lines.append("<i>«+N» — заблокировано под заявки и рейсы.</i>")
     its = (await s.scalars(select(Item).where(Item.owner_id == account_id, Item.parent_id.is_(None),
                                               Item.status != "destroyed").order_by(Item.def_code, Item.id))).all()

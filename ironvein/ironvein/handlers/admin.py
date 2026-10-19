@@ -9,7 +9,8 @@ from ironvein.config import get_settings
 from ironvein.domain.catalog import ITEMS, LOCATIONS, RESOURCES, resource_name
 from ironvein.domain.errors import GameError
 from ironvein.domain.money import fmt_cr
-from ironvein.handlers.ui import e, guarded, tx
+from ironvein.handlers import fmt
+from ironvein.handlers.ui import clip, e, guarded, tx
 from ironvein.models import (
     Company,
     Contract,
@@ -75,26 +76,43 @@ async def admin_overview(message: Message):
         await audit(s, "admin_view_overview", actor_user_id=await _admin_id(s, message))
     i = o["integrity"]
     c = o["concentration"]
+    flow_ru = {"mine_output": "добыто", "craft_output": "произведено", "craft_input": "сырьё в производство",
+               "fuel_mining": "дизель на добычу", "fuel_trip": "дизель на рейсы", "repair_input": "на ремонт"}
+    ship_ru = {"loading": "погрузка", "in_transit": "в пути", "delivered": "доставлено", "cancelled": "отменено"}
+    po_ru = {"created": "ожидают", "paid": "оплачены", "fulfilled": "выданы", "expired": "истекли",
+             "refund_pending": "к возврату", "refunded": "возвращены"}
+
+    def good(g):
+        return resource_name(g) if g in RESOURCES else ITEMS[g].name if g in ITEMS else g
+
+    bad = {k: v for k, v in i.items() if k not in ("ok", "emitted", "burned", "circulating") and v}
     lines = [
-        "<b>Экономика за 24 ч</b>",
-        f"Инварианты: {'OK' if i['ok'] else 'НАРУШЕНЫ ' + e(str({k: v for k, v in i.items() if k not in ('ok',) and v}))}",
-        f"Эмиссия всего: {fmt_cr(i['emitted'])} · уничтожено: {fmt_cr(i['burned'])} · в обороте: {fmt_cr(i['circulating'])}",
-        f"Резервы (hold): {fmt_cr(o['reserves'])} · комиссии рынка за период: {fmt_cr(o['fees_period'])}",
-        "Деньги по типам: " + ", ".join(f"{k}: {fmt_cr(int(v))}" for k, v in o["money_by_kind"].items()),
-        f"Концентрация: топ-5 {c['top_share_pct']:.1f}%, HHI {c['hhi']} (держателей {c['holders']})",
-        "<b>Торговля</b>: " + ("; ".join(
-            f"{resource_name(g) if g in RESOURCES else ITEMS.get(g).name if g in ITEMS else g}"
-            f"@{LOCATIONS[loc].name if loc else '—'}: {int(q)} ед., VWAP {int(gross) // max(1, int(q))}, сделок {n}"
-            for g, loc, q, gross, n in o["trades"]) or "сделок не было"),
-        "<b>Потоки</b>: " + ("; ".join(f"{r}/{resource_name(res)}: {int(q)}" for r, res, q in o["flows"]) or "нет"),
-        "<b>Месторождения</b>: " + "; ".join(f"{e(n)} {st}/{mx}" for n, _, st, mx in o["deposits"]),
-        f"Задания в работе: {o['jobs_running']} · рейсы: {o['shipments']}",
-        "<b>Логистика</b>: " + ("; ".join(f"{a}→{b}: {n} рейсов, {int(f or 0)} диз." for a, b, n, f in o["lanes"]) or "нет"),
-        f"Контракты: {o['contracts']}",
-        "Stars: " + ("; ".join(f"{st}: {n} шт./{int(sm)} ⭐" for st, n, sm in o["stars"]) or "нет"),
-        f"Перепродажи премиума: {o['premium_resales'][0]} на {fmt_cr(int(o['premium_resales'][1]))}",
+        fmt.head("Экономика", "последние 24 часа"),
+        "Инварианты: " + ("✔ <b>в порядке</b>" if i["ok"] else f"⚠ <b>НАРУШЕНЫ</b>: {e(str(bad))[:500]}"),
+        fmt.kv("Эмиссия", fmt.cr(i["emitted"])) + " · " + fmt.kv("уничтожено", fmt.cr(i["burned"])) + " · "
+        + fmt.kv("в обороте", fmt.cr(i["circulating"])),
+        fmt.kv("Резервы", fmt.cr(o["reserves"])) + " · " + fmt.kv("комиссии рынка", fmt.cr(o["fees_period"])),
+        "Деньги: " + ", ".join(f"{'игроки' if k == 'user' else 'компании'} {fmt.cr(int(v))}"
+                               for k, v in o["money_by_kind"].items()),
+        f"Концентрация: топ-5 <b>{c['top_share_pct']:.1f}%</b>, HHI {c['hhi']}, держателей {c['holders']}",
+        fmt.section("Торговля"),
     ]
-    await message.answer("\n".join(lines)[:4096], parse_mode="HTML")
+    lines += [f"▸ {good(g)} @ {LOCATIONS[loc].name if loc else 'без локации'}: {int(q)} ед., "
+              f"VWAP {int(gross) // max(1, int(q))} ₭, сделок {n}" for g, loc, q, gross, n in o["trades"]] or ["сделок не было"]
+    lines.append(fmt.section("Потоки"))
+    lines += [f"▸ {flow_ru.get(r, r)}: {resource_name(res)} {abs(int(q))}" for r, res, q in o["flows"]] or ["нет"]
+    lines.append(fmt.section("Месторождения"))
+    lines.append(fmt.table([(n, f"{st}/{mx}") for n, _, st, mx in o["deposits"]], "lr"))
+    lines.append(fmt.section("Процессы и логистика"))
+    lines.append(fmt.kv("Задания в работе", o["jobs_running"]) + " · рейсы: "
+                 + (", ".join(f"{ship_ru.get(k, k)} {v}" for k, v in o["shipments"].items()) or "нет"))
+    lines += [f"▸ {LOCATIONS[a].name} → {LOCATIONS[b].name}: {n} рейсов, дизель {int(f or 0)}"
+              for a, b, n, f in o["lanes"]]
+    lines.append("Контракты: " + (", ".join(f"{contracts.STATUS_RU.get(k, k)} {v}" for k, v in o["contracts"].items())
+                                  or "нет"))
+    lines.append("Stars: " + (", ".join(f"{po_ru.get(st, st)} {n} ({int(sm)} ⭐)" for st, n, sm in o["stars"]) or "нет")
+                 + f" · перепродаж премиума {o['premium_resales'][0]} на {fmt.cr(int(o['premium_resales'][1]))}")
+    await message.answer(clip("\n".join(lines)), parse_mode="HTML")
 
 
 @router.message(Command("admin_user"))
@@ -110,11 +128,11 @@ async def admin_user(message: Message, command: CommandObject):
                                 .where(LedgerEntry.wallet_id.in_(wids)).order_by(LedgerTx.id.desc()).limit(15))).all()
         ms = await companies.memberships(s, u.id)
         await audit(s, "admin_view_user", actor_user_id=await _admin_id(s, message), target_type="user", target_id=u.id)
-    lines = [f"<b>{e(u.display_name)}</b> id {u.id} tg {u.tg_id} @{e(u.username or '-')} "
-             f"{'ЗАБЛОКИРОВАН' if u.is_banned else ''}",
+    lines = [fmt.head(u.display_name, f"id {u.id} · tg {u.tg_id} · @{e(u.username or '-')}"
+                      + (" · ЗАБЛОКИРОВАН" if u.is_banned else "")),
              f"main {fmt_cr(b.get('main', 0))} · hold {fmt_cr(b.get('hold', 0))}",
-             "Компании: " + (", ".join(f"{e(c.name)}({m.role})" for c, m in ms) or "нет"), "<b>Проводки</b>"]
-    lines += [f"tx{t} {k} {d:+} {dt:%d.%m %H:%M}" for t, k, d, dt in rows]
+             "Компании: " + (", ".join(f"{e(c.name)}({m.role})" for c, m in ms) or "нет"), fmt.section("Проводки")]
+    lines += [f"<code>{dt:%d.%m %H:%M} tx{t} {k} {d:+}</code>" for t, k, d, dt in rows]
     await message.answer("\n".join(lines), parse_mode="HTML")
 
 
@@ -143,7 +161,7 @@ async def admin_orders(message: Message):
     lines = ["<b>Премиум-заказы</b>"] + [
         f"{o.id} u{o.user_id} {o.product_code} {o.price_stars}⭐ {o.status} item={o.item_id} charge={e(o.telegram_charge_id or '-')}"
         for o in orders]
-    await message.answer("\n".join(lines)[:4096], parse_mode="HTML")
+    await message.answer(clip("\n".join(lines)), parse_mode="HTML")
 
 
 @router.message(Command("admin_refund"))
@@ -241,7 +259,7 @@ async def admin_active(message: Message):
               f"#{x.id} {x.mode} {x.origin}->{x.dest} {x.status}" for x in ships]
     lines.append("<b>Контракты</b>")
     lines += [f"#{c.id} {c.kind} {c.status} {c.resource} {c.delivered_qty}/{c.qty}" for c in ctrs]
-    await message.answer("\n".join(lines)[:4096], parse_mode="HTML")
+    await message.answer(clip("\n".join(lines)), parse_mode="HTML")
 
 
 @router.message(Command("admin_grant"))
