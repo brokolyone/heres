@@ -5,14 +5,36 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from ironvein.domain.catalog import FOOT_CAPACITY, LOCATIONS, RESOURCES, resource_name, route_km
+from ironvein.domain.catalog import (
+    FOOT_CAPACITY,
+    LOCATIONS,
+    RESOURCES,
+    resource_name,
+    route_km,
+)
 from ironvein.domain.errors import Forbidden, GameError
 from ironvein.domain.money import fee_for, fmt_cr
 from ironvein.domain.permissions import Perm
 from ironvein.handlers import fmt
 from ironvein.handlers.base import ask, on_input, parse_int
 from ironvein.handlers.production import eta_text
-from ironvein.handlers.ui import Do, Nav, acting, back, btn, current_user, e, guarded, kb, nonce, op_key, show, tx
+from ironvein.handlers.ui import (
+    Do,
+    Nav,
+    acting,
+    back,
+    btn,
+    current_user,
+    e,
+    guarded,
+    kb,
+    nonce,
+    num,
+    op_key,
+    parts,
+    show,
+    tx,
+)
 from ironvein.models import ITEM_IDLE, Account, Contract
 from ironvein.services import authz, contracts, transport
 
@@ -148,7 +170,7 @@ async def ctr_card(s, user, cid: int):
 async def cb_ctr(cq: CallbackQuery, callback_data: Nav):
     async def run():
         async with tx() as s:
-            text, markup = await ctr_card(s, await current_user(s, cq.from_user), int(callback_data.a))
+            text, markup = await ctr_card(s, await current_user(s, cq.from_user), num(callback_data.a))
         await show(cq, text, markup, scene="contract")
     await guarded(cq, run)
 
@@ -234,7 +256,7 @@ async def do_cnew(cq: CallbackQuery, callback_data: Do):
 
 @router.callback_query(Do.filter(F.a == "cnew_res"))
 async def do_cnew_res(cq: CallbackQuery, callback_data: Do):
-    kind, res = callback_data.z.split(":")
+    kind, res = parts(callback_data.z, 2)
     if kind == "supply":
         rows = [[btn(f"Поставка в: {loc.name}", Do(a="cnew_loc", z=f"{kind}:{res}:{code}:"))] for code, loc in LOCATIONS.items()]
     else:
@@ -246,7 +268,7 @@ async def do_cnew_res(cq: CallbackQuery, callback_data: Do):
 
 @router.callback_query(Do.filter(F.a == "cnew_loc"))
 async def do_cnew_loc(cq: CallbackQuery, callback_data: Do, state: FSMContext):
-    kind, res, loc, dest = callback_data.z.split(":")
+    kind, res, loc, dest = parts(callback_data.z, 4)
     await ask(cq, state, "cnew_terms",
               "<b>Шаг 3 из 3.</b> Условия: <code>количество цена_за_всё часов</code>, например <code>50 2000 48</code>.\n"
               + ("Груз будет заблокирован на вашем складе при публикации." if kind == "transport" else ""),

@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from ironvein.domain.catalog import LOCATIONS, resource_name
 from ironvein.domain.errors import AlreadyDone, GameError
 from ironvein.handlers import fmt
-from ironvein.handlers.ui import Nav, back, btn, current_user, acting, e, kb, show, tx
+from ironvein.handlers.ui import Nav, acting, back, btn, current_user, e, kb, show, tx
 from ironvein.models import Item, Job, Shipment
 from ironvein.repositories.stocks import stocks_of
 from ironvein.repositories.wallets import balances
@@ -57,9 +57,6 @@ async def got_input(message: Message, state: FSMContext):
     handler = INPUTS.get(data.get("_input", ""))
     await state.clear()
     if handler is None:
-        return
-    if message.text.startswith("/"):
-        await message.answer("Ввод прерван командой. Нажмите её ещё раз.", reply_markup=kb(back()))
         return
     try:
         await handler(message, message.text.strip(), data)
@@ -247,8 +244,8 @@ async def cb_profile(cq: CallbackQuery):
 
 
 async def inventory_text(s, account_id: int, label: str) -> str:
-    from ironvein.repositories.stocks import used_capacity
     from ironvein.config import get_settings
+    from ironvein.repositories.stocks import used_capacity
     lines = [fmt.head("Склады", label)]
     by_loc: dict[str, list] = {}
     for st in await stocks_of(s, account_id):

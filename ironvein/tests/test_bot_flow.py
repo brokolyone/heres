@@ -14,7 +14,16 @@ from aiogram.methods import (
     SendMessage,
     SendPhoto,
 )
-from aiogram.types import CallbackQuery, Chat, Message, PhotoSize, PreCheckoutQuery, SuccessfulPayment, Update, User
+from aiogram.types import (
+    CallbackQuery,
+    Chat,
+    Message,
+    PhotoSize,
+    PreCheckoutQuery,
+    SuccessfulPayment,
+    Update,
+    User,
+)
 from sqlalchemy import select
 
 import ironvein.db as db
@@ -106,7 +115,7 @@ async def env(sm, monkeypatch):
     e.session, e.bot, e.dp, e.text, e.press, e.upd, e.user, e.chat = session, bot, dp, text, press, upd, user, chat
     yield e
     crashes = [m for m in session.history if any(x in str(getattr(m, "text", "") or "")
-                                                 for x in ("Сбой терминала", "Кнопка устарела", "не понял"))]
+                                                 for x in ("Сбой терминала", "Неизвестная кнопка", "не понял"))]
     assert not crashes, "необработанная ошибка в обработчике (см. лог)"
 
 

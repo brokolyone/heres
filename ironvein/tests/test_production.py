@@ -5,7 +5,15 @@ import pytest
 from ironvein.domain.errors import AlreadyDone, GameError
 from ironvein.services import clock, production
 from tests.conftest import make_user
-from tests.helpers import deposit, deposit_id, get_item, give, give_item, qty, user_items
+from tests.helpers import (
+    deposit,
+    deposit_id,
+    get_item,
+    give,
+    give_item,
+    qty,
+    user_items,
+)
 
 
 async def run_due(sm):
@@ -52,6 +60,7 @@ async def test_one_manual_shift_at_a_time(sm):
 async def test_deposit_depletion_and_regeneration(sm):
     u = await make_user(sm, 1)
     from sqlalchemy import update
+
     from ironvein.models import Deposit
     async with sm() as s, s.begin():
         await s.execute(update(Deposit).where(Deposit.code == "rust_red").values(stock=4, regen_at=clock.now()))
@@ -80,6 +89,7 @@ async def test_deposit_depletion_and_regeneration(sm):
 
 async def test_concurrent_mining_never_drives_deposit_negative(sm):
     from sqlalchemy import update
+
     from ironvein.models import Deposit
     async with sm() as s, s.begin():
         await s.execute(update(Deposit).where(Deposit.code == "rust_red").values(stock=10, regen_at=clock.now()))
@@ -164,6 +174,7 @@ async def test_zero_durability_stops_use_and_repair_restores(sm):
     u = await make_user(sm, 1)
     drill = await give_item(sm, u, "drill")
     from sqlalchemy import update
+
     from ironvein.models import Item
     async with sm() as s, s.begin():
         await s.execute(update(Item).where(Item.id == drill).values(durability=0))

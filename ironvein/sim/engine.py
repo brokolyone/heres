@@ -13,7 +13,16 @@ import random
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from ironvein.domain.catalog import BARE_HANDS_YIELD, DEPOSITS, FOOT_CAPACITY, FOOT_SPEED_KMH, ITEMS, RECIPES, ROUTES, route_km
+from ironvein.domain.catalog import (
+    BARE_HANDS_YIELD,
+    DEPOSITS,
+    FOOT_CAPACITY,
+    FOOT_SPEED_KMH,
+    ITEMS,
+    RECIPES,
+    ROUTES,
+    route_km,
+)
 from ironvein.domain.money import fee_for
 from ironvein.domain.vehicles import trip_fuel, trip_minutes, trip_wear, truck_stats
 

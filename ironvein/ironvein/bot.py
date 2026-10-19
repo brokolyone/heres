@@ -11,11 +11,29 @@ from sqlalchemy import select
 from ironvein.config import get_settings
 from ironvein.db import dispose_engine, get_sessionmaker, init_engine
 from ironvein.domain.catalog import LOCATIONS, RECIPES, resource_name
-from ironvein.handlers import admin, base, company, contracts, donate, fallback, market, production, transport
-from ironvein.handlers import fmt
+from ironvein.handlers import (
+    admin,
+    base,
+    company,
+    contracts,
+    donate,
+    fallback,
+    fmt,
+    market,
+    production,
+    transport,
+)
 from ironvein.handlers.ui import Nav, btn, e, kb, notify
 from ironvein.jobs.runner import run_forever
-from ironvein.models import Contract, Item, Job, PremiumOrder, Shipment, ShipmentCargo, User
+from ironvein.models import (
+    Contract,
+    Item,
+    Job,
+    PremiumOrder,
+    Shipment,
+    ShipmentCargo,
+    User,
+)
 from ironvein.services import authz, items
 from ironvein.services import production as production_svc
 from ironvein.services.world import ensure_world
@@ -42,9 +60,21 @@ class PrivateOnly(BaseMiddleware):
         return await handler(event, data)
 
 
+class CommandResetsInput(BaseMiddleware):
+    """Команда посреди текстового ввода отменяет ввод и выполняется как обычно."""
+
+    async def __call__(self, handler, event, data):
+        if isinstance(event, Message) and event.text and event.text.startswith("/") and data.get("state"):
+            if await data["state"].get_state() is not None:
+                await data["state"].clear()
+                data["raw_state"] = None  # фильтры состояния читают raw_state, вычисленный до middleware
+        return await handler(event, data)
+
+
 def build_dispatcher() -> Dispatcher:
     dp = Dispatcher(storage=MemoryStorage())
     dp.message.outer_middleware(PrivateOnly())
+    dp.message.outer_middleware(CommandResetsInput())
     dp.callback_query.outer_middleware(PrivateOnly())
     for r in (admin.router, base.router, production.router, transport.router, market.router, company.router,
               contracts.router, donate.router, fallback.router):

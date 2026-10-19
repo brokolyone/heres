@@ -23,7 +23,15 @@ from ironvein.models import (
     Wallet,
 )
 from ironvein.repositories.wallets import balances
-from ironvein.services import companies, contracts, items, metrics, premium, stock, users
+from ironvein.services import (
+    companies,
+    contracts,
+    items,
+    metrics,
+    premium,
+    stock,
+    users,
+)
 from ironvein.services.common import audit
 
 router = Router(name="admin")

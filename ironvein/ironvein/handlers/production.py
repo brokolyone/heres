@@ -21,7 +21,23 @@ from ironvein.domain.catalog import (
 from ironvein.domain.errors import GameError
 from ironvein.handlers import fmt
 from ironvein.handlers.base import ask, on_input, parse_int
-from ironvein.handlers.ui import Do, Nav, acting, back, btn, current_user, e, guarded, kb, nonce, op_key, show, tx
+from ironvein.handlers.ui import (
+    Do,
+    Nav,
+    acting,
+    back,
+    btn,
+    current_user,
+    e,
+    guarded,
+    kb,
+    nonce,
+    num,
+    op_key,
+    parts,
+    show,
+    tx,
+)
 from ironvein.models import ITEM_IDLE, Deposit, Item, Job, Stock
 from ironvein.services import companies, cosmetics, items, market, production, transport
 from ironvein.services.world import effective_regen, regen_deposit
@@ -103,7 +119,7 @@ async def cb_mine_dep(cq: CallbackQuery, callback_data: Nav):
     async with tx() as s:
         user = await current_user(s, cq.from_user)
         acc, label = await acting(s, user)
-        dep = await s.get(Deposit, int(callback_data.a))
+        dep = await s.get(Deposit, num(callback_data.a))
         if dep is None:
             return await cq.answer("Устаревшая кнопка.", show_alert=True)
         suited = [c for c, d in ITEMS.items() if dep.resource in d.mine]
@@ -148,7 +164,7 @@ async def do_mine(cq: CallbackQuery, callback_data: Do):
             user = await current_user(s, cq.from_user)
             acc, _ = await acting(s, user)
             job = await production.start_mining(s, user.id, acc, callback_data.x, callback_data.y or None,
-                                                runs=int(callback_data.z or 1),
+                                                runs=num(callback_data.z or "1"),
                                                 op_key=op_key(cq.from_user.id, callback_data.k))
             dep = await s.get(Deposit, job.deposit_id)
             tool = await s.get(Item, job.equipment_id) if job.equipment_id else None
@@ -255,7 +271,7 @@ def recipe_line(code: str) -> str:
 
 @router.callback_query(Nav.filter(F.s == "prod_list"))
 async def cb_prod_list(cq: CallbackQuery, callback_data: Nav):
-    loc, fac = callback_data.a.split(":")
+    loc, fac = parts(callback_data.a, 2)
     if loc not in LOCATIONS or fac not in FAC_CODE:
         return await cq.answer("Устаревшая кнопка.", show_alert=True)
     facility = FAC_CODE[fac]
@@ -290,7 +306,7 @@ def _fac_key(f):
 
 @router.callback_query(Nav.filter(F.s == "prod_rec"))
 async def cb_prod_rec(cq: CallbackQuery, callback_data: Nav):
-    loc, code = callback_data.a.split(":")
+    loc, code = parts(callback_data.a, 2)
     r = RECIPES.get(code)
     if r is None or loc not in LOCATIONS:
         return await cq.answer("Устаревшая кнопка.", show_alert=True)
@@ -329,7 +345,7 @@ async def cb_prod_rec(cq: CallbackQuery, callback_data: Nav):
 
 @router.callback_query(Do.filter(F.a == "craft"))
 async def do_craft(cq: CallbackQuery, callback_data: Do):
-    loc, code = callback_data.z.split(":")
+    loc, code = parts(callback_data.z, 2)
 
     async def run():
         async with tx() as s:
@@ -464,8 +480,8 @@ async def cb_item(cq: CallbackQuery, callback_data: Nav):
     async def run():
         async with tx() as s:
             user = await current_user(s, cq.from_user)
-            text, markup = await item_card(s, user, int(callback_data.a))
-            it = await s.get(Item, int(callback_data.a))
+            text, markup = await item_card(s, user, num(callback_data.a))
+            it = await s.get(Item, num(callback_data.a))
         await show(cq, text, markup, scene=item_scene(it.def_code))
     await guarded(cq, run)
 

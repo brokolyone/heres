@@ -13,7 +13,24 @@ from ironvein.domain.money import fmt_cr
 from ironvein.domain.permissions import PERM_RU, ROLE_RU, Perm
 from ironvein.handlers import fmt
 from ironvein.handlers.base import ask, on_input, parse_int
-from ironvein.handlers.ui import Do, Nav, acting, back, btn, current_user, e, guarded, kb, nonce, notify, op_key, show, tx
+from ironvein.handlers.ui import (
+    Do,
+    Nav,
+    acting,
+    back,
+    btn,
+    current_user,
+    e,
+    guarded,
+    kb,
+    nonce,
+    notify,
+    num,
+    op_key,
+    parts,
+    show,
+    tx,
+)
 from ironvein.models import Company, Stock, User
 from ironvein.repositories.wallets import balances
 from ironvein.services import companies, users
@@ -155,7 +172,7 @@ async def comp_card(s, user, cid: int):
 async def cb_comp(cq: CallbackQuery, callback_data: Nav):
     async def run():
         async with tx() as s:
-            text, markup = await comp_card(s, await current_user(s, cq.from_user), int(callback_data.a))
+            text, markup = await comp_card(s, await current_user(s, cq.from_user), num(callback_data.a))
         await show(cq, text, markup)
     await guarded(cq, run)
 
@@ -177,7 +194,7 @@ async def in_cdep(message: Message, text: str, data: dict):
 
 @router.callback_query(Nav.filter(F.s == "cpay"))
 async def cb_cpay(cq: CallbackQuery, callback_data: Nav):
-    cid = int(callback_data.a)
+    cid = num(callback_data.a)
     async with tx() as s:
         mem = await companies.members(s, cid)
     rows = [[btn(f"{u.display_name} ({ROLE_RU[m.role]})"[:40], Do(a="cpay_to", x=cid, y=u.id))] for m, u in mem]
@@ -230,7 +247,7 @@ async def in_cinv(message: Message, text: str, data: dict):
 
 @router.callback_query(Nav.filter(F.s == "cmembers"))
 async def cb_cmembers(cq: CallbackQuery, callback_data: Nav):
-    cid = int(callback_data.a)
+    cid = num(callback_data.a)
     async with tx() as s:
         mem = await companies.members(s, cid)
     lines = [fmt.head("Состав и права")]
@@ -246,7 +263,7 @@ async def cb_cmembers(cq: CallbackQuery, callback_data: Nav):
 
 @router.callback_query(Nav.filter(F.s == "cmember"))
 async def cb_cmember(cq: CallbackQuery, callback_data: Nav):
-    cid, uid = map(int, callback_data.a.split(":"))
+    cid, uid = (num(v) for v in parts(callback_data.a, 2))
     async with tx() as s:
         m = await companies.member(s, cid, uid)
         u = await s.get(User, uid)
@@ -271,7 +288,7 @@ async def do_cmember_action(cq: CallbackQuery, callback_data: Do):
         async with tx() as s:
             user = await current_user(s, cq.from_user)
             if callback_data.a == "cperm":
-                await companies.toggle_permission(s, user.id, cid, uid, Perm(int(callback_data.z)))
+                await companies.toggle_permission(s, user.id, cid, uid, Perm(num(callback_data.z)))
             elif callback_data.a == "crole":
                 await companies.set_role(s, user.id, cid, uid, callback_data.z)
             elif callback_data.a == "cowner":
@@ -319,7 +336,7 @@ async def do_cclose_go(cq: CallbackQuery, callback_data: Do):
 
 @router.callback_query(Nav.filter(F.s == "cxfer"))
 async def cb_cxfer(cq: CallbackQuery, callback_data: Nav):
-    cid = int(callback_data.a)
+    cid = num(callback_data.a)
     async with tx() as s:
         user = await current_user(s, cq.from_user)
         acc, _ = await acting(s, user)
@@ -338,7 +355,7 @@ async def cb_cxfer(cq: CallbackQuery, callback_data: Nav):
 
 @router.callback_query(Do.filter(F.a == "cxfer_q"))
 async def do_cxfer_q(cq: CallbackQuery, callback_data: Do, state: FSMContext):
-    loc, res = callback_data.z.split(":")
+    loc, res = parts(callback_data.z, 2)
     await ask(cq, state, "cxfer_amount", f"Сколько передать: {resource_name(res)}?", src=callback_data.x,
               dst=callback_data.y, loc=loc, res=res)
 

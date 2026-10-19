@@ -11,8 +11,8 @@ from tests.helpers import get_item, give, give_item, qty
 
 async def make_truck(sm, owner, engine="engine_d8", body="body_cargo", loc="rust"):
     """Собранный грузовик (модули — тестовая выдача, сборка проверяется в test_production)."""
-    from ironvein.services import items
     from ironvein.domain.vehicles import truck_stats
+    from ironvein.services import items
     async with sm() as s, s.begin():
         mods = ["chassis", engine, "tank", body]
         st = truck_stats(mods)
@@ -104,6 +104,7 @@ async def test_capacity_fuel_range_and_wear_limits(sm):
         async with sm() as s, s.begin():
             await transport.plan(s, u, u, origin="rust", dest="mazut", cargo={"ore": 30}, vehicle_id=truck)
     from sqlalchemy import update
+
     from ironvein.models import Item
     async with sm() as s, s.begin():
         await s.execute(update(Item).where(Item.id == truck).values(durability=1))

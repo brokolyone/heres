@@ -10,12 +10,19 @@ from contextlib import asynccontextmanager
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters.callback_data import CallbackData
-from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Message
+from aiogram.types import (
+    BufferedInputFile,
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputMediaPhoto,
+    Message,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ironvein.art import render_png
 from ironvein.db import get_sessionmaker
-from ironvein.domain.errors import AlreadyDone, GameError
+from ironvein.domain.errors import AlreadyDone, GameError, StaleButton
 from ironvein.models import Company, User
 from ironvein.services import users
 
@@ -35,6 +42,24 @@ class Do(CallbackData, prefix="d", sep="|"):
     y: int = 0
     z: str = ""
     k: str = ""
+
+
+def parts(value: str, n: int) -> list[str]:
+    """Разбор составного аргумента кнопки; неверный формат — устаревшая/подделанная кнопка."""
+    items_ = value.split(":")
+    if len(items_) != n:
+        raise StaleButton()
+    return items_
+
+
+def num(value) -> int:
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        raise StaleButton() from None
+    if v < 0 or v > 2**62:
+        raise StaleButton()
+    return v
 
 
 def nonce() -> str:

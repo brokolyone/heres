@@ -13,11 +13,33 @@ import math
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ironvein.domain.catalog import FOOT_CAPACITY, FOOT_SPEED_KMH, ITEMS, KIND_EQUIPMENT, KIND_MODULE, KIND_VEHICLE, LOCATIONS, route_km
+from ironvein.domain.catalog import (
+    FOOT_CAPACITY,
+    FOOT_SPEED_KMH,
+    ITEMS,
+    KIND_EQUIPMENT,
+    KIND_MODULE,
+    KIND_VEHICLE,
+    LOCATIONS,
+    route_km,
+)
 from ironvein.domain.errors import GameError, NotFound
 from ironvein.domain.permissions import Perm
-from ironvein.domain.vehicles import TruckStats, trip_fuel, trip_minutes, trip_wear, truck_stats
-from ironvein.models import ITEM_IDLE, ITEM_IN_TRANSIT, ITEM_LOADING, Item, Shipment, ShipmentCargo
+from ironvein.domain.vehicles import (
+    TruckStats,
+    trip_fuel,
+    trip_minutes,
+    trip_wear,
+    truck_stats,
+)
+from ironvein.models import (
+    ITEM_IDLE,
+    ITEM_IN_TRANSIT,
+    ITEM_LOADING,
+    Item,
+    Shipment,
+    ShipmentCargo,
+)
 from ironvein.services import authz, clock, items, stock
 from ironvein.services.common import audit, claim_operation
 

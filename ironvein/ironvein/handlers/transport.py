@@ -1,19 +1,42 @@
 """Перевозки: грузовики и пеший перенос."""
 
+import math
+
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
 
-import math
-
-from ironvein.domain.catalog import FOOT_CAPACITY, FOOT_SPEED_KMH, ITEMS, LOCATIONS, resource_name, route_km
+from ironvein.domain.catalog import (
+    FOOT_CAPACITY,
+    FOOT_SPEED_KMH,
+    ITEMS,
+    LOCATIONS,
+    resource_name,
+    route_km,
+)
 from ironvein.domain.errors import GameError
-from ironvein.handlers import fmt
 from ironvein.domain.vehicles import trip_fuel, trip_minutes
+from ironvein.handlers import fmt
 from ironvein.handlers.base import ask, on_input, parse_int
-from ironvein.handlers.ui import Do, Nav, acting, back, btn, current_user, e, guarded, kb, nonce, op_key, show, tx
+from ironvein.handlers.ui import (
+    Do,
+    Nav,
+    acting,
+    back,
+    btn,
+    current_user,
+    e,
+    guarded,
+    kb,
+    nonce,
+    num,
+    op_key,
+    parts,
+    show,
+    tx,
+)
 from ironvein.models import ITEM_IDLE, Item, Shipment, Stock
 from ironvein.services import cosmetics, items, transport
 
@@ -107,7 +130,7 @@ async def cb_trip_foot(cq: CallbackQuery):
 
 @router.callback_query(Nav.filter(F.s == "trip_dest"))
 async def cb_trip_dest(cq: CallbackQuery, callback_data: Nav):
-    vid, origin = callback_data.a.split(":")
+    vid, origin = parts(callback_data.a, 2)
     if origin not in LOCATIONS or not vid.isdigit():
         return await cq.answer("Устаревшая кнопка.", show_alert=True)
     st = None
@@ -146,7 +169,7 @@ async def cb_trip_dest(cq: CallbackQuery, callback_data: Nav):
 
 @router.callback_query(Do.filter(F.a == "trip_plan"))
 async def do_trip_plan(cq: CallbackQuery, callback_data: Do):
-    origin, dest = callback_data.z.split(":")
+    origin, dest = parts(callback_data.z, 2)
 
     async def run():
         async with tx() as s:
@@ -219,7 +242,7 @@ async def cb_trip(cq: CallbackQuery, callback_data: Nav):
         async with tx() as s:
             user = await current_user(s, cq.from_user)
             acc, _ = await acting(s, user)
-            text, markup, scene = await trip_card(s, acc, int(callback_data.a))
+            text, markup, scene = await trip_card(s, acc, num(callback_data.a))
         await show(cq, text, markup, scene=scene)
     await guarded(cq, run)
 

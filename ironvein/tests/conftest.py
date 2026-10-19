@@ -6,11 +6,11 @@ TEST_DATABASE_URL по умолчанию указывает на локальн
 import os
 
 import pytest
-from alembic import command
 from alembic.config import Config
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from alembic import command
 from ironvein.config import get_settings
 from ironvein.services import clock, users
 from ironvein.services.world import ensure_world

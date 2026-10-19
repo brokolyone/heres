@@ -3,7 +3,7 @@ import io
 from PIL import Image
 
 from ironvein.art import SCENES, render_png
-from ironvein.art.render import H, SCALE, W
+from ironvein.art.render import SCALE, H, W
 
 
 def test_every_scene_renders_pixel_art_png():

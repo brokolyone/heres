@@ -16,3 +16,10 @@ class Forbidden(GameError):
 
 class AlreadyDone(GameError):
     """Повтор уже выполненной операции (идемпотентность)."""
+
+
+class StaleButton(GameError):
+    """Кнопка устарела или её данные подделаны."""
+
+    def __init__(self, message: str = "Кнопка устарела. Откройте раздел заново."):
+        super().__init__(message)

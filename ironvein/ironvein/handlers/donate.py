@@ -10,7 +10,19 @@ from aiogram.types import CallbackQuery, LabeledPrice, Message, PreCheckoutQuery
 from ironvein.config import get_settings
 from ironvein.handlers import fmt
 from ironvein.handlers.base import ask, on_input
-from ironvein.handlers.ui import Do, Nav, back, btn, current_user, e, guarded, kb, notify, show, tx
+from ironvein.handlers.ui import (
+    Do,
+    Nav,
+    back,
+    btn,
+    current_user,
+    e,
+    guarded,
+    kb,
+    notify,
+    show,
+    tx,
+)
 from ironvein.models import PremiumProduct
 from ironvein.services import premium
 from ironvein.services.common import audit

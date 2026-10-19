@@ -18,7 +18,7 @@ from ironvein.models import User as DbUser
 from ironvein.services import clock
 from tests.helpers import bal, give, qty
 
-BAD = ("Сбой терминала", "Кнопка устарела")
+BAD = ("Сбой терминала", "Неизвестная кнопка")
 
 
 class Player:

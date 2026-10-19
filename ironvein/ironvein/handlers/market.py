@@ -6,11 +6,33 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import func, select
 
-from ironvein.domain.catalog import ITEMS, KIND_PREMIUM, LOCATIONS, RESOURCES, item_name, resource_name
+from ironvein.domain.catalog import (
+    ITEMS,
+    KIND_PREMIUM,
+    LOCATIONS,
+    RESOURCES,
+    item_name,
+    resource_name,
+)
 from ironvein.domain.errors import GameError
 from ironvein.handlers import fmt
 from ironvein.handlers.base import ask, on_input, parse_int
-from ironvein.handlers.ui import Do, Nav, acting, back, btn, current_user, e, guarded, kb, nonce, op_key, show, tx
+from ironvein.handlers.ui import (
+    Do,
+    Nav,
+    acting,
+    back,
+    btn,
+    current_user,
+    e,
+    guarded,
+    kb,
+    nonce,
+    op_key,
+    parts,
+    show,
+    tx,
+)
 from ironvein.models import ITEM_IDLE, Item, MarketOrder, Stock
 from ironvein.repositories.wallets import balances
 from ironvein.services import items, market
@@ -101,7 +123,7 @@ async def book_screen(s, loc: str, res: str, acc: int | None = None):
 
 @router.callback_query(Nav.filter(F.s == "book"))
 async def cb_book(cq: CallbackQuery, callback_data: Nav):
-    loc, res = callback_data.a.split(":")
+    loc, res = parts(callback_data.a, 2)
     if loc not in LOCATIONS or res not in RESOURCES:
         return await cq.answer("Устаревшая кнопка.", show_alert=True)
     async with tx() as s:
@@ -156,7 +178,7 @@ async def in_sell_qty(message: Message, text: str, data: dict):
 
 @router.callback_query(Do.filter(F.a.in_({"ask", "bid"})))
 async def do_place(cq: CallbackQuery, callback_data: Do, state: FSMContext):
-    loc, res = callback_data.z.split(":")
+    loc, res = parts(callback_data.z, 2)
     verb = "продать" if callback_data.a == "ask" else "купить"
     extra = "Товар будет заблокирован на складе." if callback_data.a == "ask" else "Сумма будет зарезервирована."
     await ask(cq, state, f"{callback_data.a}_place",
@@ -315,7 +337,7 @@ async def do_fillbid_go(cq: CallbackQuery, callback_data: Do):
 
 @router.callback_query(Do.filter(F.a == "ibid"))
 async def do_ibid(cq: CallbackQuery, callback_data: Do, state: FSMContext):
-    code, loc = callback_data.z.split(":")
+    code, loc = parts(callback_data.z, 2)
     await ask(cq, state, "ibid_price", f"Цена покупки «{item_name(code)}» в кронах?", code=code, loc=loc or None)
 
 

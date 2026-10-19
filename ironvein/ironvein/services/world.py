@@ -8,7 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ironvein.domain.catalog import DEPOSITS, LOCATIONS
 from ironvein.domain.premium_catalog import PRODUCTS
-from ironvein.models import ACC_SYSTEM, SYS_EMISSION, SYS_FEES, Account, Deposit, Location, PremiumProduct, Wallet
+from ironvein.models import (
+    ACC_SYSTEM,
+    SYS_EMISSION,
+    SYS_FEES,
+    Account,
+    Deposit,
+    Location,
+    PremiumProduct,
+    Wallet,
+)
 from ironvein.services import clock
 
 

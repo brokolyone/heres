@@ -1,8 +1,8 @@
 """Регистрация и профиль. Стартовый капитал — учтённая однократная эмиссия."""
 
 from sqlalchemy import select, update
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ironvein.config import get_settings
@@ -71,7 +71,11 @@ async def by_tg(session: AsyncSession, tg_id: int) -> User:
 
 async def find_user(session: AsyncSession, ref: str) -> User | None:
     ref = ref.strip().lstrip("@")
+    if not ref or len(ref) > 64:
+        return None
     if ref.isdigit():
+        if int(ref) >= 2**63:
+            return None
         u = await session.get(User, int(ref))
         if u is None:
             u = await session.scalar(select(User).where(User.tg_id == int(ref)))
