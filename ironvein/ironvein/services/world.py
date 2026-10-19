@@ -2,7 +2,7 @@
 
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,7 +30,9 @@ async def ensure_world(session: AsyncSession) -> None:
             code=d.code, location_code=d.location, resource=d.resource, name=d.name, stock=d.max_stock,
             max_stock=d.max_stock, regen_per_hour=d.regen_per_hour, regen_at=clock.now()
         ).on_conflict_do_update(index_elements=["code"], set_={
-            "name": d.name, "regen_per_hour": d.regen_per_hour, "max_stock": d.max_stock}))
+            "name": d.name, "regen_per_hour": d.regen_per_hour, "max_stock": d.max_stock,
+            # при уменьшении максимума в каталоге запас обрезается, иначе CHECK stock <= max_stock уронит старт
+            "stock": func.least(Deposit.stock, d.max_stock)}))
     for code, allow_neg in ((SYS_EMISSION, True), (SYS_FEES, False)):
         acc_id = await session.scalar(select(Account.id).where(Account.code == code))
         if acc_id is None:

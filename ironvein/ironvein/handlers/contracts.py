@@ -119,6 +119,8 @@ async def ctr_card(s, user, cid: int):
     if c is None:
         raise GameError("Контракт не найден.")
     acc, _ = await acting(s, user)
+    if c.status != "open" and not (await _is_party(s, user.id, c.customer_id) or await _is_party(s, user.id, c.executor_id)):
+        raise Forbidden("Это чужой контракт: детали видны только его участникам.")
     cust = await s.get(Account, c.customer_id)
     ex = await s.get(Account, c.executor_id) if c.executor_id else None
     fee = fee_for(c.price_total, c.fee_bps)

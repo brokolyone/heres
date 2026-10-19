@@ -210,3 +210,23 @@ async def test_background_notifications(env, sm):
     assert res["jobs"] == 1 and res["shipments"] == 1 and res["contracts"] == 1
     texts = " | ".join(env.texts())
     assert "Готово" in texts and "прибыл" in texts and "просрочен" in texts and "перевозчику" in texts
+
+
+async def test_outsider_cannot_peek_into_company_or_private_contract(env, sm):
+    from ironvein.services import companies
+    from ironvein.services import contracts as csvc
+    owner, spy = Player(env, 1501, "Владелец"), Player(env, 1502, "Шпион")
+    await owner.text("/start")
+    await spy.text("/start")
+    uo = await owner.db_id(sm)
+    async with sm() as s, s.begin():
+        comp = await companies.create(s, uo, "Тайная Артель")
+        c = await csvc.create(s, uo, uo, kind="supply", resource="ore", qty=5, price_total=50, location="rust",
+                              deadline_hours=5, target_executor_id=None)
+    for cb in (Nav(s="cmembers", a=str(comp.id)), Nav(s="cpay", a=str(comp.id)), Nav(s="cxfer", a=str(comp.id)),
+               Nav(s="cmember", a=f"{comp.id}:{uo}"), Nav(s="comp", a=str(comp.id)), Nav(s="ctr", a=str(c.id))):
+        env.session.calls.clear()
+        await spy.press(cb)
+        joined = " ".join(env.texts())
+        assert "Тайная Артель" not in joined and "Владелец" not in joined, cb
+        assert "не состоите" in joined or "чужой контракт" in joined or "недоступна" in joined, (cb, joined)

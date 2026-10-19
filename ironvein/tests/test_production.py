@@ -242,3 +242,15 @@ async def test_truck_assembly_from_modules(sm):
     for m in mods:
         it = await get_item(sm, m)
         assert it.status == "installed" and it.parent_id == trucks[0].id
+
+
+async def test_catalog_change_of_deposit_max_is_safe(sm, monkeypatch):
+    from ironvein.domain import catalog
+    from ironvein.services.world import ensure_world
+    smaller = [catalog.DepositDef(d.code, d.location, d.resource, d.name, 100, d.regen_per_hour)
+               for d in catalog.DEPOSITS]
+    monkeypatch.setattr("ironvein.services.world.DEPOSITS", smaller)
+    async with sm() as s, s.begin():
+        await ensure_world(s)
+    dep = await deposit(sm, "rust_north")
+    assert dep.max_stock == 100 and dep.stock == 100

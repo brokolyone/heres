@@ -38,6 +38,12 @@ from ironvein.services import companies, users
 router = Router(name="company")
 
 
+async def require_member(s, cid: int, user_id: int) -> None:
+    comp = await s.get(Company, cid)
+    if comp is None or comp.status != "active" or await companies.member(s, cid, user_id) is None:
+        raise Forbidden("Вы не состоите в этой компании.")
+
+
 async def company_root(s, user):
     acc, label = await acting(s, user)
     ms = await companies.memberships(s, user.id)
@@ -196,6 +202,7 @@ async def in_cdep(message: Message, text: str, data: dict):
 async def cb_cpay(cq: CallbackQuery, callback_data: Nav):
     cid = num(callback_data.a)
     async with tx() as s:
+        await require_member(s, cid, (await current_user(s, cq.from_user)).id)
         mem = await companies.members(s, cid)
     rows = [[btn(f"{u.display_name} ({ROLE_RU[m.role]})"[:40], Do(a="cpay_to", x=cid, y=u.id))] for m, u in mem]
     await show(cq, fmt.head("Выплата", "перевод существующих крон из кассы") + "\nКому?",
@@ -249,6 +256,7 @@ async def in_cinv(message: Message, text: str, data: dict):
 async def cb_cmembers(cq: CallbackQuery, callback_data: Nav):
     cid = num(callback_data.a)
     async with tx() as s:
+        await require_member(s, cid, (await current_user(s, cq.from_user)).id)
         mem = await companies.members(s, cid)
     lines = [fmt.head("Состав и права")]
     rows = []
@@ -265,6 +273,7 @@ async def cb_cmembers(cq: CallbackQuery, callback_data: Nav):
 async def cb_cmember(cq: CallbackQuery, callback_data: Nav):
     cid, uid = (num(v) for v in parts(callback_data.a, 2))
     async with tx() as s:
+        await require_member(s, cid, (await current_user(s, cq.from_user)).id)
         m = await companies.member(s, cid, uid)
         u = await s.get(User, uid)
     if m is None:
@@ -339,6 +348,7 @@ async def cb_cxfer(cq: CallbackQuery, callback_data: Nav):
     cid = num(callback_data.a)
     async with tx() as s:
         user = await current_user(s, cq.from_user)
+        await require_member(s, cid, user.id)
         acc, _ = await acting(s, user)
         src = cid if acc == cid else user.id
         dst = user.id if src == cid else cid
