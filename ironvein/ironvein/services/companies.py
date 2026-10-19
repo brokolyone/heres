@@ -63,7 +63,7 @@ async def create(session: AsyncSession, user_id: int, name: str, op_key: str | N
             session.add(comp)
             await session.flush()
     except IntegrityError:
-        raise GameError("Компания с таким названием уже существует.")
+        raise GameError("Компания с таким названием уже существует.") from None
     await create_wallets(session, acc.id)
     session.add(CompanyMember(company_id=acc.id, user_id=user_id, role="owner", permissions=int(ALL)))
     if fee:
@@ -114,7 +114,7 @@ async def invite(session: AsyncSession, user_id: int, company_id: int, target_us
             session.add(inv)
             await session.flush()
     except IntegrityError:
-        raise GameError("Приглашение уже отправлено.")
+        raise GameError("Приглашение уже отправлено.") from None
     await audit(session, "company_invite", actor_user_id=user_id, account_id=company_id, target_type="user",
                 target_id=target_user_id, role=role)
     return inv
@@ -321,7 +321,7 @@ async def close(session: AsyncSession, user_id: int, company_id: int, *, admin: 
         await items.transfer(session, it, owner, "company_close", ref_type="company", ref_id=company_id, actor=user_id)
     comp.status = "closed"
     comp.closed_at = clock.now()
-    for m, u in await members(session, company_id):
+    for _m, u in await members(session, company_id):
         if u.acting_account_id == company_id:
             u.acting_account_id = u.id
     await audit(session, "company_close", actor_user_id=user_id, account_id=company_id, target_type="company",

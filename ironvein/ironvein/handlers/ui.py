@@ -9,7 +9,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import (
     BufferedInputFile,
@@ -196,10 +196,16 @@ async def _send(bot: Bot, chat_id: int, text: str, markup, scene: str | None) ->
 async def notify(bot: Bot, chat_id: int, text: str, scene: str | None = None, markup=None) -> None:
     if scene and visible_len(text) > CAPTION_LIMIT:
         scene = None
-    try:
-        await _send(bot, chat_id, clip(text), markup, scene)
-    except Exception:  # пользователь мог заблокировать бота — это не ошибка экономики
-        log.info("notify %s failed", chat_id)
+    for _ in range(3):
+        try:
+            await _send(bot, chat_id, clip(text), markup, scene)
+            return
+        except TelegramRetryAfter as ex:  # flood control: ждём, сколько просит Telegram, и повторяем
+            await asyncio.sleep(min(ex.retry_after, 30))
+        except Exception:  # пользователь мог заблокировать бота — это не ошибка экономики
+            log.info("notify %s failed", chat_id)
+            return
+    log.warning("notify %s dropped after flood control", chat_id)
 
 
 RETRYABLE_PGCODES = {"40P01", "40001"}  # deadlock_detected, serialization_failure

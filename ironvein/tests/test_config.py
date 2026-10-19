@@ -47,3 +47,19 @@ async def test_retry_on_deadlock_code():
             raise DBAPIError("stmt", {}, Orig())
     await run_retrying(flaky)
     assert len(calls) == 3
+
+
+async def test_notify_waits_on_flood_control(monkeypatch):
+    from aiogram.exceptions import TelegramRetryAfter
+    from aiogram.methods import SendMessage
+
+    import ironvein.handlers.ui as ui
+    calls = []
+
+    async def fake_send(bot, chat_id, text, markup, scene):
+        calls.append(chat_id)
+        if len(calls) == 1:
+            raise TelegramRetryAfter(method=SendMessage(chat_id=1, text="x"), message="flood", retry_after=0)
+    monkeypatch.setattr(ui, "_send", fake_send)
+    await ui.notify(None, 42, "привет")
+    assert calls == [42, 42]

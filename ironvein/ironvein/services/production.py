@@ -50,7 +50,7 @@ async def _new_job(session: AsyncSession, **kw) -> Job:
         async with session.begin_nested():
             await session.flush()
     except IntegrityError:
-        raise GameError("У вас уже идёт ручная работа — рабочие руки одни. Дождитесь окончания смены.")
+        raise GameError("У вас уже идёт ручная работа — рабочие руки одни. Дождитесь окончания смены.") from None
     return job
 
 

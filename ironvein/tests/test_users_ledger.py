@@ -63,8 +63,9 @@ async def test_unbalanced_ledger_rejected_by_database(sm):
 
 
 async def test_negative_balance_blocked_by_check(sm):
+    from sqlalchemy.exc import IntegrityError
     a = await make_user(sm, 1)
-    with pytest.raises(Exception):
+    with pytest.raises(IntegrityError, match="non_negative"):
         async with sm() as s, s.begin():
             await s.execute(text(f"update wallets set balance = -1 where account_id = {a} and kind='main'"))
 

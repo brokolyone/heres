@@ -1,5 +1,7 @@
 import os
+
 import pytest
+
 from ironvein.handlers.ui import Do, Nav
 from ironvein.services import clock, market
 from tests.helpers import give, give_item
@@ -41,6 +43,7 @@ async def test_tour(env, sm):  # noqa
     await snap(a, Nav(s="mine_loc", a="rust"))
     async with sm() as s:
         from sqlalchemy import select
+
         from ironvein.models import Deposit
         dep = await s.scalar(select(Deposit).where(Deposit.code == "rust_north"))
     await snap(a, Nav(s="mine_dep", a=str(dep.id)))
