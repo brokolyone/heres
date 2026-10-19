@@ -23,6 +23,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ironvein.art import render_png
+from ironvein.art.render import normalize_scene
 from ironvein.db import get_sessionmaker
 from ironvein.domain.errors import AlreadyDone, GameError, StaleButton
 from ironvein.models import Company, User
@@ -106,13 +107,28 @@ async def current_user(s: AsyncSession, tg_user) -> User:
     return user
 
 
+async def active_company(s: AsyncSession, company_id: int, user_id: int) -> Company | None:
+    """Компания, если она действует и пользователь в ней состоит (чтение без блокировок)."""
+    from ironvein.services.companies import member
+    comp = await s.get(Company, company_id)
+    if comp is None or comp.status != "active" or await member(s, company_id, user_id) is None:
+        return None
+    return comp
+
+
+async def can_view(s: AsyncSession, user_id: int, account_id: int | None) -> bool:
+    """Видит ли пользователь дела владельца: это он сам или его действующая компания."""
+    if account_id is None:
+        return False
+    return account_id == user_id or await active_company(s, account_id, user_id) is not None
+
+
 async def acting(s: AsyncSession, user: User) -> tuple[int, str]:
     """(account_id, подпись) — от чьего имени сейчас действует игрок."""
     acc = user.acting_account_id or user.id
     if acc != user.id:
-        from ironvein.services.companies import member
-        comp = await s.get(Company, acc)
-        if comp is None or comp.status != "active" or await member(s, acc, user.id) is None:
+        comp = await active_company(s, acc, user.id)
+        if comp is None:
             user.acting_account_id = user.id
             return user.id, "лично"
         return acc, f"компания «{e(comp.name)}»"
@@ -120,13 +136,14 @@ async def acting(s: AsyncSession, user: User) -> tuple[int, str]:
 
 
 def _photo(scene: str):
+    scene = normalize_scene(scene)
     fid = _photo_ids.get(scene)
-    return fid if fid else BufferedInputFile(render_png(scene), filename=f"{scene}.png")
+    return fid if fid else BufferedInputFile(render_png(scene), filename=f"{scene.replace('@', '_')}.png")
 
 
 def _remember(scene: str, msg: Message | None) -> None:
     if msg is not None and msg.photo:
-        _photo_ids[scene] = msg.photo[-1].file_id
+        _photo_ids[normalize_scene(scene)] = msg.photo[-1].file_id
 
 
 _TAG = re.compile(r"<[^>]+>")
@@ -196,12 +213,14 @@ async def _send(bot: Bot, chat_id: int, text: str, markup, scene: str | None) ->
 async def notify(bot: Bot, chat_id: int, text: str, scene: str | None = None, markup=None) -> None:
     if scene and visible_len(text) > CAPTION_LIMIT:
         scene = None
-    for _ in range(3):
+    for attempt in range(3):
         try:
             await _send(bot, chat_id, clip(text), markup, scene)
             return
-        except TelegramRetryAfter as ex:  # flood control: ждём, сколько просит Telegram, и повторяем
-            await asyncio.sleep(min(ex.retry_after, 30))
+        except TelegramRetryAfter as ex:  # flood control: ждём ровно столько, сколько просит Telegram
+            if attempt == 2 or ex.retry_after > 600:
+                break
+            await asyncio.sleep(ex.retry_after)
         except Exception:  # пользователь мог заблокировать бота — это не ошибка экономики
             log.info("notify %s failed", chat_id)
             return

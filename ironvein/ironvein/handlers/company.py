@@ -17,6 +17,7 @@ from ironvein.handlers.ui import (
     Do,
     Nav,
     acting,
+    active_company,
     back,
     btn,
     current_user,
@@ -38,10 +39,11 @@ from ironvein.services import companies, users
 router = Router(name="company")
 
 
-async def require_member(s, cid: int, user_id: int) -> None:
-    comp = await s.get(Company, cid)
-    if comp is None or comp.status != "active" or await companies.member(s, cid, user_id) is None:
+async def require_member(s, cid: int, user_id: int) -> Company:
+    comp = await active_company(s, cid, user_id)
+    if comp is None:
         raise Forbidden("Вы не состоите в этой компании.")
+    return comp
 
 
 async def company_root(s, user):
@@ -132,10 +134,8 @@ async def do_act(cq: CallbackQuery, callback_data: Do):
 
 
 async def comp_card(s, user, cid: int):
-    comp = await s.get(Company, cid)
+    comp = await require_member(s, cid, user.id)
     me = await companies.member(s, cid, user.id)
-    if comp is None or comp.status != "active" or me is None:
-        raise GameError("Компания недоступна.")
     acc, _ = await acting(s, user)
     owner = await s.get(User, comp.owner_user_id)
     b = await balances(s, cid)

@@ -188,6 +188,9 @@ async def trip_card(s, acc: int, shipment_id: int):
     if sh is None:
         raise GameError("Рейс не найден.")
     cargo = await transport.cargo_of(s, sh.id)
+    parties = {sh.carrier_id} | {c.owner_id for c in cargo} | {c.recipient_id for c in cargo}
+    if acc not in parties:
+        raise GameError("Рейс не найден.")  # чужой рейс не раскрываем
     cap = await transport.capacity_of(s, sh)
     weight = await transport.load_weight(s, sh.id)
     lines = [fmt.head(f"Рейс #{sh.id}", STATUS[sh.status]),

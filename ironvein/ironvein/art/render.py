@@ -27,7 +27,8 @@ P = {
 
 
 class Canvas:
-    def __init__(self, seed: int = 1):
+    def __init__(self, seed: int = 1, theme: str | None = None):
+        self.theme = theme  # локация для горизонта: rust | mazut | kotlo | None
         self.img = Image.new("RGB", (W, H), P["bg"])
         self.px = self.img.load()
         self.rnd = random.Random(seed)
@@ -88,7 +89,7 @@ def cloud(c: Canvas, x, y, w, col="smog"):
 
 def skyline(c: Canvas, ground_y: int = 42, col="k2"):
     """Силуэт горизонта зависит от локации сцены (Canvas.theme)."""
-    theme = getattr(c, "theme", None)
+    theme = c.theme
     if theme == "mazut":
         return _skyline_mazut(c, ground_y, col)
     if theme == "kotlo":
@@ -110,16 +111,21 @@ def skyline(c: Canvas, ground_y: int = 42, col="k2"):
         x += bw + c.rnd.randrange(0, 3)
 
 
-def _headframe(c: Canvas, x: int, gy: int, h: int, col: str):
-    """Копёр шахты: две ноги, перекладины и колесо наверху."""
+def _lattice(c: Canvas, x: int, gy: int, h: int, col: str, width: int, slope: int, rung: int) -> None:
+    """Решётчатая башня: две сходящиеся ноги и перекладины (копёр шахты или буровая вышка)."""
     for i in range(h):
-        c.dot(x + i // 4, gy - 1 - i, col)
-        c.dot(x + 8 - i // 4, gy - 1 - i, col)
-        if i % 4 == 0:
-            c.hline(x + i // 4, gy - 1 - i, 9 - 2 * (i // 4), col)
-    top = gy - h
-    c.rect(x + 2, top - 3, 5, 3, col)
-    c.dot(x + 4, top - 2, "brass2")
+        step = i // slope
+        c.dot(x + step, gy - 1 - i, col)
+        c.dot(x + width - 1 - step, gy - 1 - i, col)
+        if i % rung == 0:
+            c.hline(x + step, gy - 1 - i, width - 2 * step, col)
+
+
+def _headframe(c: Canvas, x: int, gy: int, h: int, col: str):
+    """Копёр шахты с колесом наверху."""
+    _lattice(c, x, gy, h, col, width=9, slope=4, rung=4)
+    c.rect(x + 2, gy - h - 3, 5, 3, col)
+    c.dot(x + 4, gy - h - 2, "brass2")
 
 
 def _skyline_rust(c: Canvas, gy: int, col: str):
@@ -145,11 +151,8 @@ def _skyline_rust(c: Canvas, gy: int, col: str):
 
 
 def _derrick(c: Canvas, x: int, gy: int, h: int, col: str):
-    for i in range(h):
-        c.dot(x + i // 5, gy - 1 - i, col)
-        c.dot(x + 6 - i // 5, gy - 1 - i, col)
-        if i % 3 == 0:
-            c.hline(x + i // 5, gy - 1 - i, 7 - 2 * (i // 5), col)
+    """Нефтяная вышка с факелом."""
+    _lattice(c, x, gy, h, col, width=7, slope=5, rung=3)
     c.dot(x + 3, gy - h - 1, "fire")
     c.dot(x + 3, gy - h - 2, "fire2")
 
@@ -774,15 +777,28 @@ SCENES = {
 
 
 THEMES = ("rust", "mazut", "kotlo")
+# Сцены без горизонта (интерьер, предмет на постаменте) не зависят от локации.
+UNTHEMED = {"assembly", "repair", "item_watch", "item_paint", "item_crest", "done"}
 
 
-@lru_cache(maxsize=256)
-def render_png(scene: str) -> bytes:
-    """scene — имя сцены, опционально с локацией: «truck@mazut» рисует горизонт Мазутного Яра."""
+def normalize_scene(scene: str) -> str:
+    """Каноническое имя: неизвестная сцена → start, тема только у сцен с горизонтом и только известная."""
     name, _, theme = scene.partition("@")
     if name not in SCENES:
         name = "start"
-    c = Canvas(seed=sum(map(ord, name + theme)))
-    c.theme = theme if theme in THEMES else None
+    if name in UNTHEMED or theme not in THEMES:
+        return name
+    return f"{name}@{theme}"
+
+
+def render_png(scene: str) -> bytes:
+    """scene — имя сцены, опционально с локацией: «truck@mazut» рисует горизонт Мазутного Яра."""
+    return _render(normalize_scene(scene))
+
+
+@lru_cache(maxsize=128)
+def _render(scene: str) -> bytes:
+    name, _, theme = scene.partition("@")
+    c = Canvas(seed=sum(map(ord, name + theme)), theme=theme or None)
     SCENES[name](c)
     return c.png()

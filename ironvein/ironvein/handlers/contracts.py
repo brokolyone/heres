@@ -14,7 +14,6 @@ from ironvein.domain.catalog import (
 )
 from ironvein.domain.errors import Forbidden, GameError
 from ironvein.domain.money import fee_for, fmt_cr
-from ironvein.domain.permissions import Perm
 from ironvein.handlers import fmt
 from ironvein.handlers.base import ask, on_input, parse_int
 from ironvein.handlers.production import eta_text
@@ -24,6 +23,7 @@ from ironvein.handlers.ui import (
     acting,
     back,
     btn,
+    can_view,
     current_user,
     e,
     guarded,
@@ -36,7 +36,7 @@ from ironvein.handlers.ui import (
     tx,
 )
 from ironvein.models import ITEM_IDLE, Account, Contract
-from ironvein.services import authz, contracts, transport
+from ironvein.services import contracts, transport
 
 router = Router(name="contracts")
 EVENT_RU = {"created": "создан", "published": "опубликован, оплата зарезервирована", "accepted": "принят",
@@ -104,22 +104,12 @@ async def cb_ctr_list(cq: CallbackQuery, callback_data: Nav):
     await cq.answer()
 
 
-async def _is_party(s, user_id: int, account_id: int | None) -> bool:
-    if account_id is None:
-        return False
-    try:
-        await authz.require(s, user_id, account_id, Perm.CONTRACTS)
-        return True
-    except Forbidden:
-        return False
-
-
 async def ctr_card(s, user, cid: int):
     c = await s.get(Contract, cid)
     if c is None:
         raise GameError("Контракт не найден.")
     acc, _ = await acting(s, user)
-    if c.status != "open" and not (await _is_party(s, user.id, c.customer_id) or await _is_party(s, user.id, c.executor_id)):
+    if c.status != "open" and not (await can_view(s, user.id, c.customer_id) or await can_view(s, user.id, c.executor_id)):
         raise Forbidden("Это чужой контракт: детали видны только его участникам.")
     cust = await s.get(Account, c.customer_id)
     ex = await s.get(Account, c.executor_id) if c.executor_id else None

@@ -230,3 +230,64 @@ async def test_outsider_cannot_peek_into_company_or_private_contract(env, sm):
         joined = " ".join(env.texts())
         assert "Тайная Артель" not in joined and "Владелец" not in joined, cb
         assert "не состоите" in joined or "чужой контракт" in joined or "недоступна" in joined, (cb, joined)
+
+
+async def test_trip_card_hidden_from_strangers(env, sm):
+    from ironvein.services import transport
+    from tests.test_transport import make_truck
+    owner, spy = Player(env, 1601, "Возчик"), Player(env, 1602, "Шпион")
+    await owner.text("/start")
+    await spy.text("/start")
+    uo = await owner.db_id(sm)
+    truck = await make_truck(sm, uo)
+    await give(sm, uo, "rust", "diesel", 10)
+    async with sm() as s, s.begin():
+        sh = await transport.plan(s, uo, uo, origin="rust", dest="kotlo", vehicle_id=truck, allow_empty=True)
+    env.session.calls.clear()
+    await spy.press(Nav(s="trip", a=str(sh.id)))
+    joined = " ".join(env.texts())
+    assert "Рейс не найден" in joined and "Котлоград" not in joined
+    env.session.calls.clear()
+    await owner.press(Nav(s="trip", a=str(sh.id)))
+    assert "Котлоград" in " ".join(env.texts())
+
+
+async def test_employee_without_contract_rights_can_view_company_contract(env, sm):
+    from ironvein.services import companies
+    from ironvein.services import contracts as csvc
+    boss, worker = Player(env, 1701, "Хозяин"), Player(env, 1702, "Работник")
+    await boss.text("/start")
+    await worker.text("/start")
+    ub, uw = await boss.db_id(sm), await worker.db_id(sm)
+    async with sm() as s, s.begin():
+        comp = await companies.create(s, ub, "Артель Видимости")
+        inv = await companies.invite(s, ub, comp.id, uw)
+        await companies.answer_invite(s, uw, inv.id, True)
+        await companies.deposit(s, ub, comp.id, 200)
+        c = await csvc.create(s, ub, comp.id, kind="supply", resource="ore", qty=5, price_total=50, location="rust",
+                              deadline_hours=5)
+    await worker.press(Do(a="act", x=comp.id))
+    env.session.calls.clear()
+    await worker.press(Nav(s="ctr", a=str(c.id)))  # черновик компании: виден своему сотруднику
+    assert f"Контракт #{c.id}".upper() in " ".join(env.texts()).upper()
+
+
+async def test_runner_does_not_wait_for_slow_notifications(sm):
+    import asyncio
+
+    from ironvein.jobs.runner import drain_notifications, run_once
+    from ironvein.services import production
+    from tests.conftest import make_user
+    from tests.helpers import deposit_id
+    u = await make_user(sm, 1801)
+    async with sm() as s, s.begin():
+        await production.start_mining(s, u, u, await deposit_id(sm, "rust_north"), None)
+    clock.advance(minutes=15)
+    gate = asyncio.Event()
+
+    async def slow_notify(kind, data):
+        await gate.wait()  # имитация flood control
+    res = await asyncio.wait_for(run_once(sm, slow_notify, wait_notifications=False), timeout=5)
+    assert res["jobs"] == 1  # экономика продвинулась, не дожидаясь уведомления
+    gate.set()
+    await drain_notifications()

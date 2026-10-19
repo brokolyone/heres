@@ -29,3 +29,10 @@ def test_location_themes_render_and_differ():
         pngs = {t: render_png(f"{name}@{t}") for t in THEMES}
         assert len(set(pngs.values())) == len(THEMES), name
     assert render_png("truck@unknown")  # неизвестная тема не ломает рендер
+
+
+def test_unthemed_scenes_share_one_render():
+    from ironvein.art.render import normalize_scene
+    assert normalize_scene("assembly@mazut") == "assembly"
+    assert render_png("done@rust") == render_png("done@kotlo") == render_png("done")
+    assert normalize_scene("truck@mazut") == "truck@mazut" and normalize_scene("zzz@rust") == "start@rust"
