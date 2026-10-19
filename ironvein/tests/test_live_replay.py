@@ -52,9 +52,11 @@ def _to_live(method, files: dict, chat_id: int):
     return None
 
 
-async def _record(env, sm):
+async def _record(env, sm):  # noqa: F811
+    import ironvein.handlers.ui as ui
     import tests.test_bot_scenarios as scen
     import tests.test_zz_tour as tour
+    ui._photo_ids.clear()  # file_id из других прогонов недействительны: каждая сцена загружается заново
     await tour.test_tour(env, sm)
     await scen.test_hostile_names_are_escaped_everywhere(env, sm)
     p = Player(env, 8001, "Ада Лавлейс")
