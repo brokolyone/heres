@@ -110,7 +110,7 @@ async def cb_mine_loc(cq: CallbackQuery, callback_data: Nav):
     if not deps:
         lines.append("\nЗдесь нечего добывать: это торговый узел. Добыча — в Ржавой Пади и Мазутном Яре.")
     scene = "mine_oil" if loc == "mazut" else "mine_ore"
-    await show(cq, "\n".join(lines), kb(*rows, back("mine")), scene=scene)
+    await show(cq, "\n".join(lines), kb(*rows, back("mine")), scene=f"{scene}@{loc}")
     await cq.answer()
 
 
@@ -155,7 +155,8 @@ async def cb_mine_dep(cq: CallbackQuery, callback_data: Nav):
     if not tools:
         lines.append("<i>Своего инструмента здесь нет — можно работать руками.</i>")
     lines.append(f"<i>Ручная смена: {fmt.dur_game(MANUAL_SHIFT_MINUTES)}.</i>")
-    await show(cq, "\n".join(lines), kb(*rows, back("mine_loc", arg=dep.location_code)), scene=f"mine_{dep.resource}")
+    await show(cq, "\n".join(lines), kb(*rows, back("mine_loc", arg=dep.location_code)),
+               scene=f"mine_{dep.resource}@{dep.location_code}")
     await cq.answer()
 
 
@@ -179,7 +180,7 @@ async def do_mine(cq: CallbackQuery, callback_data: Do):
         lines.append(fmt.kv("Готово через", fmt.left(job.finishes_at)))
         lines.append("<i>Сообщу, когда добыча ляжет на склад.</i>")
         await show(cq, "\n".join(lines), kb([btn("⚙ Задания", Nav(s="production"))],
-                                            back("mine_dep", arg=str(dep.id))), scene=scene)
+                                            back("mine_dep", arg=str(dep.id))), scene=f"{scene}@{dep.location_code}")
     await guarded(cq, run)
 
 
@@ -258,7 +259,8 @@ async def cb_prod_cat(cq: CallbackQuery, callback_data: Nav):
         n, idle = have.get(code, (0, 0))
         mark = f" · свободно {idle}/{n}" if n else " · нет"
         rows.append([btn(f"{FACILITY_RU[code]}{mark}", Nav(s="prod_list", a=f"{loc}:{code}"))])
-    await show(cq, fmt.head(LOCATIONS[loc].name, "выберите установку"), kb(*rows, back("prod_loc")), scene="workshop")
+    await show(cq, fmt.head(LOCATIONS[loc].name, "выберите установку"), kb(*rows, back("prod_loc")),
+               scene=f"workshop@{loc}")
     await cq.answer()
 
 
@@ -284,7 +286,7 @@ async def cb_prod_list(cq: CallbackQuery, callback_data: Nav):
         lines.append(f"▸ {r.name}: {recipe_line(r.code)}")
         rows.append(btn(r.name, Nav(s="prod_rec", a=f"{loc}:{r.code}")))
     await show(cq, "\n".join(lines), kb(*[rows[i:i + 2] for i in range(0, len(rows), 2)], back("prod_cat", arg=loc)),
-               scene=SCENE_BY_FAC[facility])
+               scene=f"{SCENE_BY_FAC[facility]}@{loc}")
     await cq.answer()
 
 
@@ -341,7 +343,8 @@ async def cb_prod_rec(cq: CallbackQuery, callback_data: Nav):
         rows = [[btn(f"▶ ×{n}" if n <= possible else f"×{n}", Do(a="craft", x=n, z=f"{loc}:{code}", k=k)) for n in runs]]
         lines.append(f"Сырья хватает на запусков: <b>{min(possible, r.max_runs)}</b>")
     scene = "assembly" if r.output_item == "truck" else SCENE_BY_FAC[r.facility]
-    await show(cq, "\n".join(lines), kb(*rows, back("prod_list", arg=f"{loc}:{_fac_key(r.facility)}")), scene=scene)
+    await show(cq, "\n".join(lines), kb(*rows, back("prod_list", arg=f"{loc}:{_fac_key(r.facility)}")),
+               scene=f"{scene}@{loc}")
     await cq.answer()
 
 
@@ -364,7 +367,8 @@ async def do_craft(cq: CallbackQuery, callback_data: Do):
                  fmt.kv("Списано", ", ".join(f"{resource_name(k)} {v}" for k, v in job.inputs.items()) or "—"),
                  fmt.kv("Готово через", fmt.left(job.finishes_at))]
         await show(cq, "\n".join(lines), kb([btn("⚙ Задания", Nav(s="production")),
-                                             btn("↻ Ещё", Nav(s="prod_rec", a=f"{loc}:{code}"))], back()), scene=scene)
+                                             btn("↻ Ещё", Nav(s="prod_rec", a=f"{loc}:{code}"))], back()),
+                   scene=f"{scene}@{loc}")
     await guarded(cq, run)
 
 

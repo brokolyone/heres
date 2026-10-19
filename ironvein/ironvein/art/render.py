@@ -87,6 +87,14 @@ def cloud(c: Canvas, x, y, w, col="smog"):
 
 
 def skyline(c: Canvas, ground_y: int = 42, col="k2"):
+    """Силуэт горизонта зависит от локации сцены (Canvas.theme)."""
+    theme = getattr(c, "theme", None)
+    if theme == "mazut":
+        return _skyline_mazut(c, ground_y, col)
+    if theme == "kotlo":
+        return _skyline_kotlo(c, ground_y, col)
+    if theme == "rust":
+        return _skyline_rust(c, ground_y, col)
     x = 0
     while x < W:
         bw = c.rnd.randrange(5, 11)
@@ -100,6 +108,88 @@ def skyline(c: Canvas, ground_y: int = 42, col="k2"):
         for _ in range(c.rnd.randrange(0, 3)):
             c.dot(x + c.rnd.randrange(1, bw - 1), ground_y - c.rnd.randrange(2, bh), "brass2")
         x += bw + c.rnd.randrange(0, 3)
+
+
+def _headframe(c: Canvas, x: int, gy: int, h: int, col: str):
+    """Копёр шахты: две ноги, перекладины и колесо наверху."""
+    for i in range(h):
+        c.dot(x + i // 4, gy - 1 - i, col)
+        c.dot(x + 8 - i // 4, gy - 1 - i, col)
+        if i % 4 == 0:
+            c.hline(x + i // 4, gy - 1 - i, 9 - 2 * (i // 4), col)
+    top = gy - h
+    c.rect(x + 2, top - 3, 5, 3, col)
+    c.dot(x + 4, top - 2, "brass2")
+
+
+def _skyline_rust(c: Canvas, gy: int, col: str):
+    x = 0
+    while x < W:
+        r = c.rnd.random()
+        if r < 0.25:
+            _headframe(c, x, gy, c.rnd.randrange(10, 16), col)
+            x += 11
+        elif r < 0.45:
+            h = c.rnd.randrange(4, 8)  # отвал породы
+            for i in range(h * 2):
+                c.vline(x + i, gy - min(i, 2 * h - i) // 2 - 1, min(i, 2 * h - i) // 2 + 1, col)
+            x += h * 2 + 1
+        else:
+            bw, bh = c.rnd.randrange(5, 9), c.rnd.randrange(5, 10)
+            c.rect(x, gy - bh, bw, bh, col)
+            if c.rnd.random() < 0.5:
+                c.rect(x + 1, gy - bh - 7, 2, 7, col)
+                smoke(c, x + 2, gy - bh - 8, 4, "smog")
+            c.dot(x + bw // 2, gy - bh // 2, "brass2")
+            x += bw + c.rnd.randrange(1, 3)
+
+
+def _derrick(c: Canvas, x: int, gy: int, h: int, col: str):
+    for i in range(h):
+        c.dot(x + i // 5, gy - 1 - i, col)
+        c.dot(x + 6 - i // 5, gy - 1 - i, col)
+        if i % 3 == 0:
+            c.hline(x + i // 5, gy - 1 - i, 7 - 2 * (i // 5), col)
+    c.dot(x + 3, gy - h - 1, "fire")
+    c.dot(x + 3, gy - h - 2, "fire2")
+
+
+def _skyline_mazut(c: Canvas, gy: int, col: str):
+    x = 0
+    while x < W:
+        r = c.rnd.random()
+        if r < 0.35:
+            _derrick(c, x, gy, c.rnd.randrange(12, 18), col)
+            x += 9
+        elif r < 0.65:
+            w, h = c.rnd.randrange(7, 11), c.rnd.randrange(4, 7)  # резервуар
+            c.rect(x, gy - h, w, h, col)
+            c.hline(x + 1, gy - h - 1, w - 2, col)
+            c.hline(x + 1, gy - h + 1, w - 2, "brass2")
+            x += w + 2
+        else:
+            x += c.rnd.randrange(3, 7)  # пустошь между вышками
+
+
+def _skyline_kotlo(c: Canvas, gy: int, col: str):
+    x = 0
+    tower_at = W // 2 - 4
+    while x < W:
+        if abs(x - tower_at) < 6:
+            c.rect(tower_at, gy - 26, 8, 26, col)  # часовая башня
+            c.rect(tower_at + 2, gy - 32, 4, 6, col)
+            c.dot(tower_at + 4, gy - 33, col)
+            c.rect(tower_at + 2, gy - 22, 4, 4, "brass2")
+            c.dot(tower_at + 4, gy - 21, "k")
+            x = tower_at + 9
+            continue
+        bw, bh = c.rnd.randrange(5, 10), c.rnd.randrange(10, 20)
+        c.rect(x, gy - bh, bw, bh, col)
+        for j in range(gy - bh + 2, gy - 1, 3):
+            for i in range(x + 1, x + bw - 1, 2):
+                if c.rnd.random() < 0.3:
+                    c.dot(i, j, "brass2")
+        x += bw + c.rnd.randrange(0, 2)
 
 
 def smoke(c: Canvas, x, y, n, col="smog2"):
@@ -683,11 +773,16 @@ SCENES = {
 }
 
 
-@lru_cache(maxsize=64)
+THEMES = ("rust", "mazut", "kotlo")
+
+
+@lru_cache(maxsize=256)
 def render_png(scene: str) -> bytes:
-    if scene not in SCENES:
-        scene = "start"
-    fn = SCENES[scene]
-    c = Canvas(seed=sum(map(ord, scene)))
-    fn(c)
+    """scene — имя сцены, опционально с локацией: «truck@mazut» рисует горизонт Мазутного Яра."""
+    name, _, theme = scene.partition("@")
+    if name not in SCENES:
+        name = "start"
+    c = Canvas(seed=sum(map(ord, name + theme)))
+    c.theme = theme if theme in THEMES else None
+    SCENES[name](c)
     return c.png()

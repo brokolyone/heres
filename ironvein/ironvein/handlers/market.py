@@ -84,7 +84,7 @@ async def cb_mkt_loc(cq: CallbackQuery, callback_data: Nav):
     lines = [fmt.head(f"Биржа · {LOCATIONS[loc].name}"), fmt.table(table, "lrrr"),
              "<i>«—» — заявок или сделок не было. Выдуманных цен здесь нет.</i>"]
     await show(cq, "\n".join(lines), kb(*[rows[i:i + 3] for i in range(0, len(rows), 3)], back("market")),
-               scene="market")
+               scene=f"market@{loc}")
     await cq.answer()
 
 
@@ -130,7 +130,7 @@ async def cb_book(cq: CallbackQuery, callback_data: Nav):
         user = await current_user(s, cq.from_user)
         acc, _ = await acting(s, user)
         text, markup = await book_screen(s, loc, res, acc)
-    await show(cq, text, markup, scene="market")
+    await show(cq, text, markup, scene=f"market@{loc}")
     await cq.answer()
 
 

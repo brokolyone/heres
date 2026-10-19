@@ -163,7 +163,8 @@ async def cb_trip_dest(cq: CallbackQuery, callback_data: Nav):
         rows.append([btn(f"→ {loc.name}", Do(a="trip_plan", x=int(vid), z=f"{origin}:{code}", k=k))])
     if st is not None:
         lines.append(f"Дизель на складе: <b>{diesel}</b> · бак {st.tank}. «⚠» — топлива не хватит.")
-    await show(cq, "\n".join(lines), kb(*rows, back("trip_new")), scene="foot" if vid == "0" else "truck")
+    await show(cq, "\n".join(lines), kb(*rows, back("trip_new")),
+               scene=("foot" if vid == "0" else "truck") + f"@{origin}")
     await cq.answer()
 
 
@@ -233,6 +234,7 @@ async def trip_card(s, acc: int, shipment_id: int):
         rows.append([btn("▶ Отправить", Do(a="trip_go", x=sh.id, k=k)), btn("✕ Отменить", Do(a="trip_cancel", x=sh.id, k=k))])
         lines.append("<i>Всё зарезервировано. До отправления рейс можно отменить, в пути — нет.</i>")
     scene = ship_scene([c.resource for c in cargo if c.resource], armored, painted, sh.mode == "foot")
+    scene += f"@{sh.dest if sh.status in ('in_transit', 'delivered') else sh.origin}"
     return "\n".join(lines), kb(*rows, back("transport")), scene
 
 

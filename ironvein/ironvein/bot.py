@@ -112,6 +112,7 @@ def make_notifier(bot: Bot):
                 elif j.recipe_code and RECIPES[j.recipe_code].facility in ("smelter", "refinery"):
                     scene = RECIPES[j.recipe_code].facility
                 text = "\n".join(lines)
+                scene = f"{scene}@{j.location_code}"
                 targets = {u.tg_id}
                 markup = kb([btn("📦 Склады", Nav(s="inventory")), btn("⚙ Производство", Nav(s="production"))])
             elif kind == "shipment":
@@ -130,7 +131,7 @@ def make_notifier(bot: Bot):
                     t = await tg_of(s, c_.recipient_id)
                     if t:
                         targets.add(t)
-                scene = "foot" if sh.mode == "foot" else "arrive"
+                scene = ("foot" if sh.mode == "foot" else "arrive") + f"@{sh.dest}"
                 markup = kb([btn("📦 Склады", Nav(s="inventory")), btn("🚚 Перевозки", Nav(s="transport"))])
             elif kind == "contract_expired":
                 c = await s.get(Contract, data["id"])

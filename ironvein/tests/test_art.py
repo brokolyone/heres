@@ -21,3 +21,11 @@ def test_every_scene_renders_pixel_art_png():
 
 def test_unknown_scene_falls_back():
     assert render_png("nope") == render_png("start")
+
+
+def test_location_themes_render_and_differ():
+    from ironvein.art.render import THEMES
+    for name in ("truck", "mine_ore", "market", "arrive"):
+        pngs = {t: render_png(f"{name}@{t}") for t in THEMES}
+        assert len(set(pngs.values())) == len(THEMES), name
+    assert render_png("truck@unknown")  # неизвестная тема не ломает рендер
