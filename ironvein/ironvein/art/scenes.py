@@ -4,7 +4,7 @@
 читался позади них. SCENES — словарь «имя сцены → функция(c: Canvas)».
 """
 
-from ironvein.art.backgrounds import GY, backdrop, ground, rails, road, sky
+from ironvein.art.backgrounds import GY, backdrop, ground, lamp_post, rails, road, sky
 from ironvein.art.buildings import (
     board,
     drill_rig,
@@ -29,6 +29,7 @@ from ironvein.art.props import (
     magnifier,
     paint_can,
     pedestal,
+    sack,
     watch,
     worker,
     wrench,
@@ -120,10 +121,24 @@ def _scene_arrive(c: Canvas) -> None:
 def _scene_foot(c: Canvas) -> None:
     backdrop(c)
     road(c, 58, 8)
-    worker(c, 62, 64, "sack")
-    for x in range(14, 58, 8):  # следы на асфальте
-        c.dot(x, 64 - (x // 8) % 2, "road2")
-        c.dot(x + 1, 64 - (x // 8) % 2, "road2")
+    lamp_post(c, 96, 58, 20)
+    _signpost(c, 18, 58)
+    for x in range(30, 56, 6):  # следы на асфальте
+        c.dot(x, 63 - (x // 6) % 2, "road2")
+    worker(c, 58, 65, "sack")
+    sack(c, 104, 64)
+    crate(c, 110, 56)
+
+
+def _signpost(c: Canvas, x: int, gy: int) -> None:
+    """Дорожный указатель: столб и две таблички-стрелки."""
+    c.box(x, gy - 22, 2, 22, "wood", base=1)
+    for y, dx, w in ((gy - 21, 2, 14), (gy - 15, -12, 13)):
+        c.box(x + dx, y, w, 4, "wood", base=2)
+        c.hline(x + dx + 2, y + 2, w - 5, "wood0")
+        tip = x + dx + w if dx > 0 else x + dx - 1
+        c.dot(tip, y + 1, "wood2")
+        c.dot(tip, y + 2, "wood1")
 
 
 def _scene_train(c: Canvas) -> None:
@@ -179,14 +194,22 @@ def _scene_item(c: Canvas, kind: str) -> None:
 def _scene_done(c: Canvas) -> None:
     sky(c, smoggy=False)
     ground(c)
+    lamp_post(c, 14, 60, 22)
+    c.box(24, 58, 50, 2, "wood", base=1)  # поддон
+    for i in range(5):
+        crate(c, 25 + i * 9, 50)
     for i in range(4):
-        crate(c, 28 + i * 9, 50)
-    crate(c, 37, 42)
-    crate(c, 46, 42)
-    barrel(c, 74, 49)
-    barrel(c, 82, 49)
-    coin_stack(c, 96, 58, 3)
-
+        crate(c, 29 + i * 9, 42)
+    crate(c, 38, 34)
+    crate(c, 47, 34)
+    for i in range(3):
+        barrel(c, 86 + i * 8, 50)
+    barrel(c, 90, 41)
+    coin_stack(c, 112, 60, 4)
+    coin_stack(c, 119, 60, 6)
+    worker(c, 73, 60, None, flip=True)
+    for x, y in ((50, 26), (96, 30), (112, 40)):
+        c.sparkle(x, y, "brass3", 1, "white")
 
 def _bench(c: Canvas) -> None:
     """Верстак под лампой: тёмная мастерская, конус света, столешница с инструментом."""
