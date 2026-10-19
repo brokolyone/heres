@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ironvein
+      POSTGRES_PASSWORD: ironvein
+      POSTGRES_DB: ironvein
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ironvein -d ironvein"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  bot:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://ironvein:ironvein@db:5432/ironvein
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # docker compose --profile test run --rm tests
+  tests:
+    build: .
+    profiles: ["test"]
+    environment:
+      TEST_DATABASE_URL: postgresql+asyncpg://ironvein:ironvein@db:5432/ironvein_test
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["pytest", "-q"]
+
+volumes:
+  pgdata:

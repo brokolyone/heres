@@ -1,7 +1,8 @@
 from functools import lru_cache
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -9,7 +10,7 @@ class Settings(BaseSettings):
 
     bot_token: str = ""
     database_url: str = "postgresql+asyncpg://ironvein:ironvein@localhost:5432/ironvein"
-    admin_ids: list[int] = Field(default_factory=list)
+    admin_ids: Annotated[list[int], NoDecode] = Field(default_factory=list)
     environment: str = "development"
 
     game_speed: float = 1.0

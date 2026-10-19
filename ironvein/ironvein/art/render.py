@@ -685,7 +685,9 @@ SCENES = {
 
 @lru_cache(maxsize=64)
 def render_png(scene: str) -> bytes:
-    fn = SCENES.get(scene) or SCENES["start"]
+    if scene not in SCENES:
+        scene = "start"
+    fn = SCENES[scene]
     c = Canvas(seed=sum(map(ord, scene)))
     fn(c)
     return c.png()

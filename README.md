@@ -83,3 +83,7 @@ blender -b art/precision_rifle.blend --python tools/blender/bake_export.py -- \
 Обычные модели Minecraft собираются только из кубиков. Поэтому мод рисует настоящую
 треугольную сетку через Fabric Renderer API, с нормалями на каждой вершине,
 чтобы ствол, прицел и колёса выглядели круглыми.
+
+## IronVein
+
+В папке [`ironvein/`](ironvein/) лежит отдельный проект — экономическая RPG для Telegram (дизельпанк, Python/aiogram/PostgreSQL). Запуск и документация — в [`ironvein/README.md`](ironvein/README.md).
