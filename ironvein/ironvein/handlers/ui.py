@@ -26,6 +26,7 @@ from ironvein.art import render_png
 from ironvein.art.render import normalize_scene
 from ironvein.db import get_sessionmaker
 from ironvein.domain.errors import AlreadyDone, GameError, StaleButton
+from ironvein.handlers import emoji
 from ironvein.models import Company, User
 from ironvein.services import users
 
@@ -78,8 +79,10 @@ def e(s) -> str:
     return html.escape(str(s))
 
 
-def btn(text: str, cb: CallbackData | str) -> InlineKeyboardButton:
-    return InlineKeyboardButton(text=text, callback_data=cb.pack() if isinstance(cb, CallbackData) else cb)
+def btn(text: str, cb: CallbackData | str, icon: str | None = None) -> InlineKeyboardButton:
+    """icon — ключ премиум-эмодзи (handlers/emoji.py); без настроенного ID кнопка остаётся текстовой."""
+    return InlineKeyboardButton(text=text, callback_data=cb.pack() if isinstance(cb, CallbackData) else cb,
+                                icon_custom_emoji_id=emoji.icon_id(icon))
 
 
 def kb(*rows: list[InlineKeyboardButton]) -> InlineKeyboardMarkup:
@@ -87,7 +90,8 @@ def kb(*rows: list[InlineKeyboardButton]) -> InlineKeyboardMarkup:
 
 
 def back(screen: str = "menu", text: str = "◂ Назад", arg: str = "") -> list[InlineKeyboardButton]:
-    return [btn(text, Nav(s=screen, a=arg)), btn("Меню", Nav(s="menu"))] if screen != "menu" else [btn("Меню", Nav(s="menu"))]
+    menu = btn("Меню", Nav(s="menu"), icon="menu")
+    return [btn(text, Nav(s=screen, a=arg)), menu] if screen != "menu" else [menu]
 
 
 @asynccontextmanager

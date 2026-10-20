@@ -1,7 +1,7 @@
 """Администрирование: доступ по ADMIN_IDS, каждое действие пишется в audit_logs."""
 
 from aiogram import Router
-from aiogram.filters import Command, CommandObject, Filter
+from aiogram.filters import Command, CommandObject, Filter, StateFilter
 from aiogram.types import Message
 from sqlalchemy import func, select
 
@@ -57,12 +57,30 @@ HELP = """<b>Администрирование</b>
 /admin_product &lt;code&gt; on|off|limit N|price N
 /admin_company_owner &lt;company_id&gt; &lt;user_id&gt;
 /admin_active — активные производства, рейсы, контракты
-/admin_grant &lt;user_id&gt; &lt;loc&gt; &lt;res&gt; &lt;qty&gt; — тестовая выдача (только не в production)"""
+/admin_grant &lt;user_id&gt; &lt;loc&gt; &lt;res&gt; &lt;qty&gt; — тестовая выдача (только не в production)
+Пришлите сообщение с премиум-эмодзи — бот ответит их ID для CUSTOM_EMOJI."""
 
 
 async def _admin_id(s, message: Message) -> int:
     u, _ = await users.get_or_register(s, message.from_user.id, message.from_user.full_name, message.from_user.username)
     return u.id
+
+
+def _has_custom_emoji(message: Message) -> bool:
+    return any(x.type == "custom_emoji" for x in (message.entities or []))
+
+
+@router.message(StateFilter(None), _has_custom_emoji)
+async def admin_emoji_ids(message: Message):
+    """ID премиум-эмодзи из сообщения администратора — для настройки CUSTOM_EMOJI."""
+    lines, seen = ["<b>Премиум-эмодзи</b>"], set()
+    for x in message.entities:
+        if x.type != "custom_emoji" or x.custom_emoji_id in seen:
+            continue
+        seen.add(x.custom_emoji_id)
+        ch = x.extract_from(message.text or "")
+        lines.append(f'<tg-emoji emoji-id="{e(x.custom_emoji_id)}">{e(ch)}</tg-emoji> <code>{e(x.custom_emoji_id)}</code> {e(ch)}')
+    await message.answer("\n".join(lines), parse_mode="HTML")
 
 
 @router.message(Command("admin_help"))

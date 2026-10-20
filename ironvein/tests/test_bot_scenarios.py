@@ -391,3 +391,28 @@ async def test_forecast_waits_for_free_facility(env, sm):
     await p.press(Nav(s="prod_rec", a="rust:build_drill"))
     text = " ".join(env.texts())
     assert "когда освободится установка" in text and "Отремонтированная" not in text
+
+
+async def test_premium_emoji_ids_and_icons(env, sm, monkeypatch):
+    """Админ узнаёт ID премиум-эмодзи; с CUSTOM_EMOJI они появляются в заголовках и на кнопках меню."""
+    from aiogram.types import MessageEntity
+    admin = Player(env, 9001, "Админ")
+    await admin.text("/start")
+    env.session.calls.clear()
+    env.n += 1
+    await env.dp.feed_update(env.bot, Update(update_id=env.n, message=Message(
+        message_id=env.n, date=datetime.now(UTC), chat=admin.chat, from_user=admin.user, text="⛏ кирка",
+        entities=[MessageEntity(type="custom_emoji", offset=0, length=1, custom_emoji_id="5368324170671202286")])))
+    assert "5368324170671202286" in last_text(env) and "tg-emoji" in last_text(env)
+
+    p = Player(env, 1801, "Игрок")
+    await p.text("/start")
+    assert "tg-emoji" not in last_text(env)  # без настройки — чистый текст
+    monkeypatch.setenv("CUSTOM_EMOJI", '{"menu": ["111", "🏭"], "mine": ["222", "⛏"]}')
+    get_settings.cache_clear()
+    env.session.calls.clear()
+    await p.text("/start")
+    assert '<tg-emoji emoji-id="111">🏭</tg-emoji>' in last_text(env)
+    markup = next(c.reply_markup for c in env.session.calls if getattr(c, "reply_markup", None))
+    icons = {b.text: b.icon_custom_emoji_id for row in markup.inline_keyboard for b in row}
+    assert icons["Добыча"] == "222" and icons["Профиль"] is None

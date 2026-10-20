@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     warehouse_capacity: int = 2000
     deposit_scale_players: int = 100  # регенерация × max(1, активные за сутки / N); 0 — без масштабирования
     quality_secret: str = ""  # секрет разброса качества; пусто — производный от BOT_TOKEN
+    # Премиум-эмодзи: {"mine": ["<custom_emoji_id>", "⛏"], ...}; работают, если у владельца бота Telegram Premium
+    custom_emoji: dict[str, list[str]] = Field(default_factory=dict)
     job_poll_seconds: float = 5.0
     premium_reservation_minutes: int = 30
 

@@ -102,7 +102,7 @@ MENU = [
 
 
 def menu_kb():
-    return kb(*[[btn(t, Nav(s=s)) for t, s in row] for row in MENU],
+    return kb(*[[btn(t, Nav(s=s), icon=s) for t, s in row] for row in MENU],
               [btn("Первые шаги", Nav(s="guide")), btn("Справка", Nav(s="help"))])
 
 

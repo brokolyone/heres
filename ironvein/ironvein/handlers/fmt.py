@@ -3,13 +3,14 @@
 import html
 
 from ironvein.domain.money import fmt_cr
+from ironvein.handlers import emoji
 from ironvein.services import clock
 
 RULE = "<code>━━━━━━━━━━━━━━━━━━━━━━</code>"
 
 
 def head(title: str, sub: str | None = None) -> str:
-    out = f"<b>{html.escape(title)}</b>"
+    out = emoji.tag(emoji.TITLE_KEYS.get(title)) + f"<b>{html.escape(title)}</b>"
     if sub:
         out += f"\n<i>{sub}</i>"
     return out
