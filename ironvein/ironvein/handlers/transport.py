@@ -66,22 +66,22 @@ async def transport_screen(s, acc: int, label: str):
     for t in trucks:
         where = f"{LOCATIONS[t.location_code].name} · {items.STATUS_RU[t.status]}" if t.location_code else "в пути"
         st = await transport.vehicle_stats(s, t.id)
-        lines.append(f"🚚 <b>#{t.id}</b> {where} · "
+        lines.append(f"<b>#{t.id}</b> {where} · "
                      f"<code>{fmt.gauge(t.durability, t.max_durability, 5)}</code>\n"
                      f"    груз {st.payload} · {st.speed_kmh} км/ч · запас хода {st.range_km} км")
-        rows.append(btn(f"🚚 #{t.id}", Nav(s="item", a=str(t.id))))
+        rows.append(btn(f"#{t.id}", Nav(s="item", a=str(t.id))))
     if not trucks:
         lines.append("Машин нет. Грузовик собирается в мастерской из шасси, двигателя, бака и кузова.")
     lines.append(fmt.section("Рейсы"))
     trip_rows = []
     for sh in ships:
         route = f"{LOCATIONS[sh.origin].name} → {LOCATIONS[sh.dest].name}"
-        icon = "🚶" if sh.mode == "foot" else "🚚"
-        lines.append(f"{icon} <b>#{sh.id}</b> {route} · {STATUS[sh.status]}")
+        icon = " пешком" if sh.mode == "foot" else ""
+        lines.append(f"<b>#{sh.id}</b>{icon} {route} · {STATUS[sh.status]}")
         if sh.status == "in_transit":
             lines.append(f"    <code>{fmt.progress(sh.departed_at, sh.eta)}</code> прибытие через {fmt.left(sh.eta)}")
         if sh.status == "loading" and sh.carrier_id == acc:
-            trip_rows.append([btn(f"📦 Рейс #{sh.id}: погрузка", Nav(s="trip", a=str(sh.id)))])
+            trip_rows.append([btn(f"Рейс #{sh.id}: погрузка", Nav(s="trip", a=str(sh.id)))])
     if not ships:
         lines.append("Активных рейсов нет.")
     return "\n".join(lines), kb([btn("＋ Новый рейс", Nav(s="trip_new"))], *trip_rows,
@@ -111,9 +111,9 @@ async def cb_trip_new(cq: CallbackQuery):
         user = await current_user(s, cq.from_user)
         acc, _ = await acting(s, user)
         trucks = [t for t in await transport.vehicles_of(s, acc) if t.status == ITEM_IDLE]
-    rows = [[btn(f"🚚 Грузовик #{t.id} · {LOCATIONS[t.location_code].name}",
+    rows = [[btn(f"Грузовик #{t.id} · {LOCATIONS[t.location_code].name}",
                  Nav(s="trip_dest", a=f"{t.id}:{t.location_code}"))] for t in trucks]
-    rows.append([btn(f"🚶 Пешком · до {FOOT_CAPACITY} ед., {FOOT_SPEED_KMH} км/ч", Nav(s="trip_foot"))])
+    rows.append([btn(f"Пешком · до {FOOT_CAPACITY} ед., {FOOT_SPEED_KMH} км/ч", Nav(s="trip_foot"))])
     text = "\n".join([fmt.head("Новый рейс", "чем везём?"),
                       "Грузовику нужен дизель на складе в пункте отправления; на обратный путь — в пункте назначения.",
                       "Пешком — без топлива, медленно, только лёгкий груз и ручной инструмент."])
@@ -157,12 +157,12 @@ async def cb_trip_dest(cq: CallbackQuery, callback_data: Nav):
             lines.append(f"▸ {loc.name}: {km} км · {fmt.dur_game(mins)}")
         else:
             fuel = trip_fuel(st, km)
-            ok_ = "" if fuel <= min(st.tank, diesel) else " ⚠"
+            ok_ = "" if fuel <= min(st.tank, diesel) else " — не хватит"
             lines.append(f"▸ {loc.name}: {km} км · {fmt.dur_game(trip_minutes(st.speed_kmh, km))} · "
                          f"дизель {fuel}{ok_}")
         rows.append([btn(f"→ {loc.name}", Do(a="trip_plan", x=int(vid), z=f"{origin}:{code}", k=k))])
     if st is not None:
-        lines.append(f"Дизель на складе: <b>{diesel}</b> · бак {st.tank}. «⚠» — топлива не хватит.")
+        lines.append(f"Дизель на складе: <b>{diesel}</b> · бак {st.tank}.")
     await show(cq, "\n".join(lines), kb(*rows, back("trip_new")),
                scene=("foot" if vid == "0" else "truck") + f"@{origin}")
     await cq.answer()
@@ -313,7 +313,7 @@ async def do_trip_go(cq: CallbackQuery, callback_data: Do):
             sh = await transport.depart(s, user.id, callback_data.x, op_key=op_key(cq.from_user.id, callback_data.k))
             text, _, scene = await trip_card(s, acc, sh.id)
         await show(cq, fmt.ok("Отправлен") + f" · прибытие через {fmt.left(sh.eta)}\n{text}\n<i>Развернуть в пути нельзя.</i>",
-                   kb([btn("🚚 Перевозки", Nav(s="transport"))], back()), scene=scene)
+                   kb([btn("Перевозки", Nav(s="transport"))], back()), scene=scene)
     await guarded(cq, run)
 
 

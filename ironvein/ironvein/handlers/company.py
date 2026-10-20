@@ -55,8 +55,8 @@ async def company_root(s, user):
     for c, m in ms:
         b = await balances(s, c.id)
         mark = " · ◀ активна" if acc == c.id else ""
-        lines.append(f"🏭 <b>«{e(c.name)}»</b> — {ROLE_RU[m.role]} · касса {fmt.cr(b.get('main', 0))}{mark}")
-        rows.append([btn(f"🏭 «{c.name}»"[:40], Nav(s="comp", a=str(c.id)))])
+        lines.append(f"<b>«{e(c.name)}»</b> — {ROLE_RU[m.role]} · касса {fmt.cr(b.get('main', 0))}{mark}")
+        rows.append([btn(f"«{c.name}»"[:40], Nav(s="comp", a=str(c.id)))])
     k = nonce()
     for inv, c in invites:
         lines.append(f"✉ Приглашение в «{e(c.name)}» ({ROLE_RU[inv.role]})")
@@ -67,7 +67,7 @@ async def company_root(s, user):
     lines.append("\n<i>Компания — отдельный владелец: своя касса, склады, техника, заявки и контракты. "
                  "Бонусов за факт существования нет.</i>")
     if acc != user.id:
-        rows.append([btn("👤 Действовать лично", Do(a="act", x=user.id))])
+        rows.append([btn("Действовать лично", Do(a="act", x=user.id))])
     rows.append([btn(f"＋ Основать компанию · {fmt.cr(get_settings().company_fee)}", Do(a="comp_new"))])
     return "\n".join(lines), kb(*rows, back())
 
@@ -157,16 +157,16 @@ async def comp_card(s, user, cid: int):
     if acc != cid:
         rows.append([btn("◀ Действовать от имени компании", Do(a="act", x=cid))])
     else:
-        rows.append([btn("👤 Действовать лично", Do(a="act", x=user.id))])
-    rows.append([btn("💰 Пополнить кассу", Do(a="cdep", x=cid)), btn("📦 Передать ресурс", Nav(s="cxfer", a=str(cid)))])
+        rows.append([btn("Действовать лично", Do(a="act", x=user.id))])
+    rows.append([btn("Пополнить кассу", Do(a="cdep", x=cid)), btn("Передать ресурс", Nav(s="cxfer", a=str(cid)))])
     extra = []
     if perms & Perm.WITHDRAW:
-        extra.append(btn("💸 Выплата", Nav(s="cpay", a=str(cid))))
+        extra.append(btn("Выплата", Nav(s="cpay", a=str(cid))))
     if perms & Perm.INVITE:
         extra.append(btn("✉ Пригласить", Do(a="cinv", x=cid)))
     if extra:
         rows.append(extra)
-    rows.append([btn("👥 Состав и права", Nav(s="cmembers", a=str(cid)))])
+    rows.append([btn("Состав и права", Nav(s="cmembers", a=str(cid)))])
     if user.id == comp.owner_user_id:
         rows.append([btn("Закрыть компанию", Do(a="cclose", x=cid))])
     else:
@@ -205,7 +205,7 @@ async def cb_cpay(cq: CallbackQuery, callback_data: Nav):
         await require_member(s, cid, (await current_user(s, cq.from_user)).id)
         mem = await companies.members(s, cid)
     rows = [[btn(f"{u.display_name} ({ROLE_RU[m.role]})"[:40], Do(a="cpay_to", x=cid, y=u.id))] for m, u in mem]
-    await show(cq, fmt.head("Выплата", "перевод существующих крон из кассы") + "\nКому?",
+    await show(cq, fmt.head("Выплата") + "\nКому?",
                kb(*rows, back("comp", arg=str(cid))))
     await cq.answer()
 
@@ -262,7 +262,7 @@ async def cb_cmembers(cq: CallbackQuery, callback_data: Nav):
     rows = []
     for m, u in mem:
         names = ", ".join(PERM_RU[p] for p in Perm if Perm(m.permissions) & p)
-        lines.append(f"👤 <b>{e(u.display_name)}</b> — {ROLE_RU[m.role]}\n    <i>{names or 'без прав'}</i>")
+        lines.append(f"<b>{e(u.display_name)}</b> — {ROLE_RU[m.role]}\n    <i>{names or 'без прав'}</i>")
         if m.role != "owner":
             rows.append([btn(f"{u.display_name}"[:30], Nav(s="cmember", a=f"{cid}:{u.id}"))])
     await show(cq, "\n".join(lines), kb(*rows, back("comp", arg=str(cid))))

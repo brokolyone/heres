@@ -9,14 +9,14 @@ RULE = "<code>━━━━━━━━━━━━━━━━━━━━━━
 
 
 def head(title: str, sub: str | None = None) -> str:
-    out = f"<b>⟦ {html.escape(title.upper())} ⟧</b>"
+    out = f"<b>{html.escape(title)}</b>"
     if sub:
         out += f"\n<i>{sub}</i>"
     return out
 
 
 def section(title: str) -> str:
-    return f"\n<b>▌{html.escape(title)}</b>"
+    return f"\n<b>{html.escape(title)}</b>"
 
 
 def kv(label: str, value) -> str:
@@ -81,8 +81,8 @@ def table(rows: list[tuple], aligns: str | None = None) -> str:
 
 
 def ok(text: str) -> str:
-    return f"✔ <b>{text}</b>"
+    return f"<b>{text}</b>"
 
 
 def warn(text: str) -> str:
-    return f"⚠ {text}"
+    return f"<b>!</b> {text}"

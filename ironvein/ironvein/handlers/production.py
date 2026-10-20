@@ -73,7 +73,7 @@ async def free_stock(s, acc: int, loc: str) -> dict[str, int]:
 # --- Добыча ------------------------------------------------------------------------------------------
 
 MINE_TEXT = "\n".join([
-    fmt.head("Добыча", "общие месторождения — конкуренция реальна"),
+    fmt.head("Добыча"),
     "▸ <b>Руками</b> — всегда доступно, медленно.",
     "▸ <b>Кирка / насос</b> — ручная смена 10 мин, одна на игрока.",
     "▸ <b>Буровая / качалка</b> — до 12 циклов, жрут дизель со склада на месте.",
@@ -103,7 +103,7 @@ async def cb_mine_loc(cq: CallbackQuery, callback_data: Nav):
         for d in deps:
             await regen_deposit(s, d)
         mult = await players_multiplier(s)
-    lines = [fmt.head(LOCATIONS[loc].name, LOCATIONS[loc].description)]
+    lines = [fmt.head(LOCATIONS[loc].name)]
     rows = []
     for d in deps:
         lines.append(f"\n{RES_ICON.get(d.resource, '▸')} <b>{e(d.name)}</b> · {resource_name(d.resource)}")
@@ -154,7 +154,7 @@ async def cb_mine_dep(cq: CallbackQuery, callback_data: Nav):
         else:
             lines.append(f"▸ {e(items.title(t))} · прочность {state} · смена: +{out}")
             if not busy:
-                rows.append([btn(f"⛏ {d.name} #{t.id} · +{out}", Do(a="mine", x=dep.id, y=t.id, k=k))])
+                rows.append([btn(f"{d.name} #{t.id} · +{out}", Do(a="mine", x=dep.id, y=t.id, k=k))])
     if not tools:
         lines.append("<i>Своего инструмента здесь нет — можно работать руками.</i>")
     lines.append(f"<i>Ручная смена: {fmt.dur_game(MANUAL_SHIFT_MINUTES)}.</i>")
@@ -182,7 +182,7 @@ async def do_mine(cq: CallbackQuery, callback_data: Do):
             lines.append(fmt.kv("Сожжено дизеля", job.inputs["diesel"]))
         lines.append(fmt.kv("Готово через", fmt.left(job.finishes_at)))
         lines.append("<i>Сообщу, когда добыча ляжет на склад.</i>")
-        await show(cq, "\n".join(lines), kb([btn("⚙ Задания", Nav(s="production"))],
+        await show(cq, "\n".join(lines), kb([btn("Задания", Nav(s="production"))],
                                             back("mine_dep", arg=str(dep.id))), scene=f"{scene}@{dep.location_code}")
     await guarded(cq, run)
 
@@ -403,7 +403,7 @@ async def assembly_screen(s, user, loc: str, ids: list[int] | None):
                                               f"запас хода {st.range_km} км"))
         k = nonce()
         z = f"{loc}:{enc_ids(cur)}"
-        rows.append([btn("🔧 Собрать грузовик", Do(a="asm_go", z=z, k=k))])
+        rows.append([btn("Собрать грузовик", Do(a="asm_go", z=z, k=k))])
         rows.append([btn("✦ Тщательно: +50% времени", Do(a="asm_go", y=1, z=z, k=k))])
     return "\n".join(lines), kb(*rows, back("prod_list", arg=f"{loc}:workshop"))
 
@@ -434,7 +434,7 @@ async def do_asm_go(cq: CallbackQuery, callback_data: Do):
             job = await production.start_craft(s, user.id, acc, "assemble_truck", loc, module_ids=ids,
                                                op_key=op_key(cq.from_user.id, callback_data.k),
                                                careful=bool(callback_data.y))
-        await show(cq, "\n".join(craft_started_lines(job)), kb([btn("⚙ Задания", Nav(s="production"))], back()),
+        await show(cq, "\n".join(craft_started_lines(job)), kb([btn("Задания", Nav(s="production"))], back()),
                    scene=f"assembly@{loc}")
     await guarded(cq, run)
 
@@ -513,7 +513,7 @@ async def do_craft(cq: CallbackQuery, callback_data: Do):
         r = RECIPES[code]
         scene = "assembly" if r.output_item == "truck" else SCENE_BY_FAC[r.facility]
         lines = craft_started_lines(job)
-        await show(cq, "\n".join(lines), kb([btn("⚙ Задания", Nav(s="production")),
+        await show(cq, "\n".join(lines), kb([btn("Задания", Nav(s="production")),
                                              btn("↻ Ещё", Nav(s="prod_rec", a=f"{loc}:{code}"))], back()),
                    scene=f"{scene}@{loc}")
     await guarded(cq, run)
@@ -521,7 +521,7 @@ async def do_craft(cq: CallbackQuery, callback_data: Do):
 
 # --- Техника -----------------------------------------------------------------------------------------
 
-KIND_ICON = {"equipment": "⚙", "module": "🔩", "vehicle": "🚚", "premium": "⭐"}
+KIND_ICON = {"equipment": "▸", "module": "▸", "vehicle": "▸", "premium": "★"}
 
 
 async def equipment_screen(s, acc: int, label: str):
@@ -536,9 +536,9 @@ async def equipment_screen(s, acc: int, label: str):
         where = LOCATIONS[it.location_code].name if it.location_code else "при себе"
         dur = f" · <code>{fmt.gauge(it.durability, it.max_durability, 5)}</code>" if it.max_durability else ""
         lines.append(f"{KIND_ICON.get(d.kind, '▸')} {e(items.title(it))}{dur} · {where} · {items.STATUS_RU[it.status]}")
-        rows.append(btn(f"{KIND_ICON.get(d.kind, '')} {items.button_title(it, 30)}", Nav(s="item", a=str(it.id))))
+        rows.append(btn(items.button_title(it, 30), Nav(s="item", a=str(it.id))))
     if not its:
-        lines.append("Пусто. Инструменты и установки делаются в ⚙ Производстве.")
+        lines.append("Пусто. Инструменты и установки делаются в Производстве.")
     grid = [rows[i:i + 2] for i in range(0, len(rows), 2)]
     return "\n".join(lines), kb(*grid, back())
 
@@ -605,19 +605,19 @@ async def item_card(s, user, item_id: int):
             pid = await s.scalar(select(Item.id).where(Item.owner_id == acc, Item.def_code == "paint_black_brass",
                                                        Item.status == ITEM_IDLE).limit(1))
             if pid:
-                rows.append([btn("🎨 Окрасить «Чёрной латунью»", Do(a="paint", x=pid, y=it.id, k=k))])
+                rows.append([btn("Окрасить «Чёрной латунью»", Do(a="paint", x=pid, y=it.id, k=k))])
         if it.status == ITEM_IDLE:
-            rows.append([btn("🚚 В рейс", Nav(s="trip_dest", a=f"{it.id}:{it.location_code}"))])
+            rows.append([btn("В рейс", Nav(s="trip_dest", a=f"{it.id}:{it.location_code}"))])
     if it.status == ITEM_IDLE:
         rule = REPAIR.get(it.def_code)
         if rule and it.durability < it.max_durability:
             ins = ", ".join(f"{resource_name(r)} {q}" for r, q in rule.inputs.items())
             lines.append(f"Ремонт: {ins} → +{rule.restore} за {fmt.dur_game(rule.minutes)}"
                          f"{', нужна мастерская рядом' if rule.needs_workshop else ''}.")
-            rows.append([btn("🔧 Ремонт ×1", Do(a="repair", x=it.id, y=1, k=k)),
-                         btn("🔧 Полный ремонт", Do(a="repair", x=it.id, y=99, k=k))])
+            rows.append([btn("Ремонт ×1", Do(a="repair", x=it.id, y=1, k=k)),
+                         btn("Полный ремонт", Do(a="repair", x=it.id, y=99, k=k))])
         if d.tradable:
-            rows.append([btn("⚖ Продать на рынке", Do(a="sellitem", x=it.id))])
+            rows.append([btn("Продать на рынке", Do(a="sellitem", x=it.id))])
         targets = []
         if acc == user.id:
             for c, _ in await companies.memberships(s, user.id):
@@ -656,7 +656,7 @@ async def do_repair(cq: CallbackQuery, callback_data: Do):
         lines = [fmt.ok("Ремонт начат"), e(production.describe_job(job)),
                  fmt.kv("Списано", ", ".join(f"{resource_name(k)} {v}" for k, v in job.inputs.items())),
                  fmt.kv("Готово через", fmt.left(job.finishes_at))]
-        await show(cq, "\n".join(lines), kb([btn("⚙ Задания", Nav(s="production"))], back("equipment")), scene="repair")
+        await show(cq, "\n".join(lines), kb([btn("Задания", Nav(s="production"))], back("equipment")), scene="repair")
     await guarded(cq, run)
 
 
@@ -675,7 +675,7 @@ async def do_paint(cq: CallbackQuery, callback_data: Do):
         painted = callback_data.a == "paint"
         text = (fmt.ok("Окраска нанесена: «Чёрная латунь»") + "\nХарактеристики не меняются — только вид."
                 if painted else fmt.ok("Окраска снята") + "\nОна вернулась в инвентарь.")
-        await show(cq, text, kb([btn("🚚 К грузовику", Nav(s="item", a=str(vid)))], back("equipment")),
+        await show(cq, text, kb([btn("К грузовику", Nav(s="item", a=str(vid)))], back("equipment")),
                    scene="truck_brass" if painted else "truck")
     await guarded(cq, run)
 

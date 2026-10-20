@@ -87,7 +87,7 @@ def kb(*rows: list[InlineKeyboardButton]) -> InlineKeyboardMarkup:
 
 
 def back(screen: str = "menu", text: str = "◂ Назад", arg: str = "") -> list[InlineKeyboardButton]:
-    return [btn(text, Nav(s=screen, a=arg)), btn("☰ Меню", Nav(s="menu"))] if screen != "menu" else [btn("☰ Меню", Nav(s="menu"))]
+    return [btn(text, Nav(s=screen, a=arg)), btn("Меню", Nav(s="menu"))] if screen != "menu" else [btn("Меню", Nav(s="menu"))]
 
 
 @asynccontextmanager

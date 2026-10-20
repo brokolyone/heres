@@ -92,7 +92,7 @@ async def test_command_during_input_resets_it(env, sm):  # noqa: F811
     await p.press(Do(a="ask", z="rust:steel"))
     env.session.calls.clear()
     await p.text("/profile")
-    assert any("ПРОФИЛЬ" in t for t in env.texts())
+    assert any("Профиль" in t for t in env.texts())
     env.session.calls.clear()
     await p.text("10 5")  # ввод уже отменён — это просто непонятный текст
     assert any("не понял" in t for t in env.texts())

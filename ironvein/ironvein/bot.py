@@ -110,7 +110,7 @@ def make_notifier(bot: Bot):
                                      + f" · оценка {items.quality_score(it)}/100"
                                      + (f" · прочность {it.max_durability}" if it.max_durability else ""))
                         if tier.code == "master":
-                            lines.append("✦ <b>Мастерская работа!</b> Такое на рынке ценят.")
+                            lines.append("✦ <b>Мастерская работа.</b>")
                         alt = "masterwork" if tier.code == "master" else "inspect"
                         if alt in SCENES:  # без сцены остаётся «мастерская»/«сборка», а не заставка
                             scene = alt
@@ -126,7 +126,7 @@ def make_notifier(bot: Bot):
                 text = "\n".join(lines)
                 scene = f"{scene}@{j.location_code}"
                 targets = {u.tg_id}
-                markup = kb([btn("📦 Склады", Nav(s="inventory")), btn("⚙ Производство", Nav(s="production"))])
+                markup = kb([btn("Склады", Nav(s="inventory")), btn("Производство", Nav(s="production"))])
             elif kind == "shipment":
                 sh = await s.get(Shipment, data["id"])
                 rows = (await s.scalars(select(ShipmentCargo).where(ShipmentCargo.shipment_id == sh.id))).all()
@@ -144,14 +144,14 @@ def make_notifier(bot: Bot):
                     if t:
                         targets.add(t)
                 scene = ("foot" if sh.mode == "foot" else "arrive") + f"@{sh.dest}"
-                markup = kb([btn("📦 Склады", Nav(s="inventory")), btn("🚚 Перевозки", Nav(s="transport"))])
+                markup = kb([btn("Склады", Nav(s="inventory")), btn("Перевозки", Nav(s="transport"))])
             elif kind == "contract_expired":
                 c = await s.get(Contract, data["id"])
                 text = (fmt.warn(f"<b>Контракт #{c.id} просрочен.</b>") +
                         f"\nПоставлено {c.delivered_qty}/{c.qty}; неиспользованный резерв вернулся заказчику.")
                 targets = {t for t in (await tg_of(s, c.customer_id), await tg_of(s, c.executor_id)) if t}
                 scene = "contract"
-                markup = kb([btn("📜 Контракты", Nav(s="contracts"))])
+                markup = kb([btn("Контракты", Nav(s="contracts"))])
             elif kind == "refund":
                 o = await s.get(PremiumOrder, data["id"])
                 u = await s.get(User, o.user_id)
@@ -188,11 +188,10 @@ async def main() -> None:
     dp = build_dispatcher()
     await bot.set_my_commands([BotCommand(command=c, description=d) for c, d in COMMANDS])
     try:
-        await bot.set_my_short_description("Дизельпанк-экономика: добыча, заводы, грузовики, компании и рынок игроков.")
+        await bot.set_my_short_description("Экономическая игра: добыча, производство, перевозки, рынок игроков.")
         await bot.set_my_description(
-            "IronVein — промышленная песочница в мире смога, нефти и стали 1930–50-х.\n"
-            "Добывайте руду, уголь и нефть, плавьте сталь, собирайте грузовики, возите грузы между городами, "
-            "основывайте компании и заключайте контракты. Цены назначают только игроки.\nНажмите «Старт».")
+            "IronVein — экономическая игра: добыча, производство, перевозки, компании, контракты и рынок, "
+            "где цены назначают только игроки.")
     except Exception:  # описание — косметика, бот работает и без него
         log.warning("could not set bot description")
     jobs = asyncio.create_task(run_forever(sm, settings.job_poll_seconds, make_notifier(bot), make_refunder(bot)))

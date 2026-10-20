@@ -15,7 +15,7 @@ router = Router(name="fallback")
 @router.message(F.text)
 async def unknown_text(message: Message):
     await message.answer("Терминал не понял команду. Откройте меню или /help.",
-                         reply_markup=kb([btn("☰ Меню", Nav(s="menu")), btn("Справка", Nav(s="help"))]))
+                         reply_markup=kb([btn("Меню", Nav(s="menu")), btn("Справка", Nav(s="help"))]))
 
 
 @router.callback_query()

@@ -89,7 +89,7 @@ async def admin_overview(message: Message):
     bad = {k: v for k, v in i.items() if k not in ("ok", "emitted", "burned", "circulating") and v}
     lines = [
         fmt.head("Экономика", "последние 24 часа"),
-        "Инварианты: " + ("✔ <b>в порядке</b>" if i["ok"] else f"⚠ <b>НАРУШЕНЫ</b>: {e(str(bad))[:500]}"),
+        "Инварианты: " + ("<b>в порядке</b>" if i["ok"] else f"<b>НАРУШЕНЫ</b>: {e(str(bad))[:500]}"),
         fmt.kv("Эмиссия", fmt.cr(i["emitted"])) + " · " + fmt.kv("уничтожено", fmt.cr(i["burned"])) + " · "
         + fmt.kv("в обороте", fmt.cr(i["circulating"])),
         fmt.kv("Резервы", fmt.cr(o["reserves"])) + " · " + fmt.kv("комиссии рынка", fmt.cr(o["fees_period"])),

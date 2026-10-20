@@ -46,15 +46,15 @@ EVENT_RU = {"created": "создан", "published": "опубликован, о�
 
 
 def contracts_menu():
-    return kb([btn("📦 Открытые поставки", Nav(s="ctr_list", a="supply")),
-               btn("🚚 Открытые перевозки", Nav(s="ctr_list", a="transport"))],
-              [btn("📋 Мои контракты", Nav(s="ctr_list", a="mine"))],
+    return kb([btn("Открытые поставки", Nav(s="ctr_list", a="supply")),
+               btn("Открытые перевозки", Nav(s="ctr_list", a="transport"))],
+              [btn("Мои контракты", Nav(s="ctr_list", a="mine"))],
               [btn("＋ Заказать поставку", Do(a="cnew", z="supply")), btn("＋ Заказать перевозку", Do(a="cnew", z="transport"))],
               back())
 
 
 TEXT = "\n".join([
-    fmt.head("Контракты", "договоры между игроками и компаниями"),
+    fmt.head("Контракты"),
     "▸ <b>Поставка</b>: заказчик резервирует оплату, исполнитель привозит товар на склад в месте поставки "
     "и получает деньги пропорционально — частями можно.",
     "▸ <b>Перевозка</b>: заказчик резервирует плату и груз, перевозчик забирает его своей машиной; "
@@ -75,12 +75,12 @@ async def cb_contracts(cq: CallbackQuery):
 
 
 STATUS_ICON = {"draft": "✎", "open": "○", "accepted": "◐", "in_progress": "◑", "completed": "✔", "cancelled": "✕",
-               "expired": "⌛", "disputed": "⚠"}
+               "expired": "⌛", "disputed": "!"}
 
 
 def short(c: Contract) -> str:
     route = LOCATIONS[c.location_code].name + (f" → {LOCATIONS[c.dest_code].name}" if c.dest_code else "")
-    kind = "📦 Поставка" if c.kind == "supply" else "🚚 Перевозка"
+    kind = "Поставка" if c.kind == "supply" else "Перевозка"
     return f"{kind} #{c.id}: {resource_name(c.resource)} {c.delivered_qty}/{c.qty} · {route} · {fmt_cr(c.price_total)}"
 
 

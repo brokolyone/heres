@@ -46,9 +46,9 @@ def where(loc: str | None) -> str:
 
 
 async def market_root(event):
-    rows = [[btn(f"⚖ Биржа: {loc.name}", Nav(s="mkt_loc", a=code))] for code, loc in LOCATIONS.items()]
-    rows.append([btn("🛠 Техника и премиум", Nav(s="mkt_items")), btn("📋 Мои заявки", Nav(s="my_orders"))])
-    text = "\n".join([fmt.head("Рынок", "цены — только заявки и сделки игроков"),
+    rows = [[btn(f"Биржа: {loc.name}", Nav(s="mkt_loc", a=code))] for code, loc in LOCATIONS.items()]
+    rows.append([btn("Техника и премиум", Nav(s="mkt_items")), btn("Мои заявки", Nav(s="my_orders"))])
+    text = "\n".join([fmt.head("Рынок"),
                       "▸ <b>Продажа (ask)</b> блокирует товар, <b>покупка (bid)</b> резервирует кроны.",
                       "▸ Товар лежит в локации заявки — вывозите сами или по контракту.",
                       "▸ Комиссия 2% с продавца уничтожается."])
@@ -82,7 +82,7 @@ async def cb_mkt_loc(cq: CallbackQuery, callback_data: Nav):
             table.append((r.name, a, b, last))
             rows.append(btn(r.name, Nav(s="book", a=f"{loc}:{code}")))
     lines = [fmt.head(f"Биржа · {LOCATIONS[loc].name}"), fmt.table(table, "lrrr"),
-             "<i>«—» — заявок или сделок не было. Выдуманных цен здесь нет.</i>"]
+             "<i>«—» — заявок или сделок не было.</i>"]
     await show(cq, "\n".join(lines), kb(*[rows[i:i + 3] for i in range(0, len(rows), 3)], back("market")),
                scene=f"market@{loc}")
     await cq.answer()
@@ -152,7 +152,7 @@ async def _trade_done(message: Message, t, verb: str):
              fmt.kv("Сумма", fmt.cr(t.gross)) + " · " + fmt.kv("комиссия (уничтожена)", fmt.cr(t.fee)),
              fmt.kv("Товар на складе", where(t.location_code))]
     markup = kb([btn("↻ К стакану", Nav(s="book", a=f"{t.location_code}:{t.resource}"))] if t.resource else [],
-                [btn("⚖ Рынок", Nav(s="market"))], back())
+                [btn("Рынок", Nav(s="market"))], back())
     await show(message, "\n".join(lines), markup, scene="market")
 
 
@@ -293,8 +293,8 @@ async def do_buyitem(cq: CallbackQuery, callback_data: Do):
             t = await market.buy(s, user.id, acc, callback_data.x, 1, op_key=op_key(cq.from_user.id, callback_data.k))
         text = "\n".join([fmt.ok(f"Куплено: {item_name(t.item_def)}"), fmt.kv("Цена", fmt.cr(t.gross)),
                           f"Комиссия продавца {fmt.cr(t.fee)} уничтожена.", fmt.kv("Где", where(t.location_code)),
-                          "Предмет — в разделе 🛠 Техника."])
-        await show(cq, text, kb([btn("🛠 Техника", Nav(s="equipment"))], back("market")),
+                          "Предмет — в разделе Техника."])
+        await show(cq, text, kb([btn("Техника", Nav(s="equipment"))], back("market")),
                    scene=ITEM_SCENE.get(t.item_def, "market"))
     await guarded(cq, run)
 

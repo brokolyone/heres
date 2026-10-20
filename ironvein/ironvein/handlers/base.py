@@ -77,7 +77,7 @@ async def got_input(message: Message, state: FSMContext):
         # Ошибка ввода не сбрасывает сценарий: можно сразу исправить значение.
         await state.set_state(Input.value)
         await state.set_data(data)
-        await message.answer(f"⚠ {e(ex.message)}\nВведите значение ещё раз или /cancel.", parse_mode="HTML")
+        await message.answer(f"{e(ex.message)}\nВведите значение ещё раз или /cancel.", parse_mode="HTML")
 
 
 def parse_int(text: str, lo: int = 1, hi: int = 10**9) -> int:
@@ -93,11 +93,11 @@ def parse_int(text: str, lo: int = 1, hi: int = 10**9) -> int:
 # --- Меню --------------------------------------------------------------------------------------------
 
 MENU = [
-    [("⛏ Добыча", "mine"), ("⚙ Производство", "production")],
-    [("🛠 Техника", "equipment"), ("🚚 Перевозки", "transport")],
-    [("📦 Склады", "inventory"), ("👤 Профиль", "profile")],
-    [("🏭 Компания", "company"), ("📜 Контракты", "contracts")],
-    [("⚖ Рынок", "market"), ("⭐ Донат", "donate")],
+    [("Добыча", "mine"), ("Производство", "production")],
+    [("Техника", "equipment"), ("Перевозки", "transport")],
+    [("Склады", "inventory"), ("Профиль", "profile")],
+    [("Компания", "company"), ("Контракты", "contracts")],
+    [("Рынок", "market"), ("⭐ Донат", "donate")],
 ]
 
 
@@ -114,26 +114,22 @@ async def menu_text(s, user) -> str:
     trips = (await s.scalars(select(Shipment).where(Shipment.carrier_id == acc,
                                                     Shipment.status.in_(("loading", "in_transit")))
                              .order_by(Shipment.id))).all()
-    lines = [fmt.head("IronVein", "терминал промышленника"),
+    lines = [fmt.head("IronVein"),
              fmt.kv("Действуете", label),
              fmt.kv("Касса", fmt.cr(b.get("main", 0))) + (f" · резерв {fmt.cr(b['hold'])}" if b.get("hold") else "")]
     if jobs:
         nxt = jobs[0]
-        lines.append(f"⚙ Заданий: <b>{len(jobs)}</b> · ближайшее через {fmt.left(nxt.finishes_at)}")
+        lines.append(f"Заданий: <b>{len(jobs)}</b> · ближайшее через {fmt.left(nxt.finishes_at)}")
     if trips:
         moving = [t for t in trips if t.status == "in_transit"]
-        lines.append(f"🚚 Рейсов: <b>{len(trips)}</b>" + (f" · прибытие через {fmt.left(min(t.eta for t in moving))}"
+        lines.append(f"Рейсов: <b>{len(trips)}</b>" + (f" · прибытие через {fmt.left(min(t.eta for t in moving))}"
                                                          if moving else " · под погрузкой"))
-    if not jobs and not trips:
-        lines.append("<i>Цеха стоят. Смог над Ржавой Падью ждёт работы.</i>")
     return "\n".join(lines)
 
 
 WELCOME = (
     "<b>Добро пожаловать в IronVein.</b>\n"
-    "Вам выданы стартовые кроны и кирка — она лежит на складе в Ржавой Пади. "
-    "Добывайте, плавьте, стройте, возите и торгуйте. Цены здесь назначают только игроки.\n"
-    "Не знаете, с чего начать? Нажмите «Первые шаги».\n\n"
+    "Вам выданы стартовые кроны и кирка (склад в Ржавой Пади). С чего начать — в «Первых шагах».\n\n"
 )
 
 
@@ -158,25 +154,25 @@ async def cb_menu(cq: CallbackQuery, state: FSMContext):
 
 
 GUIDE = "\n".join([
-    fmt.head("Первые шаги", "путь от кирки до грузовика"),
-    "<b>1.</b> ⛏ <b>Добыча</b> → Ржавая Падь → жила → «Кирка». Смена 10 мин: 6 т руды. Затем уголь.",
-    "<b>2.</b> ⚙ <b>Производство</b> → Ржавая Падь → Ручная работа → «Кустарная плавка»: 4 руды + 3 угля → 1 сталь.",
+    fmt.head("Первые шаги"),
+    "<b>1.</b> <b>Добыча</b> → Ржавая Падь → жила → «Кирка». Смена 10 мин: 6 т руды. Затем уголь.",
+    "<b>2.</b> <b>Производство</b> → Ржавая Падь → Ручная работа → «Кустарная плавка»: 4 руды + 3 угля → 1 сталь.",
     "<b>3.</b> Накопите 12 стали → «Построить мастерскую». В ней — запчасти, установки и модули.",
     "<b>4.</b> Мастерская: плавильня (сталь втрое выгоднее), буровая (нужен дизель), НПЗ.",
     "<b>5.</b> Грузовик: шасси + двигатель + бак + кузов → «Сборка грузовика». Дизель — из нефти Мазутного Яра "
     "или кустарно из нефти Ржавого колодца.",
-    "<b>6.</b> ⚖ <b>Рынок</b>: продавайте излишки и покупайте недостающее. Товар лежит там, где выставлен.",
-    "<b>7.</b> 📜 <b>Контракты</b> и 🏭 <b>компании</b> — когда захотите работать с другими по-крупному.",
-    "<b>8.</b> ★ <b>Качество изделий</b> растёт с опытом мастера, исправной мастерской и тщательной работой. "
+    "<b>6.</b> <b>Рынок</b>: продавайте излишки и покупайте недостающее. Товар лежит там, где выставлен.",
+    "<b>7.</b> <b>Контракты</b> и <b>компании</b> — когда захотите работать с другими по-крупному.",
+    "<b>8.</b> <b>Качество изделий</b> растёт с опытом мастера, исправной мастерской и тщательной работой. "
     "Оно меняет прочность (брак ×0.8 … мастерская работа ×1.3) и видно покупателям на рынке.",
     "",
-    "<i>Сломалась кирка и нет денег? Добывайте голыми руками и выкуйте новую из 2 стали — тупиков нет.</i>",
+    "<i>Сломалась кирка и нет денег? Добывайте руками и выкуйте новую из 2 стали — тупиков нет.</i>",
 ])
 
 
 @router.callback_query(Nav.filter(F.s == "guide"))
 async def cb_guide(cq: CallbackQuery):
-    await show(cq, GUIDE, kb([btn("⛏ К добыче", Nav(s="mine"))], back()), scene="mine_ore")
+    await show(cq, GUIDE, kb([btn("К добыче", Nav(s="mine"))], back()), scene="mine_ore")
     await cq.answer()
 
 
@@ -233,13 +229,13 @@ async def profile_text(s, user) -> str:
     lines.append(fmt.kv("Задания", jobs) + " · " + fmt.kv("рейсы", trips) + " · " + fmt.kv("предметы", n_items))
     crest = await s.scalar(select(Item).where(Item.owner_id == acc, Item.def_code == "syndicate_crest").limit(1))
     if crest:
-        lines.append(f"🛡 Герб: {e(items.title(crest))}")
+        lines.append(f"Герб: {e(items.title(crest))}")
     lines.append(f"<i>В IronVein с {user.created_at:%d.%m.%Y}</i>")
     return "\n".join(lines)
 
 
 def profile_kb():
-    return kb([btn("📦 Склады", Nav(s="inventory")), btn("🛠 Техника", Nav(s="equipment"))], back())
+    return kb([btn("Склады", Nav(s="inventory")), btn("Техника", Nav(s="equipment"))], back())
 
 
 @router.message(Command("profile"))
@@ -274,7 +270,7 @@ async def inventory_text(s, account_id: int, label: str) -> str:
         lines.append(fmt.section(f"{LOCATIONS[loc].name} · {used}/{cap}"))
         lines.append(fmt.table(rows, "lrl"))
     if not by_loc:
-        lines.append("\nСклады пусты. Начните с ⛏ Добычи.")
+        lines.append("\nСклады пусты. Начните с Добычи.")
     elif any_held:
         lines.append("<i>«+N» — заблокировано под заявки и рейсы.</i>")
     its = (await s.scalars(select(Item).where(Item.owner_id == account_id, Item.parent_id.is_(None),
@@ -286,12 +282,12 @@ async def inventory_text(s, account_id: int, label: str) -> str:
             dur = f" {it.durability}/{it.max_durability}" if it.max_durability else ""
             lines.append(f"▸ {e(items.title(it))}{dur} · {where} · {items.STATUS_RU[it.status]}")
         if len(its) > 25:
-            lines.append(f"… и ещё {len(its) - 25} — см. 🛠 Технику")
+            lines.append(f"… и ещё {len(its) - 25} — см. Технику")
     return "\n".join(lines)
 
 
 def inventory_kb():
-    return kb([btn("🛠 Техника", Nav(s="equipment")), btn("⚖ Рынок", Nav(s="market"))], back())
+    return kb([btn("Техника", Nav(s="equipment")), btn("Рынок", Nav(s="market"))], back())
 
 
 @router.message(Command("inventory"))

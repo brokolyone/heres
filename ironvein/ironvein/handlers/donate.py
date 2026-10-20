@@ -37,7 +37,7 @@ STATUS_RU = {"created": "ожидает оплаты", "paid": "оплачен, 
 async def donate_root(event):
     async with tx() as s:
         prods = await premium.catalog(s)
-    lines = [fmt.head("Донат · Telegram Stars", "косметика и коллекции"),
+    lines = [fmt.head("Донат · Telegram Stars"),
              "Никаких ресурсов, ускорений и бонусов. Купленное можно перепродать игрокам за кроны на рынке; "
              "бот не меняет Stars на кроны и ничего не выкупает.", ""]
     rows = []
@@ -45,7 +45,7 @@ async def donate_root(event):
         left = f" · осталось {p.edition_limit - p.issued - p.reserved}/{p.edition_limit}" if p.edition_limit else ""
         lines.append(f"⭐ <b>{e(p.title)}</b> — {p.price_stars} ⭐{left}")
         rows.append([btn(f"{p.title} · {p.price_stars} ⭐", Nav(s="product", a=p.code))])
-    rows.append([btn("🧾 Мои заказы и поддержка", Nav(s="paysupport"))])
+    rows.append([btn("Мои заказы и поддержка", Nav(s="paysupport"))])
     await show(event, "\n".join(lines), kb(*rows, back()), scene="item_watch")
 
 
@@ -131,7 +131,7 @@ async def on_successful_payment(message: Message):
         return
     if o.status == "fulfilled" and p is not None:
         await show(message, fmt.ok("Оплата получена") + f"\n{e(p.title)} <b>№{serial:03d}</b> теперь ваш. "
-                            "Он в разделе 🛠 Техника; продать можно на рынке.",
+                            "Он в разделе Техника; продать можно на рынке.",
                    kb([btn("Техника", Nav(s="equipment"))], back()), scene=SCENE.get(p.code, "item_watch"))
     elif o.status == "refund_pending":
         await message.answer("Оплата получена, но экземпляр уже недоступен. Stars будут возвращены автоматически.")
