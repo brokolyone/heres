@@ -1,8 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600" height="1000">
 <defs>
   <filter id="structures-bark" x="-10%" y="-10%" width="120%" height="120%">
-    <feTurbulence type="fractalNoise" baseFrequency="0.012 0.22" numOctaves="4" seed="3" result="n"/>
-    <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.10  0 0 0 0 0.06  0 0 0 0 0.03  0 0 0 -2.2 1.35" result="grain"/>
+    <feTurbulence type="fractalNoise" baseFrequency="0.16 0.009" numOctaves="4" seed="3" result="n"/>
+    <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.10  0 0 0 0 0.06  0 0 0 0 0.03  0 0 0 -4.5 2.5" result="grain"/>
+    <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.58  0 0 0 0 0.48  0 0 0 0 0.34  0 0 0 2.2 -1.25" result="hl"/>
+    <feComposite in="hl" in2="SourceGraphic" operator="in" result="h2"/>
     <feComposite in="grain" in2="SourceGraphic" operator="in" result="g2"/>
     <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="9" result="fine"/>
     <feColorMatrix in="fine" type="matrix" values="0 0 0 0 0.62  0 0 0 0 0.6  0 0 0 0 0.45  0 0 0 -12 4.3" result="speck"/>
@@ -10,7 +12,7 @@
     <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="3" seed="17" result="m"/>
     <feColorMatrix in="m" type="matrix" values="0 0 0 0 0.05  0 0 0 0 0.03  0 0 0 0 0.02  0 0 0 -3.5 2.0" result="mo"/>
     <feComposite in="mo" in2="SourceGraphic" operator="in" result="mo2"/>
-    <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="mo2"/><feMergeNode in="g2"/><feMergeNode in="s2"/></feMerge>
+    <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="mo2"/><feMergeNode in="h2"/><feMergeNode in="g2"/></feMerge>
   </filter>
   <filter id="structures-rough" x="-5%" y="-5%" width="110%" height="110%">
     <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="3" seed="2" result="t"/>
@@ -19,8 +21,10 @@
   <filter id="structures-roughbark" x="-10%" y="-5%" width="120%" height="110%">
     <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="3" seed="5" result="t"/>
     <feDisplacementMap in="SourceGraphic" in2="t" scale="7" xChannelSelector="R" yChannelSelector="G" result="d"/>
-    <feTurbulence type="fractalNoise" baseFrequency="0.015 0.25" numOctaves="4" seed="3" result="n"/>
-    <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.08  0 0 0 0 0.05  0 0 0 0 0.02  0 0 0 -2.4 1.4" result="grain"/>
+    <feTurbulence type="fractalNoise" baseFrequency="0.18 0.01" numOctaves="4" seed="3" result="n"/>
+    <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.08  0 0 0 0 0.05  0 0 0 0 0.02  0 0 0 -4.5 2.5" result="grain"/>
+    <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.58  0 0 0 0 0.48  0 0 0 0 0.34  0 0 0 2.2 -1.25" result="hl"/>
+    <feComposite in="hl" in2="d" operator="in" result="h2"/>
     <feComposite in="grain" in2="d" operator="in" result="g2"/>
     <feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="2" seed="11" result="fine"/>
     <feColorMatrix in="fine" type="matrix" values="0 0 0 0 0.6  0 0 0 0 0.58  0 0 0 0 0.44  0 0 0 -12 4.3" result="speck"/>
@@ -28,7 +32,7 @@
     <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="3" seed="17" result="m"/>
     <feColorMatrix in="m" type="matrix" values="0 0 0 0 0.05  0 0 0 0 0.03  0 0 0 0 0.02  0 0 0 -3.5 2.0" result="mo"/>
     <feComposite in="mo" in2="d" operator="in" result="mo2"/>
-    <feMerge><feMergeNode in="d"/><feMergeNode in="mo2"/><feMergeNode in="g2"/><feMergeNode in="s2"/></feMerge>
+    <feMerge><feMergeNode in="d"/><feMergeNode in="mo2"/><feMergeNode in="h2"/><feMergeNode in="g2"/></feMerge>
   </filter>
   <filter id="structures-rust" x="-10%" y="-10%" width="120%" height="120%">
     <feTurbulence type="fractalNoise" baseFrequency="0.08" numOctaves="4" seed="21" result="n"/>
