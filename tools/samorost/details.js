@@ -67,9 +67,9 @@ add(`<circle cx="553" cy="386" r="40" fill="url(#details-warm)" opacity="0.45"/>
     const a = -t + 2.6;
     growth.push(`<path d="M${f(Math.cos(a) * r1)},${f(Math.sin(a) * r1 * 0.92)} L${f(Math.cos(a) * r2)},${f(Math.sin(a) * r2 * 0.92)}" />`);
   }
-  add(`<g transform="translate(975,716) rotate(-18)">
-  <path d="M-58,3 Q-40,1 -18,2" stroke="#dfeee6" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0.16"/>
-  <path d="M-58,2.6 Q-40,0.6 -18,1.6" stroke="#ffffff" stroke-width="0.6" fill="none" opacity="0.28"/>
+  add(`<g transform="translate(975,716) rotate(-18) scale(0.4)">
+  <path d="M-34,2.6 Q-27,1.6 -18,2" stroke="#dfeee6" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0.16"/>
+  <path d="M-34,2.2 Q-27,1.2 -18,1.6" stroke="#ffffff" stroke-width="0.6" fill="none" opacity="0.28"/>
   <ellipse cx="2" cy="3.5" rx="21" ry="3" fill="#0d0805" opacity="0.45" filter="url(#details-blur1)"/>
   <path d="M-19,2 Q-17,-2 -10,-3 L8,-3.5 Q14,-4 17,-8 Q20,-13 24,-12.5 Q28,-11.5 27,-6.5 Q26,-2 21,0.5 Q14,3 0,3 Q-12,3.2 -19,2 Z" fill="url(#details-foot)"/>
   <path d="M-17,1.8 Q0,3.4 20,0.6" stroke="#5e4a34" stroke-width="0.7" fill="none" opacity="0.6"/>
