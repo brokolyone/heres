@@ -298,6 +298,13 @@ const SPOTS = [
   { scene: 'in', key: 'hook', rect: R(296, 570, 110, 190), walk: 330, act: async () => {
     await reach(-70); SFX.click(); toast('Запасная шапка и любимый шарф.', 2500);
   } },
+  { scene: 'in', key: 'pet', rect: R(1122, 846, 108, 60), walk: 1100, face: 1, act: async () => {
+    await reach(10, 300, 500);
+    for (let i = 0; i < 3; i++) tone(70 + i * 4, .35, { type: 'sawtooth', vol: .05, when: i * .4, vib: 20 });
+    poke(img('pet'), [{ transform: 'scale(1,1)' }, { transform: 'scale(1.06,.92)' }, { transform: 'scale(.98,1.05)' }, { transform: 'scale(1,1)' }], 1100, '50% 100%');
+    for (let i = 0; i < 4; i++) fx('note', 1180, 840, [{ transform: 'translate(0,0) scale(.6)', opacity: 0 }, { opacity: 1, offset: .2 }, { transform: `translate(${(i - 1.5) * 18}px,-70px) scale(1)`, opacity: 0 }], 1400, { text: '♥', delay: i * 200 });
+    toast('Моховой зверёк мурчит у тёплой печки.', 3000);
+  } },
   { scene: 'in', key: 'front-shrooms', rect: R(0, 880, 130, 120), walk: 180, act: async () => { SFX.boing(1.4); poke(img('front-left'), [{ transform: 'scale(1)' }, { transform: 'scale(1.1,.85)' }, { transform: 'scale(.95,1.08)' }, { transform: 'scale(1)' }], 700, '50% 100%'); } },
 ];
 function flyOff(p, path, ms, spin) {
