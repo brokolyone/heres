@@ -69,6 +69,7 @@ stage_inner = stage_inner[:i_door] + DOORWAY + '\n' + stage_inner[i_door:]
 stage_inner = stage_inner.replace('<!--CHARACTER-->', '<div id="slot-out" class="slot"></div>\n<div id="fx-out" class="fx"></div>', 1)
 
 # ---------------- the house interior ----------------
+FIREFX = '''<div class="firebox"><i class="flame" style="left:0px;width:24px;height:40px;--d:0.9s;--dl:-0.1s"></i><i class="flame" style="left:14px;width:26px;height:56px;--d:0.7s;--dl:-0.4s"></i><i class="flame" style="left:32px;width:24px;height:48px;--d:1.1s;--dl:-0.2s"></i><i class="flame" style="left:48px;width:26px;height:58px;--d:0.8s;--dl:-0.6s"></i><i class="flame" style="left:62px;width:22px;height:38px;--d:1s;--dl:-0.3s"></i><i class="ember" style="left:20px;--dl:-0.2s"></i><i class="ember" style="left:36px;--dl:-1.1s"></i><i class="ember" style="left:54px;--dl:-0.7s"></i><i class="ember" style="left:70px;--dl:-1.6s"></i><i class="ember" style="left:44px;--dl:-2.2s"></i></div>'''
 iparts = json.load(open(build / 'iparts.json'))
 interior_back, interior_front = [], []
 for p in iparts:
@@ -81,6 +82,8 @@ for p in iparts:
     html = (f'<div class="p a-{p["anim"]}" data-id="{p["id"]}" style="{style}"><img src="{webp(img, 88)}" '
             f'style="left:{x:.1f}px;top:{y:.1f}px;width:{w:.1f}px;height:{h:.1f}px" alt=""></div>\n')
     (interior_front if p['front'] else interior_back).append(html)
+    if p['id'] == 'fire-back':  # live flame tongues and rising embers sit behind the logs and the grille
+        interior_back.append(FIREFX)
 interior_img = webp(Image.open(build / 'static_interior.png'), 86, alpha=False)
 
 
@@ -101,8 +104,7 @@ INTERIOR = f'''<div id="inside" class="scene" hidden>
 <img class="base" src="{interior_img}" alt="Внутри дома-пня: печка, кровать, стол и открытый верх с луной">
 {dust()}
 {''.join(interior_back)}
-<div class="firebox"><i class="flame" style="left:0px;width:24px;height:40px;--d:0.9s;--dl:-0.1s"></i><i class="flame" style="left:14px;width:26px;height:56px;--d:0.7s;--dl:-0.4s"></i><i class="flame" style="left:32px;width:24px;height:48px;--d:1.1s;--dl:-0.2s"></i><i class="flame" style="left:48px;width:26px;height:58px;--d:0.8s;--dl:-0.6s"></i><i class="flame" style="left:62px;width:22px;height:38px;--d:1s;--dl:-0.3s"></i></div><i class="ember" style="left:1284px;--dl:-0.2s"></i><i class="ember" style="left:1300px;--dl:-1.1s"></i><i class="ember" style="left:1318px;--dl:-0.7s"></i><i class="ember" style="left:1334px;--dl:-1.6s"></i><i class="ember" style="left:1308px;--dl:-2.2s"></i>
-<i class="steam" style="--delay:0s"></i><i class="steam" style="--delay:-.7s"></i><i class="steam" style="--delay:-1.4s"></i>
+<i class="steam" style="--delay:-0.00s;--sx:0px;--sw:1"></i><i class="steam" style="--delay:-0.43s;--sx:4px;--sw:-1"></i><i class="steam" style="--delay:-0.86s;--sx:-2px;--sw:1"></i><i class="steam" style="--delay:-1.29s;--sx:6px;--sw:-1"></i><i class="steam" style="--delay:-1.72s;--sx:1px;--sw:1"></i><i class="steam" style="--delay:-2.15s;--sx:-3px;--sw:-1"></i>
 <i class="glow stoveglow" style="left:1150px;top:610px;width:310px;height:300px;--delay:-.3s"></i>
 <div id="slot-in" class="slot"></div>
 <div id="fx-in" class="fx"></div>
@@ -195,15 +197,20 @@ html,body{margin:0;height:100%;background:var(--night);overflow:hidden;touch-act
 .flame{position:absolute;bottom:-8px;border-radius:50% 50% 42% 42%/62% 62% 38% 38%;transform-origin:50% 100%;
   background:radial-gradient(ellipse at 50% 85%,rgba(255,244,180,.95),rgba(255,170,70,.75) 42%,rgba(220,80,20,0) 74%);animation:flame var(--d) ease-in-out var(--dl) infinite}
 @keyframes flame{0%,100%{transform:scale(1,1) skewX(0)}25%{transform:scale(.82,1.3) skewX(7deg)}50%{transform:scale(1.12,.84) skewX(-5deg)}75%{transform:scale(.9,1.16) skewX(3deg)}}
-.ember{position:absolute;top:712px;width:3px;height:3px;border-radius:50%;background:#ffcf6a;box-shadow:0 0 5px 2px rgba(255,150,50,.8);
+.ember{position:absolute;top:66px;width:3px;height:3px;border-radius:50%;background:#ffcf6a;box-shadow:0 0 5px 2px rgba(255,150,50,.8);
   animation:ember 2.4s ease-out var(--dl) infinite;opacity:0}
 @keyframes ember{0%{transform:translate(0,0);opacity:0}10%{opacity:1}100%{transform:translate(14px,-60px);opacity:0}}
 .a-candle{animation-name:candle;--dur:1.5s}
 @keyframes candle{0%,100%{transform:scale(1,1) skewX(0)}30%{transform:scale(.95,1.08) skewX(4deg)}60%{transform:scale(1.03,.96) skewX(-3deg)}}
 .stoveglow{background:radial-gradient(closest-side,rgba(255,150,60,.5),rgba(255,150,60,0))}
-.steam{position:absolute;left:1360px;top:552px;width:26px;height:26px;border-radius:50%;
-  background:radial-gradient(circle,rgba(235,235,225,.55),rgba(235,235,225,0) 70%);animation:steam 2.1s ease-out var(--delay) infinite}
-@keyframes steam{0%{transform:translate(0,0) scale(.4);opacity:0}15%{opacity:1}100%{transform:translate(40px,-150px) scale(3);opacity:0}}
+.steam{position:absolute;left:1360px;top:555px;width:9px;height:15px;border-radius:50%;pointer-events:none;
+  background:radial-gradient(ellipse,rgba(242,242,234,.6),rgba(242,242,234,0) 70%);filter:blur(1.2px);transform-origin:50% 80%;
+  animation:steam 2.6s linear var(--delay) infinite;opacity:0}
+@keyframes steam{0%{transform:translate(0,0) scale(.4,.5);opacity:0}8%{opacity:.8}
+  28%{transform:translate(calc(var(--sx) + 5px),-20px) scale(.8,1.2) rotate(calc(var(--sw) * 14deg))}
+  52%{transform:translate(calc(var(--sx) * -1 + 2px),-44px) scale(1.3,1.6) rotate(calc(var(--sw) * -10deg));opacity:.45}
+  76%{transform:translate(calc(var(--sx) + 9px),-70px) scale(1.9,2) rotate(calc(var(--sw) * 8deg));opacity:.2}
+  100%{transform:translate(calc(var(--sx) * -1 + 5px),-96px) scale(2.5,2.3);opacity:0}}
 /* interface */
 #ui{position:fixed;inset:0;pointer-events:none;font-family:"Neucha","Comic Sans MS",Georgia,serif;color:var(--ink);z-index:6}
 #ui button{pointer-events:auto;font:inherit;color:inherit}
