@@ -58,8 +58,7 @@ const eyes = LINES('characters', '<ellipse cx="776.5" cy="496.5"', '<circle cx="
 const head = G('characters', '<g transform="rotate(4 781 505)">');
 part('gnome-head', 'characters', head, 'headtilt', { ctx: ['<g filter="url(#characters-grainlite)">'], origin: [781, 512] });
 part('gnome-eyes', 'characters', eyes, 'blink', { ctx: ['<g filter="url(#characters-grainlite)">', '<g transform="rotate(4 781 505)">'], origin: [782, 496], parent: 'gnome-head' });
-part('gnome-beam', 'characters', EL('characters', '<path d="M804,502 L900,392'), 'beam', { origin: [804, 502] });
-part('gnome-lamp', 'characters', EL('characters', '<circle cx="806" cy="500" r="8"'), 'lamp', { origin: [806, 500] });
+part('gnome-beam', 'characters', EL('characters', '<path d="M806,499 L898,392'), 'beam', { origin: [808, 501] });
 
 // beast: sleep bubbles and nose drip, then the whole beast breathes
 part('beast-bubbles', 'characters', LINES('characters', '<circle cx="1284" cy="560" r="3"', '<circle cx="1305" cy="528"'), 'bubbles', { origin: [1284, 562] });

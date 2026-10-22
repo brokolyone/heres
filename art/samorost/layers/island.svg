@@ -43,6 +43,7 @@
     <stop offset="0.8" stop-color="#4a3a24"/>
     <stop offset="1" stop-color="#6e5a3a" stop-opacity="0"/>
   </radialGradient>
+  <mask id="island-behindstone" maskUnits="userSpaceOnUse" x="0" y="0" width="1600" height="1000"><rect width="1600" height="1000" fill="#fff"/><ellipse cx="1010" cy="770" rx="45" ry="25" fill="#000"/></mask>
   <radialGradient id="island-stone" cx="0.35" cy="0.3" r="0.8">
     <stop offset="0" stop-color="#9a9a86"/>
     <stop offset="0.5" stop-color="#6d6f62"/>
@@ -231,12 +232,14 @@
 <path d="M402.2,760 L411.5,765.4 L416.4,771.2 L421.5,775.5 L428.9,783.7" fill="none" stroke="#0d0907" stroke-width="2.1" stroke-linecap="round" opacity="0.9"/>
 <path d="M437.8,666.7 L447,670.3 L452.5,675.3 L457.9,683.1 L465.3,690.5" fill="none" stroke="#0d0907" stroke-width="2.1" stroke-linecap="round" opacity="0.9"/>
 <path d="M437.8,666.7 L445.8,673.6 L453.2,678.6 L461.6,684.5 L467.1,692.5" fill="none" stroke="#0d0907" stroke-width="2.4" stroke-linecap="round" opacity="0.9"/>
-<path d="M985,690 L990.5,703.3 L989.4,716.7 L995.1,730 L990.2,743.3 L995.5,756.7 L989.9,770 L994.6,783.3 L997.7,796.7 L1001.7,810" transform="translate(2.5,0)" fill="none" stroke="#a58e62" stroke-width="2" opacity="0.35" stroke-linecap="round"/>
-<path d="M985,690 L990.5,703.3 L989.4,716.7 L995.1,730 L990.2,743.3 L995.5,756.7 L989.9,770 L994.6,783.3 L997.7,796.7 L1001.7,810" fill="none" stroke="#0a0705" stroke-width="3.7" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M985,690 L990.5,703.3 L989.4,716.7 L995.1,730 L990.2,743.3 L995.5,756.7 L989.9,770 L994.6,783.3 L997.7,796.7 L1001.7,810" fill="none" stroke="#000" stroke-width="1.5" opacity="0.8"/>
+<g mask="url(#island-behindstone)">
+<path d="M979,597 L983.6,620 L978.9,643 L984.2,667 L985,690 L990.5,703.3 L989.4,716.7 L995.1,730 L990.2,743.3 L995.5,756.7 L989.9,770 L994.6,783.3 L997.7,796.7 L1001.7,810" transform="translate(2.5,0)" fill="none" stroke="#a58e62" stroke-width="2" opacity="0.35" stroke-linecap="round"/>
+<path d="M979,597 L983.6,620 L978.9,643 L984.2,667 L985,690 L990.5,703.3 L989.4,716.7 L995.1,730 L990.2,743.3 L995.5,756.7 L989.9,770 L994.6,783.3 L997.7,796.7 L1001.7,810" fill="none" stroke="#0a0705" stroke-width="3.7" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M979,597 L983.6,620 L978.9,643 L984.2,667 L985,690 L990.5,703.3 L989.4,716.7 L995.1,730 L990.2,743.3 L995.5,756.7 L989.9,770 L994.6,783.3 L997.7,796.7 L1001.7,810" fill="none" stroke="#000" stroke-width="1.5" opacity="0.8"/>
 <path d="M989.9,770 L994.9,778.9 L1003.2,787.8 L1009.5,796 L1017.9,799.8" fill="none" stroke="#0d0907" stroke-width="1.9" stroke-linecap="round" opacity="0.9"/>
 <path d="M989.4,716.7 L983.9,721.2 L978.9,727.8 L974.7,733.4 L967.4,740.7" fill="none" stroke="#0d0907" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
 <path d="M995.5,756.7 L1001.3,764.1 L1006.1,772 L1015.2,779.1 L1022.5,785.1" fill="none" stroke="#0d0907" stroke-width="2.1" stroke-linecap="round" opacity="0.9"/>
+</g>
 <g filter="url(#island-fuzz)" fill="none" stroke-linecap="round">
 <path d="M577.3,580 C554,610 551.4,680 578.3,720" stroke="#8a7450" stroke-width="1.4" opacity="0.4"/>
 <path d="M582,576 C609.5,610 612.5,680 585,724" stroke="#1a120a" stroke-width="2" opacity="0.5"/>

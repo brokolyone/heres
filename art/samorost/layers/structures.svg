@@ -79,6 +79,7 @@
     <stop offset="0.6" stop-color="#5c4128"/>
     <stop offset="1" stop-color="#2b1d11"/>
   </radialGradient>
+  <clipPath id="structures-lantern-glass"><path d="M1155.5,420 L1172.5,420 L1174.5,440 L1153.5,440 Z"/></clipPath>
   <radialGradient id="structures-warm" cx="0.5" cy="0.5" r="0.5">
     <stop offset="0" stop-color="#fff1b8"/>
     <stop offset="0.45" stop-color="#f3d27a"/>
@@ -284,17 +285,31 @@
 <path d="M558,545 m-1.5,0 a1.5,1.5 0 1 1 3,0 l1,5 h-5 z" fill="#0b0603"/>
 <circle cx="538" cy="504" r="3.2" fill="#2a1a0c"/><circle cx="538" cy="504" r="2" fill="#f3d27a" opacity="0.85"/>
 <path d="M508,566.2482660630226 C518,559.2482660630226 558,558.2482660630226 572,564.2482660630226 C558,571.2482660630226 518,571.2482660630226 508,566.2482660630226 Z" fill="#4f4a3a" filter="url(#structures-bark)"/>
-<path d="M594,420 C600,408 604,398 606,386 L612,372 C614,366 622,362 630,362 L640,360" stroke="#20140c" stroke-width="15" fill="none" stroke-linecap="butt"/>
-<path d="M594,420 C600,408 604,398 606,386 L612,372 C614,366 622,362 630,362 L640,360" stroke="#8a5a38" stroke-width="12" fill="none" filter="url(#structures-rust)"/>
-<path d="M594,420 C600,408 604,398 606,386 L612,372 C614,366 622,362 630,362 L640,360" stroke="#d4ac80" stroke-width="2.5" fill="none" opacity="0.45" transform="translate(-2,-2)"/>
-<rect x="591" y="401.5" width="18" height="5" fill="#3e2a1e" transform="rotate(-70 600 404)" stroke="#1c120a" stroke-width="0.6"/>
-<rect x="601" y="373.5" width="18" height="5" fill="#3e2a1e" transform="rotate(-60 610 376)" stroke="#1c120a" stroke-width="0.6"/>
-<rect x="617" y="359.5" width="18" height="5" fill="#3e2a1e" transform="rotate(-10 626 362)" stroke="#1c120a" stroke-width="0.6"/>
-<path d="M638,350 L654,352 L654,370 L638,370 Z" fill="#6d4a32" filter="url(#structures-rust)" stroke="#1c120a" stroke-width="1"/>
-<path d="M634,348 L660,349 L656,343 L640,342 Z" fill="#4a3222" stroke="#1c120a" stroke-width="0.8"/>
-<path d="M640,370 q2,8 0,14" stroke="#8c4519" stroke-width="2" opacity="0.6" fill="none"/>
+<path d="M587,428 L601,416 L605,421 L591,433 Z" fill="#4a3222" stroke="#1c120a" stroke-width="0.8" filter="url(#structures-rust)"/>
+<circle cx="590.5" cy="428.5" r="1.2" fill="#1c120a"/><circle cx="600.5" cy="419.5" r="1.2" fill="#1c120a"/>
+<path d="M594,421 C603,400 611,386 623,377 C636,368 646,372 646,356 L646,349" stroke="#20140c" stroke-width="15" fill="none" stroke-linejoin="round"/>
+<path d="M594,421 C603,400 611,386 623,377 C636,368 646,372 646,356 L646,349" stroke="#8a5a38" stroke-width="12" fill="none" stroke-linejoin="round" filter="url(#structures-rust)"/>
+<path d="M594,421 C603,400 611,386 623,377 C636,368 646,372 646,356 L646,349" stroke="#d4ac80" stroke-width="2.4" fill="none" opacity="0.4" stroke-linejoin="round" transform="translate(-2.5,-1)"/>
+<path d="M594,421 C603,400 611,386 623,377 C636,368 646,372 646,356 L646,349" stroke="#2a160a" stroke-width="2.2" fill="none" opacity="0.35" stroke-linejoin="round" transform="translate(3,1.5)"/>
+<g transform="translate(605.2,398.1) rotate(-59.7)"><rect x="-2.6" y="-8.2" width="5.2" height="16.4" rx="1" fill="#5a3a24" stroke="#1c120a" stroke-width="0.7"/><circle cx="0" cy="-5" r="0.9" fill="#d9b48a" opacity="0.7"/><circle cx="0" cy="5" r="0.9" fill="#d9b48a" opacity="0.7"/></g>
+<g transform="translate(624.9,375.7) rotate(-31.5)"><rect x="-2.6" y="-8.2" width="5.2" height="16.4" rx="1" fill="#5a3a24" stroke="#1c120a" stroke-width="0.7"/><circle cx="0" cy="-5" r="0.9" fill="#d9b48a" opacity="0.7"/><circle cx="0" cy="5" r="0.9" fill="#d9b48a" opacity="0.7"/></g>
+<g transform="translate(644.2,364.8) rotate(-60.5)"><rect x="-2.6" y="-8.2" width="5.2" height="16.4" rx="1" fill="#5a3a24" stroke="#1c120a" stroke-width="0.7"/><circle cx="0" cy="-5" r="0.9" fill="#d9b48a" opacity="0.7"/><circle cx="0" cy="5" r="0.9" fill="#d9b48a" opacity="0.7"/></g>
+<path d="M637.5,352 L654.5,352 L656,346 L636,346 Z" fill="#5e3e28" stroke="#1c120a" stroke-width="0.9" filter="url(#structures-rust)"/>
+<ellipse cx="646" cy="346" rx="10" ry="1.8" fill="#140a05"/>
+<path d="M639,346 L640.5,335.5 M653,346 L651.5,335.5" stroke="#2a1a10" stroke-width="1.6" stroke-linecap="round"/>
+<path d="M639.4,345 L640.7,336 M653.4,345 L652.1,336" stroke="#c99a6a" stroke-width="0.5" opacity="0.6"/>
+<path d="M629,337 Q646,331 663,337 L660,338.8 Q646,334.5 632,338.8 Z" fill="#3e2a1e" stroke="#1c120a" stroke-width="0.8"/>
+<path d="M631,336.5 Q638,326 646,322.5 Q654,326 661,336.5 Q646,331 631,336.5 Z" fill="#6d4a32" stroke="#1c120a" stroke-width="0.9" filter="url(#structures-rust)"/>
+<path d="M636,333 Q641,327 646,324" stroke="#e1b88a" stroke-width="1" fill="none" opacity="0.45"/>
+<circle cx="646" cy="322.6" r="1.3" fill="#3e2a1e" stroke="#1c120a" stroke-width="0.5"/>
+<path d="M649,353 q1,6 0.2,12" stroke="#a5552a" stroke-width="1.6" opacity="0.5" fill="none" stroke-linecap="round"/>
+<g transform="translate(606,394) rotate(-62)"><rect x="-6" y="-5" width="12" height="10" rx="1" fill="#7a4e30" stroke="#1c120a" stroke-width="0.7" filter="url(#structures-rust)"/>
+<circle cx="-4" cy="-3" r="0.8" fill="#1c120a"/><circle cx="4" cy="-3" r="0.8" fill="#1c120a"/><circle cx="-4" cy="3" r="0.8" fill="#1c120a"/><circle cx="4" cy="3" r="0.8" fill="#1c120a"/></g>
+<path d="M631,373 q4,-2 7,-1" stroke="#3a2010" stroke-width="1.2" fill="none" opacity="0.6" stroke-linecap="round"/>
+<path d="M640.5,353 L651.5,353 L651,358 L641,358 Z" fill="#1a0d06" opacity="0.45"/>
+<path d="M597,414 q2,6 1,11 M615,382 q1.5,5 0.5,9" stroke="#a5552a" stroke-width="1.2" opacity="0.45" fill="none" stroke-linecap="round"/>
 <g filter="url(#structures-smoke)" opacity="0.55">
-<path d="M648,340 C640,322 660,312 652,296 C644,282 664,270 676,276 C690,284 680,300 668,296 C660,292 664,282 672,284" stroke="#d9d4c0" stroke-width="9" fill="none" stroke-linecap="round"/>
+<path d="M646,334 C638,318 660,312 652,296 C644,282 664,270 676,276 C690,284 680,300 668,296 C660,292 664,282 672,284" stroke="#d9d4c0" stroke-width="9" fill="none" stroke-linecap="round"/>
 <path d="M652,300 C646,260 690,250 700,230 C710,212 696,196 712,184" stroke="#c7c6b4" stroke-width="13" fill="none" stroke-linecap="round" opacity="0.6"/>
 <circle cx="720" cy="176" r="10" fill="#bfc0ae" opacity="0.4"/><circle cx="734" cy="160" r="8" fill="#b8bba9" opacity="0.3"/>
 </g>
@@ -473,16 +488,30 @@
 <path d="M1100.0,372.0 Q1137.3,368.2 1170.0,360.0" stroke="#4a3522" stroke-width="3.5" fill="none" stroke-linecap="round" filter="url(#structures-roughbark)"/>
 <path d="M1100.0,372.0 Q1137.3,368.2 1170.0,360.0" stroke="#a88d68" stroke-width="0.9" fill="none" opacity="0.35" transform="translate(0.7,0)"/>
 <path d="M1170,358 l6,-6" stroke="#4a3522" stroke-width="2.5" stroke-linecap="round"/>
-<path d="M1164,362 C1165,380 1163,396 1164,410" stroke="#2a221c" stroke-width="1.2" fill="none"/>
-<circle cx="1164" cy="428" r="46" fill="url(#structures-halo)"/>
-<circle cx="1164" cy="428" r="12" fill="#f3d27a" opacity="0.55" filter="url(#structures-glow)"/>
-<path d="M1158,410 L1170,410 L1174,416 L1154,416 Z" fill="#3a2418" stroke="#140a05" stroke-width="0.8"/>
-<path d="M1155,416 L1173,416 L1176,440 L1152,440 Z" fill="url(#structures-warm)" opacity="0.95"/>
-<path d="M1164,416 L1164,440 M1155,416 L1152,440 M1173,416 L1176,440" stroke="#2a1608" stroke-width="1.6"/>
-<ellipse cx="1164" cy="430" rx="3" ry="5" fill="#fffbe0"/>
-<path d="M1150,440 L1178,440 L1174,446 L1154,446 Z" fill="#4a2a18" stroke="#140a05" stroke-width="0.8" filter="url(#structures-rust)"/>
-<circle cx="1164" cy="408" r="3" fill="none" stroke="#3a2418" stroke-width="1.2"/>
-<path d="M1164,446 l0,6" stroke="#3a2418" stroke-width="1.4"/>
+<path d="M1164,362 C1165,380 1163,396 1164,404" stroke="#2a221c" stroke-width="1.2" fill="none"/>
+<circle cx="1164" cy="430" r="40" fill="url(#structures-halo)" opacity="0.8"/>
+<circle cx="1164" cy="406.5" r="2.8" fill="none" stroke="#3a2418" stroke-width="1.3"/>
+<path d="M1162.6,409.5 L1165.4,409.5 L1165,411.5 L1163,411.5 Z" fill="#3a2418"/>
+<path d="M1155.5,417 Q1156.5,410.5 1164,410.5 Q1171.5,410.5 1172.5,417 Z" fill="#5a3826" stroke="#140a05" stroke-width="0.8" filter="url(#structures-rust)"/>
+<path d="M1158.5,415 Q1159.5,412.4 1163,412" stroke="#e1b88a" stroke-width="0.8" fill="none" opacity="0.55" stroke-linecap="round"/>
+<path d="M1153,417 L1175,417 L1174,420 L1154,420 Z" fill="#3a2418" stroke="#140a05" stroke-width="0.7"/>
+<path d="M1155.5,420 L1172.5,420 L1174.5,440 L1153.5,440 Z" fill="url(#structures-warm)"/>
+<g clip-path="url(#structures-lantern-glass)">
+<ellipse cx="1164" cy="430.5" rx="7.5" ry="9" fill="#f3d27a" opacity="0.75" filter="url(#structures-glow)"/>
+<ellipse cx="1164" cy="431" rx="4.6" ry="6" fill="#fff1b8" opacity="0.7"/>
+</g>
+<path d="M1164,423.5 C1166.6,427.2 1167.2,430.6 1164,434.4 C1160.8,430.6 1161.4,427.2 1164,423.5 Z" fill="#fffbe0"/>
+<path d="M1164,428 C1165.2,429.8 1165.3,431.4 1164,433.2 C1162.7,431.4 1162.8,429.8 1164,428 Z" fill="#ffd27a"/>
+<path d="M1164,434.4 L1164,437" stroke="#3a2418" stroke-width="0.9"/>
+<path d="M1161.4,437 L1166.6,437 L1166,439.6 L1162,439.6 Z" fill="#4a2a18"/>
+<path d="M1155.5,420 L1153.5,440 M1172.5,420 L1174.5,440" stroke="#2a1608" stroke-width="1.8" stroke-linecap="round"/>
+<path d="M1160,420 L1159.4,440 M1168,420 L1168.6,440" stroke="#2a1608" stroke-width="0.9" opacity="0.85"/>
+<path d="M1155,429.5 L1173.5,429.5" stroke="#2a1608" stroke-width="0.6" opacity="0.5"/>
+<path d="M1157.3,422 L1156.2,436" stroke="#fffaf0" stroke-width="0.8" opacity="0.55" stroke-linecap="round"/>
+<path d="M1151.5,440 L1176.5,440 L1175,443.5 L1153,443.5 Z" fill="#4a2a18" stroke="#140a05" stroke-width="0.8" filter="url(#structures-rust)"/>
+<path d="M1153,443.5 L1175,443.5 L1171.5,447 L1156.5,447 Z" fill="#3a2214" stroke="#140a05" stroke-width="0.7"/>
+<circle cx="1155.5" cy="441.8" r="0.8" fill="#d9b48a" opacity="0.7"/><circle cx="1164" cy="441.8" r="0.8" fill="#d9b48a" opacity="0.7"/><circle cx="1172.5" cy="441.8" r="0.8" fill="#d9b48a" opacity="0.7"/>
+<path d="M1164,446 l0,6" stroke="#3a2418" stroke-width="1.4"/><circle cx="1164" cy="452.6" r="1.4" fill="#3a2418"/>
 <path d="M1004,519 C1000,530 1001,540 1002,548" stroke="#cdb88a" stroke-width="0.9" fill="none"/>
 <path d="M995,548 L1010,548 L1008,560 L997,560 Z" fill="#7d6a58" filter="url(#structures-rust)" stroke="#1d130c" stroke-width="0.8"/>
 <path d="M1079,305 C1110,330 1140,345 1168,358" stroke="#2a221c" stroke-width="0.9" fill="none" opacity="0.85"/>
