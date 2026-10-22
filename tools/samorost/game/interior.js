@@ -63,13 +63,11 @@ const add = s => out.push(s);
 const parts = [];
 const part = (id, svg, anim, opts = {}) => parts.push({ id, svg, anim, origin: opts.origin || null, vars: opts.vars || {}, front: !!opts.front, layer: 'interior', pos: parts.length, parent: null, below: false });
 
-// ---------------- sky through the open top ----------------
-add(`<rect width="${W}" height="420" fill="url(#i-sky)"/>`);
-for (let i = 0; i < 140; i++) add(`<circle cx="${f(r(0, W))}" cy="${f(r(0, 300))}" r="${f(r(0.4, 1.4))}" fill="#eef2dc" opacity="${f(r(0.2, 0.8))}"/>`);
-add(`<circle cx="1360" cy="70" r="220" fill="url(#i-moonhalo)"/>`);
-add(`<circle cx="1360" cy="70" r="105" fill="url(#i-moon)"/>`);
-for (let i = 0; i < 9; i++) { const a = r(0, 6.28), d = r(10, 85), rr = r(6, 18); add(`<circle cx="${f(1360 + Math.cos(a) * d)}" cy="${f(70 + Math.sin(a) * d)}" r="${f(rr)}" fill="#a9a48a" opacity="0.35"/>`); }
-add(`<ellipse cx="500" cy="150" rx="420" ry="26" fill="#9ab8aa" opacity="0.12" filter="url(#i-blur20)"/>`);
+// ---------------- sky through the open top: the very same sky as over the island ----------------
+{
+  const bg = fs.readFileSync(path.join(__dirname, '../../../art/samorost/layers/bg.svg'), 'utf8');
+  add(`<g transform="translate(0,-130)">${bg.slice(bg.indexOf('>', bg.indexOf('<svg')) + 1, bg.lastIndexOf('</svg>'))}</g>`);
+}
 
 // ---------------- back wall (inside of the stump) ----------------
 let rim = 'M0,0 L0,250';

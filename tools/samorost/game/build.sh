@@ -10,7 +10,7 @@ out="$root/art/samorost/game"
 export NODE_PATH=${NODE_PATH:-/opt/node-tools/node_modules}
 rm -rf "$build" && mkdir -p "$build" "$out"
 GAME=1 node "$anim/extract.js" "$root/art/samorost/layers" "$build"
-node "$here/interior.js" "$build"
+node "$here/interior_merge.js" "$root/art/samorost/interior" "$build"
 node "$anim/rasterize.js" "$build"
 python3 "$anim/assemble.py" "$build" "$build/scene.html"
 python3 "$anim/sound.py" "${SOUND_SRC:-$root/art/samorost/sound_sources}" "$build/soundtrack.wav"

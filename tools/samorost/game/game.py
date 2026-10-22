@@ -80,9 +80,6 @@ def dust():
         x = 1050 - (1050 - 520) * (y / 905) + rnd.uniform(-60, 160) + t * 40
         out_.append(f'<i class="spore s{rnd.randint(1, 3)}" style="left:{x:.0f}px;top:{y:.0f}px;--dur:{rnd.choice([6, 12])}s;'
                     f'--delay:-{rnd.uniform(0, 12):.2f}s;--dx:{rnd.uniform(-30, 30):.0f}px;--dy:{rnd.uniform(10, 40):.0f}px"></i>')
-    for _ in range(30):
-        x, y = rnd.uniform(20, 1580), rnd.uniform(10, 180)
-        out_.append(f'<i class="star" style="left:{x:.0f}px;top:{y:.0f}px;width:2px;height:2px;--dur:{rnd.choice([2, 3, 4])}s;--delay:-{rnd.uniform(0, 4):.2f}s"></i>')
     return ''.join(out_)
 
 
