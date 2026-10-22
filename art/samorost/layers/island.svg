@@ -329,7 +329,7 @@
 <ellipse cx="520" cy="749" rx="60" ry="44" fill="#e08a3c" opacity="0.22" filter="url(#island-glowBlur)"/>
 <path d="M486,767 C482,737 500,715 522,715 C546,715 558,739 554,767 C532,773 506,773 486,767 Z" fill="#1a0e08" filter="url(#island-fuzz)"/>
 <path d="M492,765 C490,741 504,721 522,721 C542,721 551,741 548,765 C530,769 508,769 492,765 Z" fill="url(#island-caveGlow)"/>
-<path d="M512,765 l2,-9 h10 l2,9 Z" fill="#2a160c" opacity="0.9"/>
+
 <path d="M532,721 v14" stroke="#2a160c" stroke-width="1"/><circle cx="532" cy="737" r="2.6" fill="#fff2b8"/>
 <path d="M486,767 C508,775 534,775 554,767" fill="none" stroke="#c88a4a" stroke-width="2" opacity="0.6"/>
 <ellipse cx="520" cy="785" rx="46" ry="16" fill="#e08a3c" opacity="0.18" filter="url(#island-soft)"/>

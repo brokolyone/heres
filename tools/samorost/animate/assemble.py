@@ -296,7 +296,7 @@ html = f'''<!doctype html>
 {bg_parts}
 <img class="base" src="{mid_img}" alt="Летающий остров-пень с гномиком в стиле Samorost">
 {mid_parts}
-<i class="glow" style="left:452px;top:690px;width:136px;height:120px;--delay:-.4s"></i>
+<i class="glow" style="left:490px;top:722px;width:60px;height:44px;opacity:.55;--delay:-.4s"></i>
 <i class="glow" style="left:534px;top:418px;width:76px;height:68px;--delay:-1.7s"></i>
 {puffs()}
 {spores()}
