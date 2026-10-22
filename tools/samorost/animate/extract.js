@@ -131,6 +131,10 @@ part('ladder', 'structures', G('structures', '<g id="structures-ladder"'), 'ladd
 part('vines', 'flora', G('flora', '<g filter="url(#flora-rough)"><path d="M411.2,606'), 'skew', { origin: [800, 606], vars: { a: '1.6deg', dur: '6s' } });
 
 // ================= island =================
+{ // the cave agent's flickering warm light
+  const f = path.join(layersDir, '..', 'cave', 'light.svg');
+  if (fs.existsSync(f) && body.cave !== undefined) { const t = fs.readFileSync(f, 'utf8'); part('cave-light', 'cave', t.slice(t.indexOf('>', t.indexOf('<svg')) + 1, t.lastIndexOf('</svg>')), 'flicker', { origin: [520, 745] }); }
+}
 part('roots', 'island', G('island', '<g id="island-roots">'), 'skew', { origin: [800, 845], vars: { a: '0.9deg', dur: '6s' } });
 
 // ================= bg =================

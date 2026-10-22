@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600" height="1000">
+<defs>
+  <clipPath id="cavelight-open"><path d="M488.5,769 C485.5,754 487.5,737 496,726 C502,718 511,714.5 521,714.5 C533,714.5 543.5,719.5 549.5,730 C555,740 555.5,755 553.5,769.5 C541,773.5 501,773.5 488.5,769 Z"/></clipPath>
+  <filter id="cavelight-blur" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3"/></filter>
+  <filter id="cavelight-blurBig" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="9"/></filter>
+  <radialGradient id="cavelight-g" cx="0.5" cy="0.5" r="0.5">
+    <stop offset="0" stop-color="#ffe2a0" stop-opacity="0.6"/>
+    <stop offset="0.5" stop-color="#f09a48" stop-opacity="0.22"/>
+    <stop offset="1" stop-color="#e07a30" stop-opacity="0"/>
+  </radialGradient>
+</defs>
+<g id="cavelight-layer" style="mix-blend-mode:screen">
+  <g clip-path="url(#cavelight-open)"><ellipse cx="514" cy="738" rx="20" ry="18" fill="url(#cavelight-g)" filter="url(#cavelight-blur)"/></g>
+  <ellipse cx="519" cy="752" rx="46" ry="40" fill="url(#cavelight-g)" opacity="0.35" filter="url(#cavelight-blurBig)"/>
+  <ellipse cx="519" cy="778" rx="26" ry="6" fill="#ffb860" opacity="0.18" filter="url(#cavelight-blur)"/>
+</g>
+</svg>

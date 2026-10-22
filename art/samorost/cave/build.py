@@ -19,9 +19,9 @@ OPEN = ("M488.5,769 C485.5,754 487.5,737 496,726 C502,718 511,714.5 521,714.5 "
         "C533,714.5 543.5,719.5 549.5,730 C555,740 555.5,755 553.5,769.5 "
         "C541,773.5 501,773.5 488.5,769 Z")
 # outer edge of the rolled callus lip
-RIM = ("M476.5,777 C471,757 473.5,733 487,716.5 C497,704.5 511,699.5 524,700 "
-       "C541,700.5 556,709 563.5,727 C569.5,743 569,763 563.5,780 "
-       "C549,788.5 492,789.5 476.5,777 Z")
+RIM = ("M478,779 C470,764 470.5,740 481.5,722 C489.5,708 505,699 522,699.5 "
+       "C539,700 552,706.5 559.5,718 C566.5,729 568.5,748 566,764 "
+       "C564.5,775 556,785 540,787.5 C522,790 492,789 478,779 Z")
 # a second, deeper chamber going back to the right
 TUNNEL = ("M527.5,757 C526.5,746 530.5,736.5 538,735.5 C545,735 548.5,743 547.5,757 "
           "C541,758.5 533,758.5 527.5,757 Z")
@@ -76,6 +76,7 @@ A('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600
   <clipPath id="cave-openClip"><path d="%s"/></clipPath>
   <clipPath id="cave-rimClip"><path d="%s"/></clipPath>
   <clipPath id="cave-tunnelClip"><path d="%s"/></clipPath>
+  <mask id="cave-rimMask"><path d="%s" fill="#fff" filter="url(#cave-b2)"/></mask>
   <clipPath id="cave-area"><rect x="458" y="688" width="124" height="114"/></clipPath>
   <filter id="cave-fuzz" x="-10%%" y="-10%%" width="120%%" height="120%%">
     <feTurbulence type="fractalNoise" baseFrequency="0.3" numOctaves="2" seed="13" result="n"/>
@@ -145,6 +146,11 @@ A('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600
     <stop offset="0.45" stop-color="#5c4a30"/>
     <stop offset="1" stop-color="#2e2418"/>
   </linearGradient>
+  <radialGradient id="cave-innerVig" cx="0.48" cy="0.55" r="0.5">
+    <stop offset="0.35" stop-color="#0c0502" stop-opacity="0"/>
+    <stop offset="0.75" stop-color="#0c0502" stop-opacity="0.45"/>
+    <stop offset="1" stop-color="#0c0502" stop-opacity="0.8"/>
+  </radialGradient>
   <radialGradient id="cave-lampGlow" cx="0.5" cy="0.5" r="0.5">
     <stop offset="0" stop-color="#fff6c8" stop-opacity="1"/>
     <stop offset="0.25" stop-color="#ffd27a" stop-opacity="0.75"/>
@@ -167,7 +173,7 @@ A('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600
     <stop offset="1" stop-color="#5a2a10"/>
   </radialGradient>
 </defs>
-''' % (OPEN, RIM, TUNNEL))
+''' % (OPEN, RIM, TUNNEL, RIM))
 
 A('<g id="cave-layer" clip-path="url(#cave-area)">')
 
@@ -175,14 +181,14 @@ A('<g id="cave-layer" clip-path="url(#cave-area)">')
 A('<path d="%s" fill="none" stroke="#120d08" stroke-width="7" opacity="0.55" filter="url(#cave-b2)"/>' % RIM)
 
 # ---------------------------------------------------------------- 2. the rolled bark lip
-A('<g id="cave-rim">')
+A('<g id="cave-rim" mask="url(#cave-rimMask)">')
 A('<path d="%s" fill="url(#cave-rimG)" filter="url(#cave-fuzzBig)"/>' % RIM)
 A('<g clip-path="url(#cave-rimClip)">')
 A('<path d="%s" fill="url(#cave-rimG)" filter="url(#cave-rimTex)"/>' % RIM)
 # concentric growth rings of the callus around the wound
 for i, (k, col, op, w) in enumerate([(1.06, '#a8905e', 0.55, 1.1), (1.13, '#21180f', 0.55, 1.0),
                                      (1.2, '#9a8254', 0.45, 0.9), (1.28, '#1d150d', 0.5, 1.1),
-                                     (1.36, '#8a7450', 0.35, 0.8), (1.44, '#1d150d', 0.35, 1.2)]):
+                                     (1.36, '#8a7450', 0.22, 0.8), (1.44, '#1d150d', 0.25, 1.2)]):
     cx, cy = 520.5, 746
     pts = []
     for j in range(15):
@@ -228,16 +234,16 @@ for i in range(14):
     A('<path d="M%s,%s q%s,%s %s,%s" stroke="%s" stroke-width="%s" opacity="%s" fill="none" stroke-linecap="round"/>'
       % (f(x0), f(y0), f(side * R.uniform(1, 3)), f(R.uniform(4, 7)), f(side * R.uniform(0, 2)), f(R.uniform(9, 15)),
          R.choice(['#ffd890', '#5a2a10', '#3a1808', '#f0b060']), f(R.uniform(0.4, 0.8)), f(R.uniform(0.2, 0.45))))
-A('<rect x="480" y="708" width="80" height="70" fill="#000" filter="url(#cave-speck)" opacity="0.18"/>')
-A('<rect x="480" y="708" width="80" height="70" fill="#000" filter="url(#cave-grit)" opacity="0.7"/>')
+A('<rect x="480" y="708" width="80" height="70" fill="#000" filter="url(#cave-speck)" opacity="0.07"/>')
+A('<rect x="480" y="708" width="80" height="70" fill="#000" filter="url(#cave-grit)" opacity="0.45"/>')
+A('<ellipse cx="516" cy="748" rx="38" ry="34" fill="url(#cave-innerVig)"/>')
 
 # the deeper chamber at the back right: darker hole with a faint far glow and a pair of shy eyes
-A('<path d="%s" fill="#1c0c05" opacity="0.92" filter="url(#cave-fuzz)"/>' % TUNNEL)
+A('<path d="%s" fill="#0e0603" opacity="0.9" filter="url(#cave-fuzz)"/>' % TUNNEL)
 A('<g clip-path="url(#cave-tunnelClip)">')
-A('<ellipse cx="539" cy="754" rx="7" ry="5" fill="#b8642a" opacity="0.55" filter="url(#cave-b1)"/>')
-A('<ellipse cx="540" cy="752" rx="2.6" ry="2.1" fill="#ffc870" opacity="0.65" filter="url(#cave-b06)"/>')
+A('<ellipse cx="535" cy="758" rx="9" ry="3.5" fill="#b8642a" opacity="0.45" filter="url(#cave-b1)"/>')
 A('</g>')
-A('<path d="M528,757 C527,746 531,736.5 538,735.5 C545,735 548.5,743 547.5,757" fill="none" stroke="#e89a50" stroke-width="0.8" opacity="0.5" filter="url(#cave-fuzz)"/>')
+A('<path d="M527.6,757 C526.8,748 529,740 533,737" fill="none" stroke="#f0a050" stroke-width="1" opacity="0.55" filter="url(#cave-b02)"/>')
 # shy eyes in the dark of the tunnel
 for ex in (536.6, 540.4):
     A('<ellipse cx="%s" cy="744.2" rx="0.95" ry="1.15" fill="#fff4c4"/>' % f(ex))
@@ -329,26 +335,45 @@ for (x, y, s) in [(490.6, 768.4, 1.0), (492.8, 767.2, 1.35), (495.3, 768.8, 0.85
     A('<circle cx="%s" cy="%s" r="%s" fill="#ffffff" opacity="0.9"/>' % (f(x - 0.4 * s), f(y - 0.7 * s), f(0.35 * s)))
 
 # ---------------------------------------------------------------- 5. roots woven over the lip and hanging over the entrance
+def wig(pts, amp, seed):
+    rr = random.Random(seed); outp = []
+    for i in range(len(pts) - 1):
+        (x0, y0), (x1, y1) = pts[i], pts[i + 1]
+        outp.append((x0, y0))
+        dx, dy = x1 - x0, y1 - y0; d = math.hypot(dx, dy) or 1
+        k = rr.uniform(-amp, amp)
+        outp.append(((x0 + x1) / 2 - dy / d * k, (y0 + y1) / 2 + dx / d * k))
+    outp.append(pts[-1]); return outp
 roots = [
-    # thick root arching over the top from the left, sinking into the bark on the right
-    ([(474, 742), (480, 722), (494, 708.5), (512, 704), (530, 705), (546, 711), (558, 722)], 4.2, 1.6),
-    ([(488, 703), (499, 709), (504, 717), (503.5, 727), (501.5, 737)], 2.2, 0.35),
-    ([(519, 700), (520, 708), (518.5, 716), (519.5, 724)], 1.5, 0.3),
-    ([(536, 702), (538, 710), (540.5, 719), (539.6, 731), (541, 741)], 1.9, 0.3),
-    ([(552, 709), (553.5, 718), (556.5, 726), (556, 736), (558.5, 744)], 1.6, 0.3),
-    ([(565, 726), (562, 740), (564, 756), (562.5, 772)], 2.6, 1.2),
+    # thick root arching over the lip crest, from the moss on the left into the bark on the right
+    (wig([(475, 752), (480, 726), (492, 710), (510, 702.4), (528, 702.2), (545, 707), (557, 716.5), (564, 731)], 1.0, 1), 5.6, 1.6),
+    # a root coming down from above, curling over the lip and hanging into the entrance
+    (wig([(542.5, 695), (542.8, 700), (546.5, 706), (549.5, 714), (547.5, 722), (549, 729), (547.6, 735)], 0.8, 2), 2.6, 0.3),
+    # thin tendrils dangling over the entrance
+    (wig([(500, 706), (502.5, 713), (501.2, 720), (503, 727), (501.4, 733.5)], 0.9, 3), 1.6, 0.25),
+    (wig([(520, 703), (521, 709), (519.4, 715), (520.6, 720.5)], 0.7, 4), 1.2, 0.25),
+    (wig([(532, 703.5), (533.5, 711), (531.8, 719), (533.5, 726), (535.6, 729.5), (534.4, 731.5)], 0.7, 5), 1.3, 0.2),
+    # a gnarly root running over the right shoulder of the lip
+    (wig([(565.5, 714), (564, 725), (566.5, 738), (563.8, 752)], 1.2, 6), 2.6, 0.5),
 ]
-for pts, w0, w1 in roots:
+for ri, (pts, w0, w1) in enumerate(roots):
     d = taper(pts, w0, w1)
+    col = '#6a4426' if ri == 0 else '#3e2a1a'
     A('<path d="%s" fill="#000" opacity="0.35" transform="translate(0.8,1.2)" filter="url(#cave-b06)"/>' % d)
-    A('<path d="%s" fill="#4a3220" filter="url(#cave-fuzz)"/>' % d)
+    A('<path d="%s" fill="%s" filter="url(#cave-fuzz)"/>' % (d, col))
+    A('<path d="%s" fill="#000" filter="url(#cave-grit)" opacity="0.6"/>' % d)
     hl = [(x - 0.35 * w0 * 0.5, y - 0.3) for x, y in pts[:-1]]
-    A('<path d="%s" fill="none" stroke="#c8a070" stroke-width="%s" opacity="0.6" stroke-linecap="round"/>' % (smooth(hl), f(max(0.35, w0 * 0.22))))
+    A('<path d="%s" fill="none" stroke="#b08a5c" stroke-width="%s" opacity="0.45" stroke-linecap="round"/>' % (smooth(hl), f(max(0.35, w0 * 0.2))))
+    if ri in (1, 5):
+        A('<ellipse cx="%s" cy="%s" rx="%s" ry="%s" fill="#140c06" opacity="0.7" filter="url(#cave-b06)"/>' % (f(pts[0][0]), f(pts[0][1]), f(w0 * 0.9), f(w0 * 0.7)))
+    if ri == 0:
+        A('<path d="%s" fill="none" stroke="#e0b47a" stroke-width="0.7" opacity="0.5" stroke-linecap="round" transform="translate(0,-0.9)"/>' % smooth(pts[1:-1]))
+        A('<path d="%s" fill="none" stroke="#1a0e06" stroke-width="0.9" opacity="0.6" stroke-linecap="round" transform="translate(0.3,1.8)"/>' % smooth(pts[1:-1]))
 # warm rim light on hanging root tips in front of the glow
-for pts in [[(503.5, 727), (501.5, 737)], [(518.5, 716), (519.5, 724)], [(539.6, 731), (541, 741)], [(556, 736), (558.5, 744)]]:
+for pts in [[(503, 727), (501.4, 733.5)], [(519.4, 715), (520.6, 720.5)], [(549, 729), (547.6, 735)], [(533.5, 726), (535.6, 729.5)]]:
     A('<path d="%s" fill="none" stroke="#ffb860" stroke-width="0.45" opacity="0.8"/>' % smooth([(pts[0][0] + 0.6, pts[0][1]), (pts[1][0] + 0.4, pts[1][1] - 0.6)]))
 # tiny dew drops on the root tips
-for (x, y) in [(501.4, 738.4), (519.5, 725.2), (541.1, 742.3)]:
+for (x, y) in [(501.4, 734.8), (520.6, 721.7), (547.6, 736.4)]:
     A('<ellipse cx="%s" cy="%s" rx="0.7" ry="0.9" fill="#ffe0a0" opacity="0.9"/><circle cx="%s" cy="%s" r="0.25" fill="#fff"/>' % (f(x), f(y), f(x - 0.2), f(y - 0.3)))
 # fine rootlets
 for i in range(9):
@@ -402,6 +427,20 @@ for i, y in enumerate(range(777, 798, 4)):
     A('<path d="M%s,%s L%s,%s" stroke="#6a3c18" stroke-width="1" stroke-linecap="round"/>' % (f(511.8), f(y + 0.2 * (i % 2)), f(519.2), f(y - 0.1)))
     A('<path d="M%s,%s L%s,%s" stroke="#f0b060" stroke-width="0.35" opacity="%s"/>' % (f(512), f(y - 0.35 + 0.2 * (i % 2)), f(519), f(y - 0.45), f(max(0.15, 0.85 - i * 0.15))))
 A('<circle cx="512.5" cy="773.6" r="0.8" fill="#3a2010"/><circle cx="518.5" cy="773.8" r="0.8" fill="#3a2010"/>')
+
+# knots on the arching root and a pair of tiny toadstools sitting on it
+for (x, y) in [(492.5, 709.5), (528.5, 702)]:
+    A('<ellipse cx="%s" cy="%s" rx="1.6" ry="1.1" fill="#2a1a0e"/><path d="M%s,%s q1.2,-0.8 2.2,0.1" stroke="#c8a070" stroke-width="0.4" fill="none" opacity="0.6"/>' % (f(x), f(y), f(x - 1.1), f(y - 0.4)))
+for (x, y, s) in [(537.6, 703.2, 1.0), (540.2, 704.2, 0.75)]:
+    A('<path d="M%s,%s L%s,%s" stroke="#efe2c4" stroke-width="%s"/>' % (f(x), f(y), f(x + 0.1), f(y - 2.4 * s), f(0.6 * s)))
+    A('<path d="M%s,%s q%s,%s %s,0 Z" fill="#d0481e"/>' % (f(x - 1.8 * s), f(y - 2.2 * s), f(1.8 * s), f(-2.6 * s), f(3.6 * s)))
+    A('<circle cx="%s" cy="%s" r="%s" fill="#fff2dc"/>' % (f(x - 0.6 * s), f(y - 3.2 * s), f(0.35 * s)))
+# pebbles and a root knuckle on the lower lip
+for (x, y, r, c) in [(498, 776.6, 1.2, '#6a5a44'), (500.4, 777.4, 0.8, '#8a7656'), (538, 777.2, 1.0, '#5e4e38'), (546.5, 775.8, 1.4, '#6a5a44')]:
+    A('<ellipse cx="%s" cy="%s" rx="%s" ry="%s" fill="%s"/><ellipse cx="%s" cy="%s" rx="%s" ry="%s" fill="#ffc070" opacity="0.5"/>' % (f(x), f(y), f(r), f(r * 0.7), c, f(x - 0.2), f(y - r * 0.4), f(r * 0.6), f(r * 0.25)))
+# fireflies / warm motes drifting out of the hollow
+for (x, y, r) in [(566, 694, 0.8), (474, 790, 0.7), (531, 793, 0.6)]:
+    A('<circle cx="%s" cy="%s" r="%s" fill="#ffd27a" opacity="0.5" filter="url(#cave-b1)"/><circle cx="%s" cy="%s" r="%s" fill="#fff6d0"/>' % (f(x), f(y), f(r * 3), f(x), f(y), f(r * 0.6)))
 
 # ---------------------------------------------------------------- 8. warm light spilling out of the hollow (static part)
 A('<ellipse cx="519" cy="782" rx="30" ry="9" fill="url(#cave-spill)" filter="url(#cave-b2)"/>')
