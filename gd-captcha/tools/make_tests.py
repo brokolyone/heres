@@ -5,6 +5,7 @@
   test_2_header.gmd  один блок, но заголовок и цвета как у captcha
   test_3_art.gmd     только картинка (без триггеров)
   test_4_logic.gmd   только логика, курсор и collision-блоки (без картинки)
+  logic_A..F.gmd     логика по частям: в каждом файле свой набор типов триггеров
 
 Запуск: python3 make_tests.py <capture_dir> <scene.png> <scene_mask.png> <out_dir>
 """
@@ -47,6 +48,23 @@ def main(cap, scene, mask, out):
     bl.build_helpers(logic)
     bl.build_logic(logic, correct)
     save(os.path.join(out, "test_4_logic.gmd"), "test 4 logic", logic, palette_rgb)
+    # Логика по частям. Стартовый Spawn (x = 0) кладём в каждый файл.
+    parts = {
+        "A_event": {bl.T_EVENT},
+        "B_collision": {bl.T_COLLISION, bl.T_INSTANT_COLLISION, bl.COLLISION_BLOCK},
+        "C_camera_options_end": {bl.T_STATIC_CAMERA, bl.T_OPTIONS, bl.T_END},
+        "D_move_alpha_toggle": {bl.T_MOVE, bl.T_STOP, bl.T_ROTATE, bl.T_SCALE, bl.T_ALPHA,
+                                bl.T_TOGGLE, bl.T_COLOR, bl.T_SPAWN},
+        "E_items": {bl.T_PICKUP, bl.T_INSTANT_COUNT},
+        "F_blocks": {bl.BLOCK, bl.TINY, 1},
+    }
+    for name, ids in parts.items():
+        part = bl.Level()
+        for o in logic.objects:
+            starter = o[1] == bl.T_SPAWN and o.get(62) != 1
+            if o[1] in ids or starter:
+                part.add(o)
+        save(os.path.join(out, f"logic_{name}.gmd"), f"logic {name}", part, palette_rgb)
     for f in sorted(os.listdir(out)):
         print(f, os.path.getsize(os.path.join(out, f)))
 
