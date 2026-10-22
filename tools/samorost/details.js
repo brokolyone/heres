@@ -12,7 +12,7 @@ const parts = [];
 const add = s => parts.push(s);
 
 // ---------- moon rays ----------
-add(`<g opacity="0.55" filter="url(#details-soft)">`);
+add(`<g data-anim="rays" opacity="0.55" filter="url(#details-soft)">`);
 for (let i = 0; i < 6; i++) {
   const a = r(-0.35, 0.35) + 2.35, len = r(700, 1100), w = r(30, 80);
   const x1 = 1260 + Math.cos(a) * len, y1 = 230 + Math.sin(a) * len;
@@ -22,10 +22,10 @@ for (let i = 0; i < 6; i++) {
 add(`</g>`);
 
 // ---------- warm light spill from window, door and lantern ----------
-add(`<ellipse cx="560" cy="566" rx="95" ry="16" fill="url(#details-warm)" opacity="0.7"/>`);
-add(`<ellipse cx="1150" cy="555" rx="70" ry="12" fill="url(#details-warm)" opacity="0.45"/>`);
-add(`<circle cx="1162" cy="428" r="46" fill="url(#details-warm)" opacity="0.5"/>`);
-add(`<circle cx="553" cy="386" r="40" fill="url(#details-warm)" opacity="0.45"/>`);
+add(`<g data-anim="spill-door"><ellipse cx="560" cy="566" rx="95" ry="16" fill="url(#details-warm)" opacity="0.7"/></g>`);
+add(`<g data-anim="spill-tower"><ellipse cx="1150" cy="555" rx="70" ry="12" fill="url(#details-warm)" opacity="0.45"/></g>`);
+add(`<g data-anim="spill-lantern"><circle cx="1162" cy="428" r="46" fill="url(#details-warm)" opacity="0.5"/></g>`);
+add(`<g data-anim="spill-window"><circle cx="553" cy="386" r="40" fill="url(#details-warm)" opacity="0.45"/></g>`);
 
 // ---------- cobweb between the tower legs ----------
 {
@@ -49,8 +49,8 @@ add(`<circle cx="553" cy="386" r="40" fill="url(#details-warm)" opacity="0.45"/>
     add(`<circle cx="${f(cx + Math.cos(a) * l * k)}" cy="${f(cy + Math.sin(a) * l * k)}" r="0.9" fill="#fff8d8" opacity="0.7"/>`);
   }
   // a tiny spider
-  add(`<g transform="translate(${cx + 6},${cy - 4})"><circle r="2.2" fill="#2a1a12"/><circle cx="-2.6" cy="-0.6" r="1.4" fill="#2a1a12"/>` +
-    [-1, 1].map(s => [0.4, 1.1, 1.8, 2.4].map(t => `<path d="M0,0 q${f(s * 3)},${f(-2 + t)} ${f(s * 4.5)},${f(t * 1.6)}" stroke="#2a1a12" stroke-width="0.5" fill="none"/>`).join('')).join('') + `</g>`);
+  add(`<g data-anim="spider"><g transform="translate(${cx + 6},${cy - 4})"><circle r="2.2" fill="#2a1a12"/><circle cx="-2.6" cy="-0.6" r="1.4" fill="#2a1a12"/>` +
+    [-1, 1].map(s => [0.4, 1.1, 1.8, 2.4].map(t => `<path d="M0,0 q${f(s * 3)},${f(-2 + t)} ${f(s * 4.5)},${f(t * 1.6)}" stroke="#2a1a12" stroke-width="0.5" fill="none"/>`).join('')).join('') + `</g></g>`);
 }
 
 // ---------- snail crawling up the island bark ----------
@@ -67,7 +67,7 @@ add(`<circle cx="553" cy="386" r="40" fill="url(#details-warm)" opacity="0.45"/>
     const a = -t + 2.6;
     growth.push(`<path d="M${f(Math.cos(a) * r1)},${f(Math.sin(a) * r1 * 0.92)} L${f(Math.cos(a) * r2)},${f(Math.sin(a) * r2 * 0.92)}" />`);
   }
-  add(`<g transform="translate(975,716) rotate(-18) scale(0.4)">
+  add(`<g data-anim="snail"><g transform="translate(975,716) rotate(-18) scale(0.4)">
   <path d="M-34,2.6 Q-27,1.6 -18,2" stroke="#dfeee6" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0.16"/>
   <path d="M-34,2.2 Q-27,1.2 -18,1.6" stroke="#ffffff" stroke-width="0.6" fill="none" opacity="0.28"/>
   <ellipse cx="2" cy="3.5" rx="21" ry="3" fill="#0d0805" opacity="0.45" filter="url(#details-blur1)"/>
@@ -89,7 +89,7 @@ add(`<circle cx="553" cy="386" r="40" fill="url(#details-warm)" opacity="0.45"/>
     <ellipse cx="3.5" cy="-6" rx="3.8" ry="1.8" fill="#fff4dc" opacity="0.45" transform="rotate(25 3.5 -6)"/>
     <ellipse cx="0" cy="0" rx="11.6" ry="10.8" fill="url(#details-shellshade)"/>
   </g>
-</g>`);
+</g></g>`);
 }
 
 // ---------- dew drops on the moss line ----------
@@ -97,7 +97,7 @@ for (let i = 0; i < 26; i++) {
   const x = r(400, 1200);
   const t = (x - 380) / 850;
   const y = 600 - Math.sin(t * Math.PI) * 52 + r(4, 14);
-  add(`<circle cx="${f(x)}" cy="${f(y)}" r="${f(r(0.8, 1.6))}" fill="#eef7f0" opacity="${f(r(0.35, 0.7))}"/>`);
+  add(`<g data-anim="dew" data-o="${f(x)},${f(y)}"><circle cx="${f(x)}" cy="${f(y)}" r="${f(r(0.8, 1.6))}" fill="#eef7f0" opacity="${f(r(0.35, 0.7))}"/></g>`);
 }
 
 // ---------- drifting leaves and seeds ----------
@@ -106,8 +106,8 @@ for (let i = 0; i < 16; i++) {
   let x, y;
   do { x = r(60, 1560); y = r(60, 960); } while ((x > 340 && x < 1270 && y > 330 && y < 990) || Math.hypot(x - 1260, y - 230) < 190);
   const s = r(0.6, 1.3), rot = r(0, 360), c = leafCols[i % leafCols.length];
-  add(`<g transform="translate(${f(x)},${f(y)}) rotate(${f(rot)}) scale(${f(s)})" opacity="${f(r(0.55, 0.85))}">
-    <path d="M0,-8 Q6,-2 0,8 Q-6,-2 0,-8 Z" fill="${c}"/><path d="M0,-7 L0,10" stroke="#3a2614" stroke-width="0.6"/></g>`);
+  add(`<g data-anim="leaf" data-o="${f(x)},${f(y)}"><g transform="translate(${f(x)},${f(y)}) rotate(${f(rot)}) scale(${f(s)})" opacity="${f(r(0.55, 0.85))}">
+    <path d="M0,-8 Q6,-2 0,8 Q-6,-2 0,-8 Z" fill="${c}"/><path d="M0,-7 L0,10" stroke="#3a2614" stroke-width="0.6"/></g></g>`);
 }
 
 // ---------- fireflies ----------
@@ -116,8 +116,8 @@ for (const [cx, cy, rad, n] of swarms) {
   for (let i = 0; i < n; i++) {
     const a = r(0, Math.PI * 2), d = r(10, rad);
     const x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d * 0.7;
-    add(`<circle cx="${f(x)}" cy="${f(y)}" r="${f(r(4, 8))}" fill="url(#details-fly)" opacity="${f(r(0.45, 0.9))}"/>`);
-    add(`<circle cx="${f(x)}" cy="${f(y)}" r="${f(r(0.8, 1.4))}" fill="#fff6c8"/>`);
+    add(`<g data-anim="fly" data-o="${f(x)},${f(y)}"><circle cx="${f(x)}" cy="${f(y)}" r="${f(r(4, 8))}" fill="url(#details-fly)" opacity="${f(r(0.45, 0.9))}"/>`);
+    add(`<circle cx="${f(x)}" cy="${f(y)}" r="${f(r(0.8, 1.4))}" fill="#fff6c8"/></g>`);
   }
 }
 
@@ -142,12 +142,14 @@ const frond = (x, y, ang, len, bend, leaves, side) => {
   });
   return d;
 };
-add(`<g filter="url(#details-dof)" opacity="0.92">`);
+add(`<g data-anim="frond-l" filter="url(#details-dof)" opacity="0.92">`);
 add(frond(-10, 1010, -1.05, 260, 0.06, 14, [-1, 1]));
 add(frond(40, 1010, -1.35, 200, 0.09, 11, [-1, 1]));
 add(frond(-20, 940, -0.55, 220, 0.05, 12, [-1, 1]));
 add(frond(120, 1015, -1.75, 150, -0.1, 9, [-1, 1]));
 add(`<path d="M-10,880 Q60,900 120,950 Q150,980 160,1010 L-10,1010 Z" fill="#08171a"/>`);
+add(`</g>`);
+add(`<g data-anim="frond-r" filter="url(#details-dof)" opacity="0.92">`);
 add(`<path d="M1610,890 Q1520,900 1430,940 Q1400,955 1370,1010 L1610,1010 Z" fill="#08171a"/>`);
 add(frond(1610, 880, 3.75, 260, -0.05, 13, [-1, 1]));
 add(frond(1560, 1015, -1.9, 230, -0.06, 12, [-1, 1]));
