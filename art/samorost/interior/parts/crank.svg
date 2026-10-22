@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600" height="1000">
+<defs>
+<linearGradient id="crank-brass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f0d080" stop-opacity="1"/><stop offset="0.5" stop-color="#b08038" stop-opacity="1"/><stop offset="1" stop-color="#4a2e08" stop-opacity="1"/></linearGradient>
+<linearGradient id="crank-wood" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c08a50" stop-opacity="1"/><stop offset="1" stop-color="#5a3418" stop-opacity="1"/></linearGradient>
+<filter id="crank-b1" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="0.8"/></filter>
+</defs>
+<g id="crank-handle">
+<path d="M905 755 L906 743" stroke="#000" stroke-width="2.6" opacity="0.3" filter="url(#crank-b1)"/>
+<path d="M904 754 L904 742.5" stroke="#4a2e08" stroke-width="2.8" stroke-linecap="round"/>
+<path d="M904 754 L904 742.5" stroke="url(#crank-brass)" stroke-width="1.8" stroke-linecap="round"/>
+<circle cx="904" cy="754" r="2.6" fill="url(#crank-brass)" stroke="#3a2408" stroke-width="0.6"/>
+<circle cx="904" cy="754" r="0.8" fill="#2a1a08"/>
+<rect x="904" y="739.5" width="9" height="5.5" rx="2.6" fill="url(#crank-wood)" stroke="#2a1608" stroke-width="0.6"/>
+<path d="M906 740.5 h5" stroke="#f0c890" stroke-width="0.7" opacity="0.6"/>
+<circle cx="904" cy="742.3" r="1.3" fill="url(#crank-brass)"/>
+</g>
+</svg>

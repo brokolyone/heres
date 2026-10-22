@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600" height="1000">
+<defs>
+<radialGradient id="candle-glow" cx="942" cy="722" r="70" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffd890" stop-opacity="0.5"/><stop offset="0.3" stop-color="#ffb050" stop-opacity="0.2"/><stop offset="1" stop-color="#ff9030" stop-opacity="0"/></radialGradient>
+<radialGradient id="candle-flame" cx="0.5" cy="0.72" r="0.6"><stop offset="0" stop-color="#ffffff" stop-opacity="1"/><stop offset="0.35" stop-color="#fff2b0" stop-opacity="1"/><stop offset="0.75" stop-color="#ffb540" stop-opacity="1"/><stop offset="1" stop-color="#ff7a18" stop-opacity="0.85"/></radialGradient>
+<filter id="candle-b3" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+</defs>
+<g id="candle-flame">
+<circle cx="942" cy="722" r="70" fill="url(#candle-glow)"/>
+<ellipse cx="942" cy="721" rx="7" ry="12" fill="#ffc860" opacity="0.55" filter="url(#candle-b3)"/>
+<path d="M942 712 Q947.5 722 945.5 727 Q942 732 938.5 727 Q936.5 722 942 712Z" fill="url(#candle-flame)"/>
+<path d="M942 725 Q944 728 942 730.5 Q940 728 942 725Z" fill="#5a8cff" opacity="0.55"/>
+<path d="M942 730.5 l0.3 -3" stroke="#2a1608" stroke-width="0.9"/>
+</g>
+</svg>
