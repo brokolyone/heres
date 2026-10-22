@@ -5,7 +5,7 @@ usage: python3 game.py <buildDir> <characters.svg> <out.html> [soundtrack.ogg so
 <buildDir> must already hold (see build.sh):
   scene.html            the animated island assembled without the gnome (GAME=1 extract + assemble.py),
                         with a <!--CHARACTER--> slot between the scenery and the foreground parts
-  static_interior.png   the house interior backdrop and iparts/*.png + iparts.json (interior.js + rasterize.js)
+  static_interior.png   the house interior backdrop and iparts/*.png + iparts.json (interior_merge.js + rasterize.js)
 The gnome becomes a jointed SVG puppet built from its own drawing in characters.svg.
 Output is an HTML fragment (title, style, body content) suitable for publishing as an artifact;
 it also opens directly in a browser.
