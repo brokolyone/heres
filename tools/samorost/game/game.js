@@ -327,20 +327,17 @@ function hit(p) {
 }
 
 // ---------------- moving between the island and the house ----------------
-{ const di = document.getElementById('doorway-img'), ib = document.querySelector('#inside .base'); if (di && ib) di.setAttribute('href', ib.src); }
-// the painted door leaf swings on its hinges (left edge, x=504) into the lit house
-const doorImg = img('door');
-if (doorImg) doorImg.style.transformOrigin = `${504 - box(doorImg).x}px 50%`;
-const DOOR_SHUT = { transform: 'perspective(240px) rotateY(0deg)', filter: 'brightness(1)' };
-const DOOR_OPEN = { transform: 'perspective(240px) rotateY(74deg)', filter: 'brightness(.5)' };
-let doorAnim = null;
-async function doorOut(open, ms = 700) {
-  if (!doorImg) return;
-  const prev = doorAnim;
-  doorAnim = doorImg.animate(open ? [DOOR_SHUT, DOOR_OPEN] : [DOOR_OPEN, DOOR_SHUT],
-    { duration: ms, easing: open ? 'cubic-bezier(.35,.1,.3,1)' : 'cubic-bezier(.5,0,.5,1.15)', fill: 'forwards' });
-  await doorAnim.finished;
-  if (prev) prev.cancel();
+// the door opens in painted frames: closed, ~40°, ~80°, with the lit room behind it
+const DOOR = ['door-0', 'door-1', 'door-2'].map(part);
+const doorway = part('doorway');
+function doorFrame(k) {
+  DOOR.forEach((d, i) => { if (d) d.style.opacity = i === k ? 1 : 0; });
+  if (doorway) doorway.style.opacity = k > 0 ? 1 : 0;
+}
+doorFrame(0);
+async function doorOut(open, ms = 360) {
+  const seq = open ? [1, 2] : [1, 0];
+  for (const k of seq) { await wait(ms / seq.length); doorFrame(k); }
 }
 async function swapScene(to, x, dir) {
   curtain.style.opacity = 1; await wait(380);
@@ -354,12 +351,12 @@ async function enterHouse() {
   await reach(-40, 200, 100); SFX.creak(); await doorOut(true);
   await tween(450, k => { H.fade = 1 - k; });
   await swapScene('in', 200, 1); H.fade = 1;
-  doorOut(false, 1);
+  doorFrame(0);
   if (!found.has('door')) toast('Внутри тепло. Тапни по двери, чтобы выйти обратно.');
 }
 async function leaveHouse() {
   SFX.creak();
-  await doorOut(true, 1);
+  doorFrame(2);
   await swapScene('out', 538, 1); H.fade = 0;
   await tween(400, k => { H.fade = k; });
   H.target = 590; await waitArrive();

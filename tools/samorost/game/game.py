@@ -44,28 +44,6 @@ def trimmed(png):
 scene = (build / 'scene.html').read_text()
 scene_css = scene[scene.index('<style>') + 7:scene.index('</style>')]
 stage_inner = scene[scene.index('<div id="stage">') + len('<div id="stage">'):scene.rindex('</div></div>')]
-# The room seen through the open door: the interior backdrop itself (its href is filled in at run time
-# from the interior image, so the bitmap is not embedded twice), framed by the arch with soft shadows.
-DOORWAY = '''<svg id="doorway" class="layer" viewBox="0 0 1600 1000" width="1600" height="1000">
-<defs><clipPath id="dw-arch"><path d="M504,566 L504,524 A34,34 0 0 1 572,524 L572,564 Z"/></clipPath>
-<radialGradient id="dw-edge" cx="0.55" cy="0.6" r="0.62"><stop offset="0.45" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#070302" stop-opacity="0.85"/></radialGradient>
-<linearGradient id="dw-top" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#070302" stop-opacity="0.75"/><stop offset="0.45" stop-color="#070302" stop-opacity="0"/></linearGradient>
-<linearGradient id="dw-leaf" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#070302" stop-opacity="0.8"/><stop offset="0.35" stop-color="#070302" stop-opacity="0"/></linearGradient>
-<filter id="dw-soft"><feGaussianBlur stdDeviation="0.35"/></filter></defs>
-<g clip-path="url(#dw-arch)">
-<image id="doorway-img" x="448.88" y="455.02" width="169.60" height="106.00" preserveAspectRatio="none" filter="url(#dw-soft)"/>
-<rect x="500" y="486" width="76" height="82" fill="url(#dw-top)"/>
-<rect x="500" y="486" width="76" height="82" fill="url(#dw-leaf)"/>
-<rect x="500" y="486" width="76" height="82" fill="url(#dw-edge)"/>
-<path d="M504,566 L572,564 L572,560 L504,561 Z" fill="#ffcf7a" opacity="0.25"/>
-</g>
-<path d="M504,566 L504,524 A34,34 0 0 1 572,524 L572,564" fill="none" stroke="#0a0503" stroke-width="2.5" opacity="0.8"/>
-<path d="M506,567 C520,575 556,575 570,566" fill="#ffcf7a" opacity="0.18"/>
-</svg>'''
-i_door = stage_inner.find('data-id="door"')
-assert i_door > 0
-i_door = stage_inner.rindex('<div', 0, i_door)
-stage_inner = stage_inner[:i_door] + DOORWAY + '\n' + stage_inner[i_door:]
 stage_inner = stage_inner.replace('<!--CHARACTER-->', '<div id="slot-out" class="slot"></div>\n<div id="fx-out" class="fx"></div>', 1)
 
 # ---------------- the house interior ----------------

@@ -94,17 +94,12 @@ part('bug-antennae', 'characters', LINES('characters', '<path d="M579,522 C572,5
 // ================= structures =================
 part('smoke', 'structures', G('structures', '<g filter="url(#structures-smoke)"'), 'smoke', { origin: [646, 334] });
 if (GAME) {
-  // the door leaf becomes its own sprite so it can swing open; a lit doorway takes its place
-  const leafStart = '<path d="M504,565.2482660630226 L504,524 A34,34';
-  const i0 = find('structures', leafStart);
-  const leaf = LINES('structures', leafStart, '<circle cx="566.0" cy="542.5"')
-    + '\n' + LINES('structures', '<circle cx="558" cy="528" r="3"', '<circle cx="538" cy="504" r="3.2"');
-  const doorway = `<defs><radialGradient id="structures-doorway" cx="0.5" cy="0.8" r="0.8"><stop offset="0" stop-color="#ffd27a"/><stop offset="0.45" stop-color="#c0702a"/><stop offset="1" stop-color="#2a1208"/></radialGradient></defs>
-<path d="M504,565.2 L504,524 A34,34 0 0 1 572,524 L572,563.2 Z" fill="url(#structures-doorway)"/>
-<path d="M510,565 L510,540 Q520,532 532,540 L532,565 Z M548,565 L548,548 L566,548 L566,564 Z" fill="#3a1a08" opacity="0.45"/>
-<path d="M504,524 A34,34 0 0 1 572,524" fill="none" stroke="#120804" stroke-width="3" opacity="0.7"/>`;
-  body.structures = body.structures.slice(0, i0) + doorway + '\n' + body.structures.slice(i0);
-  part('door', 'structures', leaf, 'none', { origin: [504, 530] });
+  // the painted door opens in three frames (closed, ~40°, ~80°) over a view into the lit room
+  const doorDir = path.join(layersDir, '..', 'door');
+  const svgInner = f => { const t = fs.readFileSync(path.join(doorDir, f), 'utf8'); return t.slice(t.indexOf('>', t.indexOf('<svg')) + 1, t.lastIndexOf('</svg>')); };
+  G('structures', '<g id="structures-doorleaf">');
+  part('doorway', 'structures', svgInner('doorway.svg'), 'none', { origin: [538, 528] });
+  for (const k of [0, 1, 2]) part(`door-${k}`, 'structures', svgInner(`leaf_${k}.svg`), 'none', { origin: [504, 528] });
 }
 part('propeller', 'structures', G('structures', '<g transform="translate(1079,300)">'), 'spin', { origin: [1079, 300], vars: { dur: '1.5s' } });
 part('gear-a', 'structures', LINES('structures', '<path d="M1047.0,408.0 L1046.4', '<circle cx="1030" cy="408" r="2.7"'), 'spin', { origin: [1030, 408], vars: { dur: '6s' } });
