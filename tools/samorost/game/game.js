@@ -86,7 +86,7 @@ function fx(cls, x, y, frames, ms, opts = {}) {
 }
 const part = id => document.querySelector(`[data-id="${id}"]`);
 function img(id) { const p = part(id); return p && p.querySelector(':scope > img'); }
-function box(el) { return { x: parseFloat(el.style.left), y: parseFloat(el.style.top), w: parseFloat(el.style.width), h: parseFloat(el.style.height) }; }
+function box(el) { const d = (el.classList.contains('p') ? el : el.parentElement).dataset; return { x: +d.x, y: +d.y, w: +d.w, h: +d.h }; }
 function poke(el, frames, ms, origin) {
   if (!el || reduce) return;
   if (origin) el.style.transformOrigin = origin;

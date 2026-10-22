@@ -13,6 +13,7 @@ it also opens directly in a browser.
 import base64
 import io
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -24,7 +25,12 @@ audio = [Path(a) for a in sys.argv[4:6]]
 SCALE = 2
 
 
+IMG_SCALE = float(os.environ.get('IMG_SCALE', '1'))  # < 1 for the phone build: smaller bitmaps, less GPU memory
+
+
 def webp(img, quality, alpha=True):
+    if IMG_SCALE != 1:
+        img = img.resize((max(1, round(img.width * IMG_SCALE)), max(1, round(img.height * IMG_SCALE))), Image.LANCZOS)
     buf = io.BytesIO()
     (img if alpha else img.convert('RGB')).save(buf, 'WEBP', quality=quality, method=6)
     return 'data:image/webp;base64,' + base64.b64encode(buf.getvalue()).decode()
@@ -56,9 +62,10 @@ for p in iparts:
         continue
     x, y, w, h = box
     ox, oy = p['origin'] or (x + w / 2, y + h / 2)
-    style = ';'.join([f'transform-origin:{ox:.1f}px {oy:.1f}px'] + [f'--{k}:{v}' for k, v in p['vars'].items()])
-    html = (f'<div class="p a-{p["anim"]}" data-id="{p["id"]}" style="{style}"><img src="{webp(img, 88)}" '
-            f'style="left:{x:.1f}px;top:{y:.1f}px;width:{w:.1f}px;height:{h:.1f}px" alt=""></div>\n')
+    style = ';'.join([f'left:{x:.1f}px;top:{y:.1f}px;width:{w:.1f}px;height:{h:.1f}px', f'transform-origin:{ox - x:.1f}px {oy - y:.1f}px']
+                     + [f'--{k}:{v}' for k, v in p['vars'].items()])
+    html = (f'<div class="p a-{p["anim"]}" data-id="{p["id"]}" data-x="{x:.1f}" data-y="{y:.1f}" data-w="{w:.1f}" data-h="{h:.1f}" '
+            f'style="{style}"><img src="{webp(img, 88)}" alt=""></div>\n')
     (interior_front if p['front'] else interior_back).append(html)
     if p['id'] == 'fire-back':  # live flame tongues and rising embers sit behind the logs and the grille
         interior_back.append(FIREFX)
@@ -88,9 +95,7 @@ INTERIOR = f'''<div id="inside" class="scene" hidden>
 <div id="fx-in" class="fx"></div>
 {''.join(interior_front)}
 <div id="room-shade"></div>
-<svg class="overlay" viewBox="0 0 1600 1000" width="1600" height="1000"><defs><filter id="in-grain" x="0" y="0" width="100%" height="100%">
-<feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="11"/><feColorMatrix type="matrix" values="0 0 0 0 0.45  0 0 0 0 0.4  0 0 0 0 0.3  0 0 0 0.09 0"/></filter></defs>
-<rect width="1600" height="1000" filter="url(#in-grain)"/></svg>
+<div class="overlay grainlayer"></div>
 </div>'''
 
 # ---------------- the gnome as a jointed puppet ----------------

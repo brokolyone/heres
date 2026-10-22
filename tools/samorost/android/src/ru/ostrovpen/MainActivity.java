@@ -8,13 +8,10 @@ import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
-import android.webkit.WebChromeClient;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
 
-/** Full-screen landscape WebView that plays the bundled «Остров-пень» game. */
+/** Full-screen landscape host for the native «Остров-пень» game. */
 public class MainActivity extends Activity {
-    private WebView web;
+    private GameView view;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -24,17 +21,8 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 28) {
             w.getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
         }
-        web = new WebView(this);
-        web.setBackgroundColor(0xff061210);
-        WebSettings s = web.getSettings();
-        s.setJavaScriptEnabled(true);
-        s.setDomStorageEnabled(true);
-        s.setMediaPlaybackRequiresUserGesture(false);
-        s.setAllowFileAccess(true);
-        web.setWebChromeClient(new WebChromeClient());
-        setContentView(web);
-        if (state != null) web.restoreState(state);
-        else web.loadUrl("file:///android_asset/index.html");
+        view = new GameView(this);
+        setContentView(view);
         hideBars();
     }
 
@@ -61,28 +49,20 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
-        web.evaluateJavascript("window.appPause && window.appPause(true)", null);
-        web.onPause();
+        view.pause();
         super.onPause();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        web.onResume();
-        web.evaluateJavascript("window.appPause && window.appPause(false)", null);
+        view.resume();
         hideBars();
     }
 
     @Override
-    protected void onSaveInstanceState(Bundle out) {
-        super.onSaveInstanceState(out);
-        web.saveState(out);
-    }
-
-    @Override
     protected void onDestroy() {
-        web.destroy();
+        view.release();
         super.onDestroy();
     }
 }

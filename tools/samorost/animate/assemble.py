@@ -9,6 +9,7 @@ smoothly. Every animation period divides 12 s, so the whole scene loops seamless
 import base64
 import io
 import json
+import os
 import random
 import sys
 from pathlib import Path
@@ -18,11 +19,15 @@ from PIL import Image
 build, out = Path(sys.argv[1]), Path(sys.argv[2])
 audio = [Path(a) for a in sys.argv[3:5]]
 SCALE = 2  # bitmaps are rendered at 2x
+# IMG_SCALE < 1 shrinks every bitmap before embedding (the phone build uses it to save GPU memory)
+IMG_SCALE = float(os.environ.get('IMG_SCALE', '1'))
 LAYERS = ['bg', 'island', 'cave', 'structures', 'flora', 'characters', 'details']
 rnd = random.Random(7)
 
 
 def data_uri(img, quality, alpha=True):
+    if IMG_SCALE != 1:
+        img = img.resize((max(1, round(img.width * IMG_SCALE)), max(1, round(img.height * IMG_SCALE))), Image.LANCZOS)
     buf = io.BytesIO()
     img.save(buf, 'WEBP', quality=quality, method=6, exact=False) if alpha else img.convert('RGB').save(buf, 'WEBP', quality=quality, method=6)
     return 'data:image/webp;base64,' + base64.b64encode(buf.getvalue()).decode()
@@ -49,15 +54,18 @@ for p in parts:
     p['children'] = sorted([c for c in parts if c['parent'] == p['id']], key=lambda c: c['pos'])
 
 
-def render(p):
+def render(p, parent=(0.0, 0.0)):
+    """A part as a wrapper the size of its own bitmap (small GPU layers), nested parts inside it."""
     x, y, w, h = p['box']
     ox, oy = p['origin'] or (x + w / 2, y + h / 2)
-    style = [f"transform-origin:{ox:.1f}px {oy:.1f}px"]
+    style = [f"left:{x - parent[0]:.1f}px;top:{y - parent[1]:.1f}px;width:{w:.1f}px;height:{h:.1f}px",
+             f"transform-origin:{ox - x:.1f}px {oy - y:.1f}px"]
     style += [f"--{k}:{v}" for k, v in p['vars'].items()]
-    img = (f'<img src="{data_uri(p["img"], 88)}" style="left:{x:.1f}px;top:{y:.1f}px;width:{w:.1f}px;height:{h:.1f}px" alt="">')
-    below = ''.join(render(c) for c in p['children'] if c['below'])
-    above = ''.join(render(c) for c in p['children'] if not c['below'])
-    return f'<div class="p a-{p["anim"]}" data-id="{p["id"]}" style="{";".join(style)}">{below}{img}{above}</div>\n'
+    img = f'<img src="{data_uri(p["img"], 88)}" alt="">'
+    below = ''.join(render(c, (x, y)) for c in p['children'] if c['below'])
+    above = ''.join(render(c, (x, y)) for c in p['children'] if not c['below'])
+    return (f'<div class="p a-{p["anim"]}" data-id="{p["id"]}" data-x="{x:.1f}" data-y="{y:.1f}" data-w="{w:.1f}" data-h="{h:.1f}" '
+            f'style="{";".join(style)}">{below}{img}{above}</div>\n')
 
 
 tops = [p for p in parts if not p['parent']]
@@ -98,23 +106,20 @@ def spores():
 LEAF = ('<svg class="fall" viewBox="-10 -10 20 20" width="18" height="18"><path d="M0,-8 Q6,-2 0,8 Q-6,-2 0,-8 Z" fill="#b8742e"/>'
         '<path d="M0,-7 L0,10" stroke="#3a2614" stroke-width="0.6"/></svg>')
 
-OVERLAY = '''<svg class="overlay" viewBox="0 0 1600 1000" width="1600" height="1000">
-<defs>
-  <filter id="final-grain" x="0" y="0" width="100%" height="100%">
-    <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" result="n"/>
-    <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.45  0 0 0 0 0.4  0 0 0 0 0.3  0 0 0 0.09 0"/>
-  </filter>
-  <radialGradient id="final-vignette" cx="0.52" cy="0.5" r="0.75">
-    <stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#05110f" stop-opacity="0.55"/>
-  </radialGradient>
-  <radialGradient id="final-warm" cx="0.5" cy="0.55" r="0.4">
-    <stop offset="0" stop-color="#f3d27a" stop-opacity="0.08"/><stop offset="1" stop-color="#f3d27a" stop-opacity="0"/>
-  </radialGradient>
-</defs>
-<rect width="1600" height="1000" fill="url(#final-warm)"/>
-<rect width="1600" height="1000" fill="url(#final-vignette)"/>
-<rect width="1600" height="1000" filter="url(#final-grain)"/>
-</svg>'''
+def noise_tile():
+    import numpy as np
+    rng = np.random.default_rng(7)
+    a = np.clip(rng.normal(0.5, 0.22, (256, 256)), 0, 1)
+    px = np.zeros((256, 256, 4), dtype=np.uint8)
+    px[..., 0], px[..., 1], px[..., 2] = 115, 102, 77
+    px[..., 3] = (a * 0.09 * 255 * 2).clip(0, 255).astype(np.uint8)
+    buf = io.BytesIO()
+    Image.fromarray(px, 'RGBA').save(buf, 'PNG')
+    return 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode()
+
+
+GRAIN = noise_tile()
+OVERLAY = '<div class="overlay grainlayer"></div>'
 
 CSS = '''
 html,body{margin:0;height:100%;background:#061210;overflow:hidden}
@@ -122,10 +127,12 @@ html,body{margin:0;height:100%;background:#061210;overflow:hidden}
 #stage{position:relative;width:1600px;height:1000px;flex:none;overflow:hidden;transform-origin:center center}
 #stage img,#stage .base{position:absolute;display:block}
 .base{left:0;top:0;width:1600px;height:1000px}
-.overlay{position:absolute;left:0;top:0;pointer-events:none;will-change:transform}
-.p{position:absolute;inset:0;pointer-events:none;animation-duration:var(--dur,6s);animation-delay:var(--delay,0s);
+.overlay{position:absolute;left:0;top:0;width:1600px;height:1000px;pointer-events:none}
+.grainlayer{background:radial-gradient(ellipse 75% 75% at 52% 50%,rgba(5,17,15,0) 55%,rgba(5,17,15,.55) 100%),
+  radial-gradient(ellipse 40% 40% at 50% 55%,rgba(243,210,122,.08),rgba(243,210,122,0) 100%),url(%%GRAIN%%) repeat}
+.p{position:absolute;pointer-events:none;animation-duration:var(--dur,6s);animation-delay:var(--delay,0s);
    animation-iteration-count:infinite;animation-timing-function:ease-in-out}
-.p>.p{inset:0}
+#stage .p>img{left:0;top:0;width:100%;height:100%}
 
 .a-sway{animation-name:sway;--a:1.5deg}
 @keyframes sway{0%,100%{transform:rotate(var(--a))}50%{transform:rotate(calc(var(--a) * -1))}}
@@ -283,6 +290,8 @@ FIT = '''<script>
 function fit(){var s=Math.min(innerWidth/1600,innerHeight/1000);document.getElementById('stage').style.transform='scale('+s+')'}
 addEventListener('resize',fit);fit();
 </script>'''
+
+CSS = CSS.replace('%%GRAIN%%', GRAIN)
 
 html = f'''<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
