@@ -93,8 +93,8 @@ function poke(el, frames, ms, origin) {
   el.animate(frames, { duration: ms, easing: 'ease-out' });
 }
 function speed(ids, rate, ms) {
-  for (const id of ids) { const p = part(id); if (!p) continue; p.getAnimations().forEach(a => a.updatePlaybackRate(rate)); }
-  setTimeout(() => { for (const id of ids) { const p = part(id); if (p) p.getAnimations().forEach(a => a.updatePlaybackRate(1)); } }, ms);
+  for (const id of ids) { const p = part(id); if (!p) continue; p.getAnimations().forEach(a => { a.playbackRate = rate; }); }
+  setTimeout(() => { for (const id of ids) { const p = part(id); if (p) p.getAnimations().forEach(a => { a.playbackRate = 1; }); } }, ms);
 }
 async function reach(up = -70, ms = 260, hold = 300) {
   await tween(ms, k => { H.arm = up * k; });
@@ -328,11 +328,20 @@ function hit(p) {
 }
 
 // ---------------- moving between the island and the house ----------------
-const doorSvg = $('#door-out'), leaf = $('#door-leaf');
-async function doorOut(open) {
-  doorSvg.style.opacity = 1;
-  await tween(500, k => { const s = open ? 1 - .88 * k : .12 + .88 * k; leaf.setAttribute('transform', `translate(503,0) scale(${s},1) translate(-503,0)`); });
-  if (!open) doorSvg.style.opacity = 0;
+{ const di = document.getElementById('doorway-img'), ib = document.querySelector('#inside .base'); if (di && ib) di.setAttribute('href', ib.src); }
+// the painted door leaf swings on its hinges (left edge, x=504) into the lit house
+const doorImg = img('door');
+if (doorImg) doorImg.style.transformOrigin = `${504 - box(doorImg).x}px 50%`;
+const DOOR_SHUT = { transform: 'perspective(240px) rotateY(0deg)', filter: 'brightness(1)' };
+const DOOR_OPEN = { transform: 'perspective(240px) rotateY(74deg)', filter: 'brightness(.5)' };
+let doorAnim = null;
+async function doorOut(open, ms = 700) {
+  if (!doorImg) return;
+  const prev = doorAnim;
+  doorAnim = doorImg.animate(open ? [DOOR_SHUT, DOOR_OPEN] : [DOOR_OPEN, DOOR_SHUT],
+    { duration: ms, easing: open ? 'cubic-bezier(.35,.1,.3,1)' : 'cubic-bezier(.5,0,.5,1.15)', fill: 'forwards' });
+  await doorAnim.finished;
+  if (prev) prev.cancel();
 }
 async function swapScene(to, x, dir) {
   curtain.style.opacity = 1; await wait(380);
@@ -346,13 +355,13 @@ async function enterHouse() {
   await reach(-40, 200, 100); SFX.creak(); await doorOut(true);
   await tween(450, k => { H.fade = 1 - k; });
   await swapScene('in', 200, 1); H.fade = 1;
-  doorSvg.style.opacity = 0;
+  doorOut(false, 1);
   if (!found.has('door')) toast('Внутри тепло. Тапни по двери, чтобы выйти обратно.');
 }
 async function leaveHouse() {
   SFX.creak();
+  await doorOut(true, 1);
   await swapScene('out', 538, 1); H.fade = 0;
-  leaf.setAttribute('transform', 'translate(503,0) scale(.12,1) translate(-503,0)'); doorSvg.style.opacity = 1;
   await tween(400, k => { H.fade = k; });
   H.target = 590; await waitArrive();
   await doorOut(false); SFX.click();
@@ -411,8 +420,35 @@ async function arrive() {
   H.busy = true;
   try { await s.act(); discover(s.key); } finally { H.busy = false; }
 }
+// ---------------- 25 frames a second, on purpose ----------------
+// Every animation on the page (CSS loops, effects, transitions) is paused and stepped by hand once
+// per frame, and the puppet only moves on the same ticks: a stop-motion feel like the original game.
+const FRAME = 40;
+const clocks = new WeakMap();
+function stepAnimations() {
+  for (const a of document.getAnimations()) {
+    let c = clocks.get(a);
+    if (!c) {
+      if (a.playState === 'finished' || a.playState === 'idle') continue;
+      c = { t: a.currentTime || 0 }; clocks.set(a, c); a.pause();
+    } else c.t += FRAME * a.playbackRate;
+    a.currentTime = c.t;
+    const end = a.effect ? a.effect.getComputedTiming().endTime : Infinity;
+    if (isFinite(end) && c.t >= end) { clocks.delete(a); a.finish(); }
+  }
+}
+let acc = 0, frameT = performance.now() / 1000;
 function loop(now) {
-  const dt = Math.min(0.1, (now - last) / 1000), t = now / 1000; last = now;
+  acc += now - last; last = now;
+  if (acc >= FRAME) {
+    const steps = Math.min(3, Math.floor(acc / FRAME));
+    acc = Math.min(acc - steps * FRAME, FRAME);
+    for (let i = 0; i < steps; i++) { frameT += FRAME / 1000; update(FRAME / 1000, frameT); stepAnimations(); }
+    draw(frameT);
+  }
+  requestAnimationFrame(loop);
+}
+function update(dt, t) {
   const S = SCN[H.scene];
   if (started && !H.busy && H.pose !== 'sleep' && held.size) {
     const d = [...held].reduce((a, b) => a + b, 0);
@@ -439,8 +475,6 @@ function loop(now) {
     if (moving) H.lookTo = 0;
     H.look += (H.lookTo - H.look) * Math.min(1, dt * 3);
   }
-  draw(t);
-  requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 

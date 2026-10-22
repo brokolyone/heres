@@ -44,15 +44,29 @@ def trimmed(png):
 scene = (build / 'scene.html').read_text()
 scene_css = scene[scene.index('<style>') + 7:scene.index('</style>')]
 stage_inner = scene[scene.index('<div id="stage">') + len('<div id="stage">'):scene.rindex('</div></div>')]
-DOOR_OUT = '''<svg id="door-out" class="layer" viewBox="0 0 1600 1000" width="1600" height="1000" style="opacity:0">
-<defs><radialGradient id="g-doorglow" cx="0.5" cy="0.7" r="0.7"><stop offset="0" stop-color="#ffd98a"/><stop offset="0.6" stop-color="#a8642a"/><stop offset="1" stop-color="#2a140a"/></radialGradient></defs>
-<path d="M503,567 L503,524 A35,35 0 0 1 573,524 L573,567 Z" fill="url(#g-doorglow)"/>
-<path d="M512,567 l0,-30 q26,-14 52,0 l0,30 Z" fill="#3a2010" opacity="0.5"/>
-<g id="door-leaf"><path d="M503,567 L503,524 A35,35 0 0 1 573,524 L573,567 Z" fill="#6b5236" stroke="#24170d" stroke-width="1.5"/>
-<path d="M515,500 L515,567 M527,491 L527,567 M539,489 L539,567 M551,491 L551,567 M563,500 L563,567" stroke="#2e1f12" stroke-width="1.2"/>
-<path d="M505,520 L571,520 M505,550 L571,550" stroke="#3a2e26" stroke-width="3"/><circle cx="560" cy="535" r="3" fill="none" stroke="#9a7840" stroke-width="1.5"/></g>
+# The room seen through the open door: the interior backdrop itself (its href is filled in at run time
+# from the interior image, so the bitmap is not embedded twice), framed by the arch with soft shadows.
+DOORWAY = '''<svg id="doorway" class="layer" viewBox="0 0 1600 1000" width="1600" height="1000">
+<defs><clipPath id="dw-arch"><path d="M504,566 L504,524 A34,34 0 0 1 572,524 L572,564 Z"/></clipPath>
+<radialGradient id="dw-edge" cx="0.55" cy="0.6" r="0.62"><stop offset="0.45" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#070302" stop-opacity="0.85"/></radialGradient>
+<linearGradient id="dw-top" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#070302" stop-opacity="0.75"/><stop offset="0.45" stop-color="#070302" stop-opacity="0"/></linearGradient>
+<linearGradient id="dw-leaf" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#070302" stop-opacity="0.8"/><stop offset="0.35" stop-color="#070302" stop-opacity="0"/></linearGradient>
+<filter id="dw-soft"><feGaussianBlur stdDeviation="0.35"/></filter></defs>
+<g clip-path="url(#dw-arch)">
+<image id="doorway-img" x="448.88" y="455.02" width="169.60" height="106.00" preserveAspectRatio="none" filter="url(#dw-soft)"/>
+<rect x="500" y="486" width="76" height="82" fill="url(#dw-top)"/>
+<rect x="500" y="486" width="76" height="82" fill="url(#dw-leaf)"/>
+<rect x="500" y="486" width="76" height="82" fill="url(#dw-edge)"/>
+<path d="M504,566 L572,564 L572,560 L504,561 Z" fill="#ffcf7a" opacity="0.25"/>
+</g>
+<path d="M504,566 L504,524 A34,34 0 0 1 572,524 L572,564" fill="none" stroke="#0a0503" stroke-width="2.5" opacity="0.8"/>
+<path d="M506,567 C520,575 556,575 570,566" fill="#ffcf7a" opacity="0.18"/>
 </svg>'''
-stage_inner = stage_inner.replace('<!--CHARACTER-->', DOOR_OUT + '\n<div id="slot-out" class="slot"></div>\n<div id="fx-out" class="fx"></div>', 1)
+i_door = stage_inner.find('data-id="door"')
+assert i_door > 0
+i_door = stage_inner.rindex('<div', 0, i_door)
+stage_inner = stage_inner[:i_door] + DOORWAY + '\n' + stage_inner[i_door:]
+stage_inner = stage_inner.replace('<!--CHARACTER-->', '<div id="slot-out" class="slot"></div>\n<div id="fx-out" class="fx"></div>', 1)
 
 # ---------------- the house interior ----------------
 iparts = json.load(open(build / 'iparts.json'))
@@ -87,6 +101,7 @@ INTERIOR = f'''<div id="inside" class="scene" hidden>
 <img class="base" src="{interior_img}" alt="Внутри дома-пня: печка, кровать, стол и открытый верх с луной">
 {dust()}
 {''.join(interior_back)}
+<div class="firebox"><i class="flame" style="left:0px;width:24px;height:40px;--d:0.9s;--dl:-0.1s"></i><i class="flame" style="left:14px;width:26px;height:56px;--d:0.7s;--dl:-0.4s"></i><i class="flame" style="left:32px;width:24px;height:48px;--d:1.1s;--dl:-0.2s"></i><i class="flame" style="left:48px;width:26px;height:58px;--d:0.8s;--dl:-0.6s"></i><i class="flame" style="left:62px;width:22px;height:38px;--d:1s;--dl:-0.3s"></i></div><i class="ember" style="left:1284px;--dl:-0.2s"></i><i class="ember" style="left:1300px;--dl:-1.1s"></i><i class="ember" style="left:1318px;--dl:-0.7s"></i><i class="ember" style="left:1334px;--dl:-1.6s"></i><i class="ember" style="left:1308px;--dl:-2.2s"></i>
 <i class="steam" style="--delay:0s"></i><i class="steam" style="--delay:-.7s"></i><i class="steam" style="--delay:-1.4s"></i>
 <i class="glow stoveglow" style="left:1150px;top:610px;width:310px;height:300px;--delay:-.3s"></i>
 <div id="slot-in" class="slot"></div>
@@ -174,8 +189,15 @@ html,body{margin:0;height:100%;background:var(--night);overflow:hidden;touch-act
              radial-gradient(circle at 942px 725px,rgba(4,3,2,0) 0,rgba(4,3,2,.2) 90px);mix-blend-mode:multiply}
 .a-pendulum{animation-name:pend;--dur:2s}
 @keyframes pend{0%,100%{transform:rotate(9deg)}50%{transform:rotate(-9deg)}}
-.a-fire{animation-name:fire;--dur:1s;animation-timing-function:linear}
-@keyframes fire{0%,100%{transform:scaleY(1);opacity:1}25%{transform:scaleY(1.08) skewX(2deg);opacity:.85}50%{transform:scaleY(.94);opacity:1}75%{transform:scaleY(1.05) skewX(-2deg);opacity:.9}}
+.a-fire{animation-name:fireglow;--dur:1.3s;animation-timing-function:linear}
+@keyframes fireglow{0%,100%{opacity:1;filter:brightness(1)}18%{opacity:.86;filter:brightness(1.12)}37%{opacity:.97;filter:brightness(.92)}58%{opacity:.82;filter:brightness(1.18)}79%{opacity:.94;filter:brightness(.96)}}
+.firebox{position:absolute;left:1264px;top:708px;width:82px;height:80px;overflow:hidden;mix-blend-mode:screen;opacity:.7;pointer-events:none}
+.flame{position:absolute;bottom:-8px;border-radius:50% 50% 42% 42%/62% 62% 38% 38%;transform-origin:50% 100%;
+  background:radial-gradient(ellipse at 50% 85%,rgba(255,244,180,.95),rgba(255,170,70,.75) 42%,rgba(220,80,20,0) 74%);animation:flame var(--d) ease-in-out var(--dl) infinite}
+@keyframes flame{0%,100%{transform:scale(1,1) skewX(0)}25%{transform:scale(.82,1.3) skewX(7deg)}50%{transform:scale(1.12,.84) skewX(-5deg)}75%{transform:scale(.9,1.16) skewX(3deg)}}
+.ember{position:absolute;top:712px;width:3px;height:3px;border-radius:50%;background:#ffcf6a;box-shadow:0 0 5px 2px rgba(255,150,50,.8);
+  animation:ember 2.4s ease-out var(--dl) infinite;opacity:0}
+@keyframes ember{0%{transform:translate(0,0);opacity:0}10%{opacity:1}100%{transform:translate(14px,-60px);opacity:0}}
 .a-candle{animation-name:candle;--dur:1.5s}
 @keyframes candle{0%,100%{transform:scale(1,1) skewX(0)}30%{transform:scale(.95,1.08) skewX(4deg)}60%{transform:scale(1.03,.96) skewX(-3deg)}}
 .stoveglow{background:radial-gradient(closest-side,rgba(255,150,60,.5),rgba(255,150,60,0))}

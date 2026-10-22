@@ -83,7 +83,8 @@ def stars():
 
 
 def puffs():
-    return ''.join(f'<i class="puff" style="--delay:-{i * 1.0:.1f}s;--sx:{rnd.uniform(-10, 10):.0f}px"></i>' for i in range(6))
+    # puffs escape from under the chimney's rain cap, left and right of its legs
+    return ''.join(f'<i class="puff" style="left:{(624 if i % 2 else 648)}px;top:324px;--delay:-{i * 1.0:.1f}s;--sx:{rnd.uniform(-10, 10):.0f}px"></i>' for i in range(6))
 
 
 def spores():
