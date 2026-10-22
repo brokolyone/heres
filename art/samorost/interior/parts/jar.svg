@@ -33,15 +33,15 @@
 <g transform="rotate(14 480 462)"><path d="M478.6,462 C479,452.0 478.5,446.0 479,442 L481,442 C481.5,446.0 481.2,452.0 481.6,462 Z" fill="#e8ffd0"/><path d="M472,443 C472,434.8 488,434.8 488,443 C483.2,441 476.8,441 472,443 Z" fill="#c8ff8a"/><path d="M475.2,439.6 C478.4,436.4 482.4,436.4 484.8,438.8" stroke="#ffffff" stroke-width="1" fill="none" opacity="0.8"/><circle cx="477.6" cy="439.2" r="0.9" fill="#4f8a3a" opacity="0.6"/><circle cx="482.8" cy="440.0" r="0.8" fill="#4f8a3a" opacity="0.6"/></g>
 <g transform="rotate(-20 465 462)"><path d="M463.6,462 C464,455.0 463.5,450.8 464,448 L466,448 C466.5,450.8 466.2,455.0 466.6,462 Z" fill="#e8ffd0"/><path d="M459,449 C459,442.6 471,442.6 471,449 C467.4,447 462.6,447 459,449 Z" fill="#c8ff8a"/><path d="M461.4,446.2 C463.8,443.8 466.8,443.8 468.6,445.6" stroke="#ffffff" stroke-width="1" fill="none" opacity="0.8"/><circle cx="463.2" cy="445.9" r="0.9" fill="#4f8a3a" opacity="0.6"/><circle cx="467.1" cy="446.5" r="0.8" fill="#4f8a3a" opacity="0.6"/></g>
 <circle cx="469" cy="440" r="12" fill="#eaffc8" opacity="0.6" filter="url(#jar-blur)"/>
-<circle cx="456" cy="449.8" r="1.0" fill="#f4ffd8" opacity="0.9"/>
-<circle cx="459" cy="447.8" r="0.9" fill="#f4ffd8" opacity="0.9"/>
-<circle cx="460.8" cy="444.2" r="0.7" fill="#f4ffd8" opacity="0.9"/>
-<circle cx="484.1" cy="450.4" r="0.6" fill="#f4ffd8" opacity="0.9"/>
-<circle cx="471.2" cy="424.8" r="1.2" fill="#f4ffd8" opacity="0.9"/>
-<circle cx="461.5" cy="438.4" r="1.1" fill="#f4ffd8" opacity="0.9"/>
-<circle cx="478.1" cy="437.5" r="0.7" fill="#f4ffd8" opacity="0.9"/>
-<circle cx="463.5" cy="424.2" r="0.7" fill="#f4ffd8" opacity="0.9"/>
-<circle cx="477.7" cy="440.5" r="0.9" fill="#f4ffd8" opacity="0.9"/>
+<circle cx="483.6" cy="428.7" r="1.1" fill="#f4ffd8" opacity="0.9"/>
+<circle cx="480.4" cy="444.8" r="0.8" fill="#f4ffd8" opacity="0.9"/>
+<circle cx="459.1" cy="447.1" r="0.8" fill="#f4ffd8" opacity="0.9"/>
+<circle cx="465.2" cy="439.4" r="0.9" fill="#f4ffd8" opacity="0.9"/>
+<circle cx="480.4" cy="430.7" r="0.6" fill="#f4ffd8" opacity="0.9"/>
+<circle cx="471.7" cy="441.6" r="1.2" fill="#f4ffd8" opacity="0.9"/>
+<circle cx="476.3" cy="449.3" r="1.3" fill="#f4ffd8" opacity="0.9"/>
+<circle cx="469.3" cy="438" r="0.7" fill="#f4ffd8" opacity="0.9"/>
+<circle cx="462.9" cy="440.3" r="0.7" fill="#f4ffd8" opacity="0.9"/>
 <rect x="440" y="410" width="60" height="70" fill="url(#jar-glassedge)"/>
 </g>
 <path d="M450,430 C448,422 454,418 458,418 L480,418 C484,418 490,422 488,430 L489,466 C489,471 485,472 480,472 L458,472 C453,472 449,471 449,466 Z" fill="none" stroke="#1f3a26" stroke-width="1.1"/>
@@ -53,7 +53,5 @@
 <circle cx="462" cy="410.6" r="0.9" fill="#1a1714"/><circle cx="469" cy="410.4" r="0.9" fill="#1a1714"/><circle cx="476" cy="410.6" r="0.9" fill="#1a1714"/>
 <path d="M450,421 C460,423 478,423 488,421" stroke="#b49a68" stroke-width="1.4" fill="none"/>
 <path d="M488,421 C492,424 492,430 490,434 M488,421 C494,422 495,426 494,429" stroke="#b49a68" stroke-width="1" fill="none"/>
-<path d="M457,446 L481,445 L481,457 L457,458 Z" fill="#d8c9a2" opacity="0.85" stroke="#5a4a30" stroke-width="0.4"/>
-<path d="M460,450 l17,-0.3 M461,454 l12,-0.2" stroke="#3b2c1c" stroke-width="0.7" opacity="0.8"/>
 </g>
 </svg>
