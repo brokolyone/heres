@@ -1,6 +1,6 @@
 """Assemble the animated Samorost page from rendered backdrops and sprite parts.
 
-usage: python3 assemble.py <buildDir> <out.html>
+usage: python3 assemble.py <buildDir> <out.html> [soundtrack.ogg soundtrack.m4a]
 
 Static backdrops and every animated part are pre-rendered bitmaps (the live SVG filters are far
 too heavy to repaint every frame); the page only moves bitmaps with CSS transforms, so it runs
@@ -16,6 +16,7 @@ from pathlib import Path
 from PIL import Image
 
 build, out = Path(sys.argv[1]), Path(sys.argv[2])
+audio = [Path(a) for a in sys.argv[3:5]]
 SCALE = 2  # bitmaps are rendered at 2x
 LAYERS = ['bg', 'island', 'structures', 'flora', 'characters', 'details']
 rnd = random.Random(7)
@@ -218,8 +219,63 @@ html,body{margin:0;height:100%;background:#061210;overflow:hidden}
 .fall{position:absolute;left:0;top:0;animation:fall 12s linear infinite}
 @keyframes fall{0%{transform:translate(1380px,-20px) rotate(0)}25%{transform:translate(1300px,240px) rotate(160deg)}
   50%{transform:translate(1390px,520px) rotate(320deg)}75%{transform:translate(1310px,790px) rotate(480deg)}100%{transform:translate(1370px,1030px) rotate(640deg)}}
+#snd{position:fixed;right:18px;bottom:18px;width:46px;height:46px;border-radius:50%;border:1px solid rgba(240,230,200,.35);
+     background:rgba(10,24,22,.55);color:#efe6c8;cursor:pointer;display:flex;align-items:center;justify-content:center;
+     backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:5;transition:background .2s}
+#snd:hover{background:rgba(30,50,44,.75)}
+#snd .on{display:none}#snd.playing .on{display:inline}#snd.playing .off{display:none}
+#hint{position:fixed;right:74px;bottom:30px;font:14px/1.2 Georgia,serif;color:#efe6c8;opacity:.85;transition:opacity 1s;
+      text-shadow:0 1px 4px #000;pointer-events:none;z-index:5}
+#credits{position:fixed;left:14px;bottom:12px;max-width:min(520px,80vw);font:12px/1.45 Georgia,serif;color:rgba(239,230,200,.75);z-index:5}
+#credits summary{cursor:pointer;opacity:.6;list-style:none}
+#credits[open]{background:rgba(6,18,16,.8);padding:10px 12px;border-radius:8px}
 @media (prefers-reduced-motion: reduce){.p,.star,.moonglow,.shoot,.puff,.spore,.fall,.glow{animation:none!important}}
 '''
+
+def audio_ui():
+    if not audio:
+        return ''
+    srcs = ','.join(f"['{t}','data:{t};base64,{base64.b64encode(p.read_bytes()).decode()}']"
+                    for t, p in zip(('audio/ogg', 'audio/mp4'), audio))
+    return f'''<button id="snd" type="button" aria-label="Включить звук" title="Звук">
+<svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/>
+<path class="on" d="M16 8.5c1.2 1 1.8 2.2 1.8 3.5s-.6 2.5-1.8 3.5M18.5 6c2 1.6 3 3.6 3 6s-1 4.4-3 6" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+<path class="off" d="M16.5 9.5l5 5m0-5l-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+<div id="hint">нажми, чтобы включить звук</div>
+<details id="credits"><summary>звуки</summary>
+Музыка, гул, тиканье, пузырьки, капли, храп, сова и звездопад синтезированы.<br>
+Записи с Wikimedia Commons: «Spring Peeper Frogs… North Pittston PA» — JohnDziak, CC0;
+«Howling wind» — Tvabutzku1234, CC0; «Door handle creaking» и «Rusty metal door clasp» — stephan, public domain.</details>
+<script>
+(function(){{
+var SRC=[{srcs}],ctx,buf,node,gain,on=false,btn=document.getElementById('snd'),hint=document.getElementById('hint');
+function clock(){{var a=document.getAnimations()[0];return a&&a.startTime!=null?(document.timeline.currentTime-a.startTime)/1000:performance.now()/1000}}
+function decode(ab){{return new Promise(function(ok,no){{ctx.decodeAudioData(ab,ok,no)}})}}
+async function load(){{
+  ctx=new(window.AudioContext||window.webkitAudioContext)();
+  for(var i=0;i<SRC.length&&!buf;i++){{try{{buf=await decode(await (await fetch(SRC[i][1])).arrayBuffer())}}catch(e){{}}}}
+}}
+async function toggle(){{
+  hint.style.opacity=0;
+  if(!ctx)await load();
+  if(!buf)return;
+  if(!on){{
+    await ctx.resume();
+    node=ctx.createBufferSource();node.buffer=buf;node.loop=true;
+    gain=ctx.createGain();gain.gain.setValueAtTime(0,ctx.currentTime);gain.gain.linearRampToValueAtTime(1,ctx.currentTime+1.2);
+    node.connect(gain);gain.connect(ctx.destination);
+    node.start(0,clock()%buf.duration);on=true;
+  }}else{{
+    gain.gain.cancelScheduledValues(ctx.currentTime);gain.gain.setValueAtTime(gain.gain.value,ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0,ctx.currentTime+.4);node.stop(ctx.currentTime+.45);on=false;
+  }}
+  btn.classList.toggle('playing',on);btn.setAttribute('aria-label',on?'Выключить звук':'Включить звук');
+}}
+btn.addEventListener('click',toggle);
+setTimeout(function(){{hint.style.opacity=0}},6000);
+}})();
+</script>'''
+
 
 FIT = '''<script>
 function fit(){var s=Math.min(innerWidth/1600,innerHeight/1000);document.getElementById('stage').style.transform='scale('+s+')'}
@@ -246,6 +302,7 @@ html = f'''<!doctype html>
 {OVERLAY}
 </div></div>
 {FIT}
+{audio_ui()}
 </body></html>
 '''
 out.write_text(html)
