@@ -108,8 +108,8 @@ INTERIOR = f'''<div id="inside" class="scene" hidden>
 <i class="glow stoveglow" style="left:1150px;top:610px;width:310px;height:300px;--delay:-.3s"></i>
 <div id="slot-in" class="slot"></div>
 <div id="fx-in" class="fx"></div>
-<div id="dark"></div>
 {''.join(interior_front)}
+<div id="room-shade"></div>
 <svg class="overlay" viewBox="0 0 1600 1000" width="1600" height="1000"><defs><filter id="in-grain" x="0" y="0" width="100%" height="100%">
 <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="11"/><feColorMatrix type="matrix" values="0 0 0 0 0.45  0 0 0 0 0.4  0 0 0 0 0.3  0 0 0 0.09 0"/></filter></defs>
 <rect width="1600" height="1000" filter="url(#in-grain)"/></svg>
@@ -186,9 +186,14 @@ html,body{margin:0;height:100%;background:var(--night);overflow:hidden;touch-act
 .slot,.fx{position:absolute;inset:0;pointer-events:none}
 .fx>*{position:absolute;left:0;top:0;pointer-events:none;will-change:transform,opacity}
 #curtain{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .35s}
-#dark{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .6s;
-  background:radial-gradient(circle at 1305px 740px,rgba(4,3,2,0) 0,rgba(4,3,2,0) 130px,rgba(4,3,2,.78) 430px),
-             radial-gradient(circle at 942px 725px,rgba(4,3,2,0) 0,rgba(4,3,2,.2) 90px);mix-blend-mode:multiply}
+/* the room is darker and its sides fall into deep shadow; only the stove, lamp and candle keep their light */
+#room-shade{position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(90deg,rgba(6,3,2,.88) 0%,rgba(6,3,2,.55) 9%,rgba(6,3,2,.12) 24%,rgba(6,3,2,.12) 76%,rgba(6,3,2,.55) 91%,rgba(6,3,2,.88) 100%),
+    linear-gradient(180deg,rgba(6,3,2,.35) 0%,rgba(6,3,2,0) 30%,rgba(6,3,2,0) 75%,rgba(6,3,2,.45) 100%),rgba(10,6,3,.22);
+  -webkit-mask-image:radial-gradient(circle at 1305px 745px,rgba(0,0,0,.25) 0,rgba(0,0,0,.25) 90px,#000 300px),radial-gradient(circle at 800px 460px,rgba(0,0,0,.35) 0,#000 260px),radial-gradient(circle at 942px 722px,rgba(0,0,0,.45) 0,#000 150px);
+  -webkit-mask-composite:source-in;
+  mask-image:radial-gradient(circle at 1305px 745px,rgba(0,0,0,.25) 0,rgba(0,0,0,.25) 90px,#000 300px),radial-gradient(circle at 800px 460px,rgba(0,0,0,.35) 0,#000 260px),radial-gradient(circle at 942px 722px,rgba(0,0,0,.45) 0,#000 150px);
+  mask-composite:intersect}
 .a-pendulum{animation-name:pend;--dur:2s}
 @keyframes pend{0%,100%{transform:rotate(9deg)}50%{transform:rotate(-9deg)}}
 .a-fire{animation-name:fireglow;--dur:1.3s;animation-timing-function:linear}

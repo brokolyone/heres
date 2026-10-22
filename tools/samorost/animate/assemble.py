@@ -18,7 +18,7 @@ from PIL import Image
 build, out = Path(sys.argv[1]), Path(sys.argv[2])
 audio = [Path(a) for a in sys.argv[3:5]]
 SCALE = 2  # bitmaps are rendered at 2x
-LAYERS = ['bg', 'island', 'structures', 'flora', 'characters', 'details']
+LAYERS = ['bg', 'island', 'cave', 'structures', 'flora', 'characters', 'details']
 rnd = random.Random(7)
 
 
@@ -296,8 +296,7 @@ html = f'''<!doctype html>
 {bg_parts}
 <img class="base" src="{mid_img}" alt="Летающий остров-пень с гномиком в стиле Samorost">
 {mid_parts}
-<i class="glow" style="left:490px;top:722px;width:60px;height:44px;opacity:.55;--delay:-.4s"></i>
-<i class="glow" style="left:534px;top:418px;width:76px;height:68px;--delay:-1.7s"></i>
+<i class="glow" id="glow-window" style="left:534px;top:418px;width:76px;height:68px;--delay:-1.7s"></i>
 {puffs()}
 {spores()}
 {LEAF}

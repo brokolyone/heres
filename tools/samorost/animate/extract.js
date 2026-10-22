@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 const [layersDir, outDir] = process.argv.slice(2);
-const LAYERS = ['bg', 'island', 'structures', 'flora', 'characters', 'details'];
+const LAYERS = ['bg', 'island', 'cave', 'structures', 'flora', 'characters', 'details'].filter(l => fs.existsSync(path.join(layersDir, `${l}.svg`)));
 const body = {};
 const orig = {};
 for (const l of LAYERS) {

@@ -234,7 +234,7 @@ const SPOTS = [
   } },
   { scene: 'out', key: 'window', rect: R(552, 432, 42, 40), walk: 575, act: async () => {
     await reach(-60); SFX.click();
-    const g = document.querySelectorAll('#outside .glow')[1]; if (g) g.animate([{ opacity: 1 }, { opacity: .1 }, { opacity: 1 }, { opacity: .2 }, { opacity: 1 }], { duration: 900 });
+    const g = document.getElementById('glow-window'); if (g) g.animate([{ opacity: 1 }, { opacity: .1 }, { opacity: 1 }, { opacity: .2 }, { opacity: 1 }], { duration: 900 });
   } },
   { scene: 'out', key: 'moth', rect: () => partRect('moth', 10), walk: 880, act: async () => {
     SFX.buzz(); const p = part('moth'); if (p) flyOff(p, [[0, 0], [-140, -90], [-60, -200], [120, -150], [60, -40], [0, 0]], 3200);
@@ -260,9 +260,8 @@ const SPOTS = [
   { scene: 'in', key: 'exit', rect: R(90, 580, 200, 330), walk: 195, act: leaveHouse },
   { scene: 'in', key: 'bed', rect: R(410, 630, 360, 240), walk: 600, act: sleep },
   { scene: 'in', key: 'lamp', rect: R(764, 405, 72, 95), walk: 800, act: async () => {
-    await reach(-95); SFX.click(); const d = $('#dark'), on = d.style.opacity !== '1'; d.style.opacity = on ? 1 : 0;
-    const l = part('lamp'); if (l) l.style.opacity = on ? .35 : 1;
-    toast(on ? 'Темно. Только печка светится.' : 'Светло!', 2500);
+    await reach(-95); SFX.ding();
+    poke(img('lamp'), [{ transform: 'rotate(0)' }, { transform: 'rotate(10deg)' }, { transform: 'rotate(-8deg)' }, { transform: 'rotate(4deg)' }, { transform: 'rotate(0)' }], 2000, '50% 0%');
   } },
   { scene: 'in', key: 'stove', rect: R(1215, 640, 180, 215), walk: 1175, face: 1, act: async () => {
     await reach(-30); SFX.whoosh(); SFX.crackle();

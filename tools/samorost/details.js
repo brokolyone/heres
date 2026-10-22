@@ -97,25 +97,6 @@ add(`<g data-anim="spill-window"><circle cx="553" cy="386" r="40" fill="url(#det
 </g></g>`);
 }
 
-// ---------- the little cave under the house: depth, a lantern, a table with a mug, a moss bed ----------
-add(`<g>
-  <ellipse cx="514" cy="738" rx="22" ry="15" fill="url(#details-cavedepth)"/>
-  ${[[499, 761, 5, 3.2, '#4f5a2a'], [505, 759, 5.5, 3.6, '#5e6a30'], [511, 761, 4.5, 3, '#4a5426'], [502, 763, 6, 2.4, '#3e4a22'], [509, 763.5, 5, 2, '#46521f'], [504, 757.5, 3, 1.8, '#7a8a3a']]
-    .map(([x, y, rx, ry, c]) => `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="${c}"/>`).join('')}
-  <circle cx="501" cy="758.5" r="1.1" fill="#c08a3a"/><circle cx="508" cy="757" r="0.8" fill="#e6dfc8"/>
-  <rect x="523" y="756.5" width="18" height="2.6" rx="1" fill="#8a6a46"/><path d="M525.5,759 L525.5,765 M538.5,759 L538.5,765" stroke="#5a3e26" stroke-width="1.6"/>
-  <path d="M529,756.5 l0,-4 h4.6 l0,4 Z" fill="#d9cdb0"/><path d="M533.6,753.3 q2.6,1 0,2.6" stroke="#d9cdb0" stroke-width="0.7" fill="none"/>
-  <path d="M532,721 v10.5" stroke="#2a160c" stroke-width="0.7"/>
-  <circle cx="532" cy="737" r="13" fill="url(#details-cavelamp)"/>
-  <path d="M529,732.5 L535,732.5 L532,729.5 Z" fill="#3a2418"/>
-  <rect x="529.4" y="732.5" width="5.2" height="8" rx="0.6" fill="#3a2418"/><rect x="530.4" y="733.6" width="3.2" height="5.8" fill="#ffc861"/>
-  <rect x="531.4" y="735" width="1.2" height="2.6" fill="#fff6d0"/>
-  ${Array.from({ length: 26 }, (_, k) => { const t = k / 25, x = 494 + 57 * t, y = 723 - Math.sin(t * Math.PI) * 11 + r(-1, 1);
-    return `<ellipse cx="${f(x)}" cy="${f(y)}" rx="${f(r(1.6, 3))}" ry="${f(r(1.2, 2.2))}" fill="${['#5e6a30', '#4f5a2a', '#7a8a3a', '#46521f'][k % 4]}"/>`; }).join('')}
-  <path d="M501,719 q1,8 -2,15 M509,715 q-1,7 1,12 M517,713 q1,9 -1,16 M543,719 q1,7 -1,11" stroke="#24160c" stroke-width="0.9" fill="none" stroke-linecap="round"/>
-  <ellipse cx="520" cy="772" rx="30" ry="4" fill="url(#details-warm)" opacity="0.6"/>
-</g>`);
-
 // ---------- dew drops on the moss line ----------
 for (let i = 0; i < 26; i++) {
   const x = r(400, 1200);
@@ -202,8 +183,6 @@ const defs = `<defs>
   <radialGradient id="details-shellshade" cx="0.65" cy="0.25" r="0.9"><stop offset="0.5" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#1a0c04" stop-opacity="0.45"/></radialGradient>
   <linearGradient id="details-foot" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d9c6a4"/><stop offset="0.6" stop-color="#b49a78"/><stop offset="1" stop-color="#7d6549"/></linearGradient>
   <filter id="details-snailshadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2"/></filter>
-  <radialGradient id="details-cavedepth" cx="0.5" cy="0.45" r="0.5"><stop offset="0" stop-color="#0a0402" stop-opacity="0.8"/><stop offset="1" stop-color="#0a0402" stop-opacity="0"/></radialGradient>
-  <radialGradient id="details-cavelamp"><stop offset="0" stop-color="#ffd27a" stop-opacity="0.6"/><stop offset="0.5" stop-color="#ffb050" stop-opacity="0.2"/><stop offset="1" stop-color="#ffb050" stop-opacity="0"/></radialGradient>
   <filter id="details-blur1" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="1.2"/></filter>
 </defs>`;
 
