@@ -17,10 +17,10 @@ function mushroom(L,x,h,cw,ch,cap,opt={}){
   let s=`<ellipse cx="${f(x)}" cy="${f(by)}" rx="${f(sw*4)}" ry="${f(sw*1.2)}" fill="#1e1a0e" opacity="0.35"/>`;
   // stem: tapered curved
   const mx=x+lean*0.4+rr(-3,3);
-  s+=`<path d="M${f(x-sw*1.3)},${f(by)} Q${f(mx-sw)},${f(by-h*0.5)} ${f(tx-sw*0.7)},${f(ty+ch*0.3)} L${f(tx+sw*0.7)},${f(ty+ch*0.3)} Q${f(mx+sw)},${f(by-h*0.5)} ${f(x+sw*1.3)},${f(by)} Z" fill="url(#flora-stem)" stroke="#3b2e1e" stroke-opacity="0.5" stroke-width="0.8" filter="url(#flora-rough)"/>`;
+  s+=`<g filter="url(#flora-rough)"><path d="M${f(x-sw*1.3)},${f(by)} Q${f(mx-sw)},${f(by-h*0.5)} ${f(tx-sw*0.7)},${f(ty+ch*0.3)} L${f(tx+sw*0.7)},${f(ty+ch*0.3)} Q${f(mx+sw)},${f(by-h*0.5)} ${f(x+sw*1.3)},${f(by)} Z" fill="url(#flora-stem)" stroke="#3b2e1e" stroke-opacity="0.5" stroke-width="0.8"/>`;
   // stem texture lines
   for(let i=0;i<3;i++){const o=rr(-sw*0.6,sw*0.6);s+=`<path d="M${f(x+o)},${f(by-2)} Q${f(mx+o)},${f(by-h*0.5)} ${f(tx+o*0.6)},${f(ty+ch*0.4)}" stroke="#4b3a24" stroke-opacity="${f(rr(.15,.35))}" stroke-width="0.6" fill="none"/>`;}
-  s+=`<path d="M${f(x-sw*1.3)},${f(by)} Q${f(mx-sw)},${f(by-h*0.5)} ${f(tx-sw*0.7)},${f(ty+ch*0.3)} L${f(tx+sw*0.7)},${f(ty+ch*0.3)} Q${f(mx+sw)},${f(by-h*0.5)} ${f(x+sw*1.3)},${f(by)} Z" fill="#000" filter="url(#flora-grain)" opacity="0.5"/>`;
+  s+=`<path d="M${f(x-sw*1.3)},${f(by)} Q${f(mx-sw)},${f(by-h*0.5)} ${f(tx-sw*0.7)},${f(ty+ch*0.3)} L${f(tx+sw*0.7)},${f(ty+ch*0.3)} Q${f(mx+sw)},${f(by-h*0.5)} ${f(x+sw*1.3)},${f(by)} Z" fill="#000" filter="url(#flora-grain)" opacity="0.5"/></g>`;
   // ring
   if(opt.ring){const ry=by-h*0.7;s+=`<path d="M${f(x+lean*0.6-sw*2)},${f(ry)} Q${f(x+lean*0.6)},${f(ry+5)} ${f(x+lean*0.6+sw*2)},${f(ry)}" stroke="#e8dcc0" stroke-width="2" fill="none" opacity="0.7"/>`;}
   // cap
@@ -42,10 +42,10 @@ function mushroom(L,x,h,cw,ch,cap,opt={}){
   // gills under cap
   if(opt.gills){let g='';const gyy=ty+ch*(shape==='flat'?0.2:0.35);for(let i=0;i<=14;i++){const gx=tx-cw*0.45+cw*0.9*i/14;g+=`M${f(tx)},${f(gyy-ch*0.05)} L${f(gx)},${f(gyy+ch*0.12)} `;}
     s+=`<ellipse cx="${f(tx)}" cy="${f(gyy+ch*0.05)}" rx="${f(cw*0.47)}" ry="${f(ch*0.14)}" fill="#c9b48a" opacity="0.9"/><path d="${g}" stroke="#6b5232" stroke-width="0.6" opacity="0.6"/>`;}
-  s+=`<path d="${capD}" fill="url(#flora-cap-${cap})" stroke="#2e2116" stroke-opacity="0.55" stroke-width="1" filter="url(#flora-rough)"/>`;
+  s+=`<g filter="url(#flora-rough)"><path d="${capD}" fill="url(#flora-cap-${cap})" stroke="#2e2116" stroke-opacity="0.55" stroke-width="1"/>`;
   // cap texture: dab strokes
   s+=`<path d="${capD}" fill="url(#flora-shade)" opacity="0.5"/>`;
-  s+=`<path d="${capD}" fill="#000" filter="url(#flora-grain)" opacity="0.6"/>`;
+  s+=`<path d="${capD}" fill="#000" filter="url(#flora-grain)" opacity="0.6"/></g>`;
   if(shape==='cone'){
     const yb=ty+ch*0.4, yt=ty-ch*1.1;
     // gills peeking under the wavy rim
