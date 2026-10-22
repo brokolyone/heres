@@ -49,16 +49,21 @@ const LINES = (l, startMarker, endMarker) => {
 
 // a part: id, layer it belongs to (for z-order), svg markup, optional context wrapper,
 // animation name + parameters, origin in canvas px, optional parent part id (nesting).
-const part = (id, layer, svg, anim, opts = {}) => parts.push({ id, layer, svg, anim, ctx: opts.ctx || [], origin: opts.origin || null, parent: opts.parent || null, below: !!opts.below, vars: opts.vars || {}, pos: orig[layer].indexOf(svg.slice(0, 80)) });
+const part = (id, layer, svg, anim, opts = {}) => parts.push({ id, layer, svg, anim, ctx: opts.ctx || [], origin: opts.origin || null, parent: opts.parent || null, below: !!opts.below, front: !!opts.front, vars: opts.vars || {}, pos: orig[layer].indexOf(svg.slice(0, 80)) });
 
 // ================= characters (sub-parts first, then parents) =================
 const GRAIN = '<g filter="url(#characters-grain)">';
+// In game mode the gnome becomes the playable character, so it leaves the painting entirely.
+const GAME = !!process.env.GAME;
+if (GAME) G('characters', '<g id="characters-gnome">');
 // gnome eyes live inside the tilted head
-const eyes = LINES('characters', '<ellipse cx="776.5" cy="496.5"', '<circle cx="777.9" cy="494.8"');
+const eyes = GAME ? null : LINES('characters', '<ellipse cx="776.5" cy="496.5"', '<circle cx="777.9" cy="494.8"');
+if (!GAME) {
 const head = G('characters', '<g transform="rotate(4 781 505)">');
 part('gnome-head', 'characters', head, 'headtilt', { ctx: ['<g filter="url(#characters-grainlite)">'], origin: [781, 512] });
 part('gnome-eyes', 'characters', eyes, 'blink', { ctx: ['<g filter="url(#characters-grainlite)">', '<g transform="rotate(4 781 505)">'], origin: [782, 496], parent: 'gnome-head' });
 part('gnome-beam', 'characters', EL('characters', '<path d="M806,499 L898,392'), 'beam', { origin: [808, 501] });
+}
 
 // beast: sleep bubbles and nose drip, then the whole beast breathes
 part('beast-bubbles', 'characters', LINES('characters', '<circle cx="1284" cy="560" r="3"', '<circle cx="1305" cy="528"'), 'bubbles', { origin: [1284, 562] });
@@ -156,8 +161,8 @@ part('roots', 'island', G('island', '<g id="island-roots">'), 'skew', { origin: 
       case 'dew': part(id, 'details', svg, 'twinkle', { origin: o, vars: { dur: D(['3s', '4s', '6s']), delay: `${-(k * 0.83) % 6}s` } }); break;
       case 'leaf': part(id, 'details', svg, 'leaf', { origin: o, vars: { dur: D(['6s', '4s', '12s']), delay: `${-(k * 1.3) % 6}s`, a: `${8 + (k % 5) * 4}deg` } }); break;
       case 'fly': part(id, 'details', svg, D(['fly1', 'fly2', 'fly3']), { origin: o, vars: { dur: D(['6s', '4s', '12s', '3s']), delay: `${-(k * 0.61) % 6}s` } }); break;
-      case 'frond-l': part(id, 'details', svg, 'frond', { origin: [0, 1000], vars: { a: '1.6deg', dur: '6s' } }); break;
-      case 'frond-r': part(id, 'details', svg, 'frond', { origin: [1600, 1000], vars: { a: '-1.4deg', dur: '6s', delay: '-2s' } }); break;
+      case 'frond-l': part(id, 'details', svg, 'frond', { origin: [0, 1000], front: true, vars: { a: '1.6deg', dur: '6s' } }); break;
+      case 'frond-r': part(id, 'details', svg, 'frond', { origin: [1600, 1000], front: true, vars: { a: '-1.4deg', dur: '6s', delay: '-2s' } }); break;
       default: throw new Error('unknown data-anim ' + kind);
     }
   }

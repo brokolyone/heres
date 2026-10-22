@@ -57,13 +57,14 @@ def render(p):
     img = (f'<img src="{data_uri(p["img"], 88)}" style="left:{x:.1f}px;top:{y:.1f}px;width:{w:.1f}px;height:{h:.1f}px" alt="">')
     below = ''.join(render(c) for c in p['children'] if c['below'])
     above = ''.join(render(c) for c in p['children'] if not c['below'])
-    return f'<div class="p a-{p["anim"]}" style="{";".join(style)}">{below}{img}{above}</div>\n'
+    return f'<div class="p a-{p["anim"]}" data-id="{p["id"]}" style="{";".join(style)}">{below}{img}{above}</div>\n'
 
 
 tops = [p for p in parts if not p['parent']]
 tops.sort(key=lambda p: (LAYERS.index(p['layer']), p['pos']))
 bg_parts = ''.join(render(p) for p in tops if p['layer'] == 'bg')
-mid_parts = ''.join(render(p) for p in tops if p['layer'] != 'bg')
+mid_parts = (''.join(render(p) for p in tops if p['layer'] != 'bg' and not p.get('front')) + '<!--CHARACTER-->\n'
+             + ''.join(render(p) for p in tops if p['layer'] != 'bg' and p.get('front')))
 
 bg_img = data_uri(Image.open(build / 'static_bg.png'), 86, alpha=False)
 mid_img = data_uri(Image.open(build / 'static_mid.png'), 90)

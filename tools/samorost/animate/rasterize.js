@@ -1,11 +1,12 @@
-// Render every SVG in <buildDir> (static_*.svg and parts/*.svg) to a transparent PNG at 2x.
+// Render every SVG in <buildDir> (static_*.svg, parts/*.svg and iparts/*.svg) to a transparent PNG at 2x.
 // usage: node rasterize.js <buildDir>
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 (async () => {
   const dir = process.argv[2];
-  const files = ['static_bg.svg', 'static_mid.svg', ...fs.readdirSync(path.join(dir, 'parts')).filter(f => f.endsWith('.svg')).map(f => `parts/${f}`)];
+  const sub = d => fs.existsSync(path.join(dir, d)) ? fs.readdirSync(path.join(dir, d)).filter(f => f.endsWith('.svg')).map(f => `${d}/${f}`) : [];
+  const files = [...fs.readdirSync(dir).filter(f => /^static_.*\.svg$/.test(f)), ...sub('parts'), ...sub('iparts')];
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 2 });
   for (const f of files) {
