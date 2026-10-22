@@ -482,6 +482,9 @@ $('#play').addEventListener('click', () => {
   $('#found').style.opacity = 1;
   toast('Тапни по земле — гномик пойдёт. Тапни по чему-нибудь — он с этим поиграет. На клавиатуре: стрелки и пробел.', 7000);
 });
+// the Android wrapper pauses and resumes the sound when the app goes to the background
+window.appPause = p => { if (ac) (p ? ac.suspend() : ac.resume()); };
+document.addEventListener('visibilitychange', () => { if (ac && !muted) (document.hidden ? ac.suspend() : ac.resume()); });
 const snd = $('#snd');
 snd.addEventListener('click', () => {
   initAudio(); muted = !muted;
