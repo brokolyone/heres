@@ -218,8 +218,8 @@ def main(path, swap=False):
     CH_CHECKBOX = 10
 
     check("старт: окно скрыто", not sim.visible(G_POPUP))
-    check("старт: в окне стоит SKIP, а не VERIFY",
-          sim.group_alpha(G_SKIP) == 1 and sim.group_alpha(G_VERIFY) == 0)
+    check("старт: в окне кнопка VERIFY",
+          sim.group_alpha(G_VERIFY) == 1)
     check("старт: рамка #444746", sim.colors.get(CH_CHECKBOX) == (68, 71, 70))
 
     # Движение: «горизонтальный» игрок вправо полсекунды.
@@ -295,22 +295,22 @@ def main(path, swap=False):
     click()
     check("повторный клик по чекбоксу ничего не ломает", sim.visible(G_POPUP) and not sim.visible(G_SPINNER))
 
-    # SKIP без выбора: «Please select all matching images.»
+    # VERIFY без выбора: «Please select all matching images.»
     goto(B_BUTTON)
     click()
-    check("SKIP без выбора: ошибка select-more", sim.visible(G_ERR_MORE) and not sim.visible(G_ERR_TRY))
+    check("VERIFY без выбора: ошибка select-more", sim.visible(G_ERR_MORE) and not sim.visible(G_ERR_TRY))
     check("футер уехал вниз на 15", abs(sim.offset.get(G_FOOTER, (0, 0))[1] + 15) < 1e-6)
     click()
-    check("второй SKIP: футер не уезжает дальше", abs(sim.offset.get(G_FOOTER, (0, 0))[1] + 15) < 1e-6)
+    check("второй VERIFY без выбора: футер не уезжает дальше", abs(sim.offset.get(G_FOOTER, (0, 0))[1] + 15) < 1e-6)
 
     goto(B_TILE + 1)
     click()
     check("клетка 1 выбрана", sim.visible(G_TICK + 1) and abs(sim.scale.get(G_TILE + 1, 1) - 0.8) < 1e-9)
     check("ошибка спряталась, футер на месте", not sim.visible(G_ERR_MORE) and abs(sim.offset.get(G_FOOTER, (0, 0))[1]) < 1e-6)
-    check("кнопка стала VERIFY, подзаголовок бледный", sim.visible(G_VERIFY) and not sim.visible(G_SKIP) and sim.visible(G_SUBDIM))
+    check("кнопка VERIFY, подзаголовок бледный", sim.visible(G_VERIFY) and sim.visible(G_SUBDIM))
     click()
     check("повторный клик снимает выбор", not sim.visible(G_TICK + 1) and abs(sim.scale.get(G_TILE + 1, 1) - 1) < 1e-9)
-    check("снова SKIP", sim.visible(G_SKIP) and not sim.visible(G_VERIFY))
+    check("кнопка всё ещё VERIFY, подзаголовок обычный", sim.visible(G_VERIFY) and not sim.visible(G_SUBDIM))
     check("счётчики вернулись", sim.items.get(1) == 0 and sim.items.get(2) == 6)
 
     # Неверный ответ: часть правильных + одна лишняя.

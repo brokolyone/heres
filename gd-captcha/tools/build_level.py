@@ -321,8 +321,9 @@ def make_arts(cap, scene_path, mask_path):
     def iframe_crop(img, bx, by, w, h):
         return img.crop((int(bx * 2), int(by * 2), int((bx + w) * 2), int((by + h) * 2)))
 
-    # Кнопки SKIP и VERIFY.
-    for name, img, g in (("skip", skip, G_SKIP), ("verify", verify, G_VERIFY)):
+    # Кнопка.
+    # Кнопка всегда VERIFY: пропускать в уровне нечего.
+    for name, img, g in (("verify", verify, G_VERIFY),):
         arts.append(Art(name, iframe_crop(img, *BUTTON), BFRAME[0] + BUTTON[0], BFRAME[1] + BUTTON[1], 2,
                         [G_POPUP, G_FOOTER, g], Z_T1, 2))
 
@@ -504,13 +505,11 @@ def build_logic(L, correct, swap_players=False):
         alpha([grp], G_FILLER, 1)
         spawn([grp], err_show)
 
-    # SKIP ↔ VERIFY и бледный подзаголовок.
+    # Бледный подзаголовок, когда что-то выбрано.
     UPDATE, state_empty, state_some = L.group(), L.group(), L.group()
     if_count([UPDATE], I_SELECTED, 0, 0, state_empty)
     if_count([UPDATE], I_SELECTED, 0, 1, state_some)
-    for grp, sk, ve in ((state_empty, 1, 0), (state_some, 0, 1)):
-        alpha([grp], G_SKIP, sk)
-        alpha([grp], G_VERIFY, ve)
+    for grp, ve in ((state_empty, 0), (state_some, 1)):
         alpha([grp], G_SUBDIM, ve)
 
     # Клетки: два обработчика (выбрать/снять), включён всегда один.
@@ -560,7 +559,7 @@ def build_logic(L, correct, swap_players=False):
     alpha([OPEN], G_POPUP, 1, 0.1)
     toggle([OPEN], GATE_CHALLENGE, True)
 
-    # Кнопка SKIP/VERIFY.
+    # Кнопка VERIFY.
     BTN, BAD, FAIL, WIN, WIN2, FINISH = (L.group() for _ in range(6))
     if_touch([CLICK, GATE_CHALLENGE], B_BUTTON, true_id=BTN)
     if_count([BTN], I_WRONG, 0, 0, WIN)
@@ -588,7 +587,7 @@ def build_logic(L, correct, swap_players=False):
     # Старт: камера, скрыть игроков, начальные состояния.
     t(T_OPTIONS, [START], {162: 1, 163: 1, 532: 1, 161: 1})
     t(T_STATIC_CAMERA, [START], {71: G_CAM, 10: 0})
-    for g in (G_SPINNER, G_GREEN, G_OVERLAY, G_POPUP, G_VERIFY, G_SUBDIM,
+    for g in (G_SPINNER, G_GREEN, G_OVERLAY, G_POPUP, G_SUBDIM,
               G_ERR_TRY, G_ERR_MORE, G_FILLER):
         alpha([START], g, 0)
     for i in range(16):
@@ -790,7 +789,7 @@ def main():
 
     if preview_dir:
         os.makedirs(preview_dir, exist_ok=True)
-        hidden_start = {G_SPINNER, G_GREEN, G_OVERLAY, G_POPUP, G_VERIFY, G_SUBDIM,
+        hidden_start = {G_SPINNER, G_GREEN, G_OVERLAY, G_POPUP, G_SUBDIM,
                         G_ERR_TRY, G_ERR_MORE, G_FILLER} | {G_TICK + i for i in range(16)}
         render_preview(L, palette_rgb, hidden_start, {}, os.path.join(preview_dir, "1_start.png"))
         def tile_center(i):
@@ -802,8 +801,8 @@ def main():
         render_preview(L, palette_rgb, fresh, {G_OVERLAY: 0.05},
                        os.path.join(preview_dir, "2_challenge.png"))
         picked = (5, 6)
-        sel = hidden_start - {G_POPUP, G_OVERLAY, G_VERIFY, G_SUBDIM} - {G_TICK + i for i in picked}
-        render_preview(L, palette_rgb, sel | {G_SKIP}, {G_OVERLAY: 0.05},
+        sel = hidden_start - {G_POPUP, G_OVERLAY, G_SUBDIM} - {G_TICK + i for i in picked}
+        render_preview(L, palette_rgb, sel, {G_OVERLAY: 0.05},
                        os.path.join(preview_dir, "3_selected.png"),
                        scales={G_TILE + i: tile_center(i) + (0.8,) for i in picked})
         err = hidden_start - {G_POPUP, G_OVERLAY, G_ERR_TRY, G_FILLER}
