@@ -21,7 +21,9 @@ from PIL import Image, ImageDraw, ImageFilter
 
 # ---------------------------------------------------------------- геометрия
 S = 0.5                     # единиц GD на CSS-пиксель
-X0, Y0 = 600.0, 1500.0      # где в мире GD лежит точка (0, 0) страницы
+# Страница стоит так, чтобы точка появления игроков (x 15, y 105) попала
+# в кадр слева снизу, за краем капчи: игроки остаются в кадре и не погибают.
+X0, Y0 = 100.0, 445.0       # где в мире GD лежит точка (0, 0) страницы
 
 
 def gx(css_x):
@@ -88,7 +90,7 @@ B_WALL = {"L": 4, "R": 5, "U": 6, "D": 7}
 B_TILE = 10                                    # + номер клетки
 
 # Счётчики.
-I_SELECTED, I_WRONG = 1, 2
+I_SELECTED, I_WRONG, I_BOOTED = 1, 2, 3
 
 
 # ---------------------------------------------------------------- объекты
@@ -442,7 +444,7 @@ def build_logic(L, correct, swap_players=False):
     def stop(groups, target):
         return t(T_STOP, groups, {51: target})
 
-    START = L.group()
+    BOOT, START = L.group(), L.group()
     GATE_WIDGET, GATE_CHALLENGE = L.group(), L.group()
 
     # Движение курсора: нажатие запускает долгий Move, отпускание его гасит.
@@ -598,9 +600,12 @@ def build_logic(L, correct, swap_players=False):
     pickup([START], I_WRONG, sum(correct), override=True)
     color([START], CH_CHECKBOX, COLOR_NORMAL, 0)
 
-    # Этот единственный триггер срабатывает сам: стоит в самом начале уровня.
-    L.add({1: T_SPAWN, 2: 0.0, 3: 165.0, 51: START, 63: 0, 441: 1})
-    return START
+    # Запуск: Spawn Group уровня (kA36) спавнит BOOT на старте. Запасной Spawn
+    # на x = 0 сработает, если игрок шагнёт. Счётчик не даёт запустить START дважды.
+    if_count([BOOT], I_BOOTED, 0, 0, START)
+    pickup([START], I_BOOTED, 1, override=True)
+    L.add({1: T_SPAWN, 2: 0.0, 3: 135.0, 51: BOOT, 63: 0.1})
+    return BOOT
 
 
 def build_collision(L):
@@ -640,9 +645,18 @@ def build_helpers(L):
         r_, c_ = divmod(i, 4)
         tiny(BFRAME[0] + TILE0[0] + c_ * TILE_STEP + TILE_SIZE / 2,
              BFRAME[1] + TILE0[1] + r_ * TILE_STEP + TILE_SIZE / 2, G_TILE_CENTER + i)
-    # Игроки стоят на земле у старта, справа стенка, чтобы не уходили.
-    for k in range(12):
-        L.add({1: 1, 2: 105.0, 3: 105.0 + 30 * k})
+    # Загон для игроков: свой пол (на случай, если Hide Ground уберёт землю),
+    # стенка справа и потолок. Сверху белая плашка, если игроки вдруг не скроются.
+    # Блоки белые и твёрдые: на белой странице их не видно.
+    def wall(x, y):
+        L.add({1: BLOCK, 2: x, 3: y, 21: CH_WHITE, 24: Z_B3, 64: 1})
+    for x in (15.0, 45.0, 75.0):
+        wall(x, 75.0)
+        wall(x, 195.0)
+    for y in (75.0, 105.0, 135.0, 165.0, 195.0):
+        wall(105.0, y)
+    L.add({1: BLOCK, 2: 45.0, 3: 135.0, 128: 3.2, 129: 3.2, 21: CH_WHITE, 24: Z_T3, 25: 50,
+           64: 1, 121: 1})
 
 
 def check_links(L):
@@ -679,12 +693,12 @@ def color_string(palette_rgb):
     return "|".join(parts) + "|"
 
 
-def level_string(L, palette_rgb):
+def level_string(L, palette_rgb, spawn_group=0):
     header = {
         "kS38": color_string(palette_rgb), "kA13": 0, "kA15": 0, "kA16": 0, "kA14": "", "kA6": 0,
         "kA7": 0, "kA25": 0, "kA17": 0, "kA18": 0, "kS39": 0, "kA2": 0, "kA3": 0, "kA8": 1,
         "kA4": 0, "kA9": 0, "kA10": 1, "kA22": 1, "kA23": 0, "kA24": 0, "kA27": 1, "kA40": 1,
-        "kA41": 1, "kA42": 1, "kA28": 0, "kA29": 0, "kA31": 1, "kA32": 1, "kA36": 0, "kA43": 1,
+        "kA41": 1, "kA42": 1, "kA28": 0, "kA29": 0, "kA31": 0, "kA32": 1, "kA36": spawn_group, "kA43": 1,
         "kA44": 0, "kA45": 1, "kA33": 1, "kA34": 1, "kA35": 0, "kA37": 1, "kA38": 1, "kA39": 1,
         "kA19": 0, "kA26": 0, "kA20": 0, "kA21": 0, "kA11": 0,
     }
@@ -730,7 +744,7 @@ def render_preview(L, palette_rgb, hidden_groups, alphas, path, scale=3, offsets
             a *= alphas.get(g, 1.0)
         if a <= 0:
             continue
-        ow, oh = o[128] * 30, o[129] * 30
+        ow, oh = o.get(128, 1.0) * 30, o.get(129, 1.0) * 30
         ox, oy = o[2], o[3]
         for g in groups:
             if scales and g in scales:
@@ -760,10 +774,10 @@ def main():
         counts[a.name] = art_objects(L, a, pal)
     build_collision(L)
     build_helpers(L)
-    build_logic(L, correct, swap)
+    boot = build_logic(L, correct, swap)
 
     check_links(L)
-    data = level_string(L, palette_rgb)
+    data = level_string(L, palette_rgb, boot)
     desc = "captcha: prove you are not a robot. 2P: arrows = left/right, A/D = down/up, jump = click."
     write_gmd(out, "captcha", desc, data, len(L.objects))
 
