@@ -244,7 +244,7 @@ def make_arts(cap, scene_path, mask_path):
 
     # Белая страница.
     bg = Image.new("RGBA", (4, 4), (255, 255, 255, 255))
-    arts.append(Art("page", bg, -300, -200, 4 / 1200, [], Z_B4, channel=CH_WHITE))
+    arts.append(Art("page", bg, -900, -600, 4 / 2400, [], Z_B4, channel=CH_WHITE))
 
     # Плашка без рамки чекбокса (подпись уже «captcha»).
     arts.append(Art("widget", widget, WIDGET[0], WIDGET[1], 2, [], Z_B3))
@@ -275,7 +275,7 @@ def make_arts(cap, scene_path, mask_path):
                     [G_GREEN], Z_B2, 3))
 
     # Белая дымка 5% поверх страницы, пока открыто окно.
-    arts.append(Art("overlay", bg, -300, -200, 4 / 1200, [G_OVERLAY], Z_B1, channel=CH_WHITE))
+    arts.append(Art("overlay", bg, -900, -600, 4 / 2400, [G_OVERLAY], Z_B1, channel=CH_WHITE))
 
     # Окно: рамка, тень и всё содержимое со снимка страницы.
     px0, py0 = page_px(84, 82.5)
@@ -645,18 +645,17 @@ def build_helpers(L):
         r_, c_ = divmod(i, 4)
         tiny(BFRAME[0] + TILE0[0] + c_ * TILE_STEP + TILE_SIZE / 2,
              BFRAME[1] + TILE0[1] + r_ * TILE_STEP + TILE_SIZE / 2, G_TILE_CENTER + i)
-    # Загон для игроков: свой пол (на случай, если Hide Ground уберёт землю),
-    # стенка справа и потолок. Сверху белая плашка, если игроки вдруг не скроются.
-    # Блоки белые и твёрдые: на белой странице их не видно.
-    def wall(x, y):
-        L.add({1: BLOCK, 2: x, 3: y, 21: CH_WHITE, 24: Z_B3, 64: 1})
-    for x in (15.0, 45.0, 75.0):
-        wall(x, 75.0)
-        wall(x, 195.0)
-    for y in (75.0, 105.0, 135.0, 165.0, 195.0):
-        wall(105.0, y)
-    L.add({1: BLOCK, 2: 45.0, 3: 135.0, 128: 3.2, 129: 3.2, 21: CH_WHITE, 24: Z_T3, 25: 50,
-           64: 1, 121: 1})
+    # Загон для игроков: закрытая коробка из белых твёрдых блоков.
+    # В двойном режиме второй игрок перевёрнут и падает вверх, поэтому
+    # нужен потолок (иначе он улетает и погибает). Стены широко, чтобы
+    # точка появления точно оказалась внутри.
+    def slab(x0, y0, x1, y1):
+        L.add({1: BLOCK, 2: (x0 + x1) / 2, 3: (y0 + y1) / 2, 128: (x1 - x0) / 30, 129: (y1 - y0) / 30,
+               21: CH_WHITE, 24: Z_B3, 64: 1})
+    slab(-60, 30, 300, 90)       # пол
+    slab(-60, 420, 300, 480)     # потолок над верхним краем кадра
+    slab(-60, 30, -30, 480)      # левая стена
+    slab(270, 30, 300, 480)      # правая стена
 
 
 def check_links(L):
