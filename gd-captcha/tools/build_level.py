@@ -81,7 +81,7 @@ CH_PALETTE = 100
 # Группы с картинками.
 G_CHECKBOX, G_SPINNER, G_GREEN, G_OVERLAY, G_POPUP, G_FOOTER = 10, 11, 12, 13, 14, 15
 G_SKIP, G_VERIFY, G_SUBDIM, G_ERR_TRY, G_ERR_MORE, G_FILLER = 16, 17, 18, 19, 20, 21
-G_CURSOR, G_SPIN_CENTER, G_CAM = 22, 23, 24
+G_CURSOR, G_SPIN_CENTER, G_CAM, G_SPAWN = 22, 23, 24, 25
 G_TILE, G_TICK, G_TILE_CENTER = 30, 50, 70     # + номер клетки
 
 # Collision-блоки.
@@ -600,8 +600,8 @@ def build_logic(L, correct, swap_players=False):
     pickup([START], I_WRONG, sum(correct), override=True)
     color([START], CH_CHECKBOX, COLOR_NORMAL, 0)
 
-    # Запуск: Spawn Group уровня (kA36) спавнит BOOT на старте. Запасной Spawn
-    # на x = 0 сработает, если игрок шагнёт. Счётчик не даёт запустить START дважды.
+    # Запуск: Spawn на x = 0 стоит левее точки появления игроков, поэтому
+    # срабатывает сразу на старте. Счётчик не даёт запустить START дважды.
     if_count([BOOT], I_BOOTED, 0, 0, START)
     pickup([START], I_BOOTED, 1, override=True)
     L.add({1: T_SPAWN, 2: 0.0, 3: 135.0, 51: BOOT, 63: 0.1})
@@ -658,6 +658,8 @@ def build_helpers(L):
     slab(-60, 150, 300, 210)     # потолок
     slab(-60, 30, -30, 210)      # левая стена
     slab(270, 30, 300, 210)      # правая стена
+    # Точка появления игроков (kA36 — группа объекта, где игрок появляется).
+    L.add({1: TINY, 2: 45.0, 3: 105.0, 21: CH_HIDDEN, 57: str(G_SPAWN), 32: 0.2})
 
 
 def check_links(L):
@@ -775,10 +777,10 @@ def main():
         counts[a.name] = art_objects(L, a, pal)
     build_collision(L)
     build_helpers(L)
-    boot = build_logic(L, correct, swap)
+    build_logic(L, correct, swap)
 
     check_links(L)
-    data = level_string(L, palette_rgb, boot)
+    data = level_string(L, palette_rgb, G_SPAWN)
     desc = "captcha: prove you are not a robot. 2P: arrows = left/right, A/D = down/up, jump = click."
     write_gmd(out, "captcha", desc, data, len(L.objects))
 
