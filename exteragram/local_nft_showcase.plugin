@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.27.0"
+__version__ = "1.28.0"
 
 import json
 import random
@@ -265,6 +265,37 @@ def layout_listener(fn):
     class _Listener(dynamic_proxy(View.OnLayoutChangeListener)):
         def onLayoutChange(self, v, left, top, right, bottom, ol, ot, orr, ob):
             fn()
+
+    return _Listener()
+
+
+def java_field(obj, name):
+    """Reads a field declared anywhere up obj's class chain (public or not)."""
+    cls = obj.getClass()
+    while cls is not None:
+        try:
+            field = cls.getDeclaredField(name)
+            field.setAccessible(True)
+            return field.get(obj)
+        except Exception:
+            cls = cls.getSuperclass()
+    return None
+
+
+def long_press_listener(on_start, on_release):
+    """RecyclerListView.OnItemLongClickListenerExtended backed by Python callables."""
+    from java import dynamic_proxy
+    from org.telegram.ui.Components import RecyclerListView
+
+    class _Listener(dynamic_proxy(RecyclerListView.OnItemLongClickListenerExtended)):
+        def onItemClick(self, view, position, x, y):
+            return bool(on_start(view, position))
+
+        def onMove(self, dx, dy):
+            pass
+
+        def onLongClickRelease(self):
+            on_release()
 
     return _Listener()
 
@@ -606,7 +637,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             ),
             Text(
                 text="NFT конструктор",
-                subtext="Маркет Telegram → тап по подарку открывает конструктор",
+                subtext="Тап по подарку: конструктор. Зажми на 5 сек: добавить неулучшенный",
                 icon="msg_colors",
                 accent=True,
                 on_click=lambda _: self.open_nft_market(),
@@ -1812,11 +1843,64 @@ class LocalNftShowcasePlugin(BasePlugin):
                 self.market_opening = False
             sheet.setOnDismissListener(R(self.on_market_closed))
             self.market_sheet = sheet
+            try:
+                self.add_market_hold(sheet)
+            except Exception:
+                write_log(f"hold failed:\n{traceback.format_exc()}")
             sheet.show()
             write_log("market shown")
         except Exception:
             self.logger.exception("Could not open the gift market")
             BulletinHelper.show_error("Не удалось открыть маркет")
+
+    HOLD_SECONDS = 5.0
+
+    def add_market_hold(self, sheet):
+        """Holding a gift in the constructor market for 5+ seconds adds it, non-upgraded,
+        to the profile and closes the market. Telegram's long press fires after ~0.5 s,
+        so the rest of the wait is timed here and a release before that cancels it."""
+        listview = java_field(sheet, "recyclerListView")
+        adapter = java_field(sheet, "adapter")
+        hold = {"token": 0}
+
+        def on_start(view, position):
+            item = adapter.getItem(position - 1) if adapter is not None else None
+            gift = getattr(item, "object", None) if item is not None else None
+            if gift is None or not str(gift.getClass().getName()).endswith("$TL_starGift"):
+                return False
+            hold["token"] += 1
+            token = hold["token"]
+
+            def fire():
+                if hold["token"] != token or not self.market_active():
+                    return
+                hold["token"] += 1
+                try:
+                    view.performHapticFeedback(0)  # HapticFeedbackConstants.LONG_PRESS
+                except Exception:
+                    pass
+                self.add_regular_from_market(gift)
+
+            run_on_ui_thread(fire, int((self.HOLD_SECONDS - 0.5) * 1000))
+            return True
+
+        def on_release():
+            hold["token"] += 1
+
+        self.market_hold_listener = long_press_listener(on_start, on_release)  # keep the proxy alive
+        listview.setOnItemLongClickListener(self.market_hold_listener)
+        write_log("market hold installed")
+
+    def add_regular_from_market(self, gift):
+        write_log(f"hold: add regular {gift.id} {gift.title}")
+        self.catalog[gift.id] = gift
+        ids = self.regular_gift_ids()
+        ids.insert(0, gift.id)
+        self.set_setting("regular_gifts", ",".join(str(i) for i in ids))
+        sheet = getattr(self, "market_sheet", None)
+        if sheet is not None:
+            sheet.dismiss()
+        BulletinHelper.show_success(f"«{gift.title}» добавлен в профиль. Переоткрой профиль")
 
     def is_market_sheet(self, sheet) -> bool:
         if getattr(self, "market_opening", False):
