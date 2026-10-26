@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvoices"
-__version__ = "1.15.1"
+__version__ = "1.16.0"
 
 import json
 import random
@@ -74,6 +74,9 @@ FLAG_STARGIFTS_COUNT = 1 << 18  # UserFull.flags2
 FLAG_RESELL_AMOUNT = 16  # StarGiftUnique.flags
 FLAG_MSG_ID = 8  # SavedStarGift.flags
 FLAG_SAVED_ID = 2048  # SavedStarGift.flags
+FLAG_NAME_HIDDEN = 1  # SavedStarGift.flags
+FLAG_MESSAGE = 4  # SavedStarGift.flags
+FLAG_UNSAVED = 32  # SavedStarGift.flags
 LOCAL_SAVED_ID_BASE = 3_000_000_000  # unique saved ids so pinned state survives a reload
 FLAG_USERNAMES = 1  # User.flags2
 LOCAL_MSG_ID_BASE = 2_000_000_000  # fake message ids that let us tell local gifts apart
@@ -197,6 +200,7 @@ class SendRequestHook(MethodHook):
         HookFilter.ArgumentIsInstanceOf(0, TL_stars.TL_payments_sendStarsForm().getClass()),
         HookFilter.ArgumentIsInstanceOf(0, TL_stars.updateStarGiftPrice().getClass()),
         HookFilter.ArgumentIsInstanceOf(0, TL_fragment.TL_getCollectibleInfo().getClass()),
+        HookFilter.ArgumentIsInstanceOf(0, TL_stars.saveStarGift().getClass()),
     ))
     def before_hooked_method(self, param):
         args = list(param.args)
@@ -210,6 +214,8 @@ class SendRequestHook(MethodHook):
             result = self.plugin.set_price_locally(args[0])
         elif isinstance(args[0], TL_fragment.TL_getCollectibleInfo):
             result = self.plugin.collectible_info(args[0])
+        elif isinstance(args[0], TL_stars.saveStarGift):
+            result = self.plugin.save_gift_locally(args[0])
         else:
             return
         if result is None:
@@ -537,9 +543,12 @@ class LocalNftShowcasePlugin(BasePlugin):
 
     def pay_locally(self, account: int, request):
         """Returns (response, error) for a purchase made locally, or None to send it for real."""
+        invoice = request.invoice
+        # Removing a caption works for local gifts even when the local balance is off.
+        if isinstance(invoice, TLRPC.TL_inputInvoiceStarGiftDropOriginalDetails):
+            return self.drop_caption_locally(invoice)
         if not self.get_setting("local_balance", True):
             return None
-        invoice = request.invoice
         if isinstance(invoice, TLRPC.TL_inputInvoiceStarGiftResale):
             buyer, ton = invoice.to_id, invoice.ton
         elif isinstance(invoice, TLRPC.TL_inputInvoiceStarGift):
@@ -570,6 +579,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         if isinstance(invoice, TLRPC.TL_inputInvoiceStarGiftResale):
             self.forget_listing(invoice.slug)
             self.announce[invoice.slug] = (account, price, ton)
+            self.capture_caption(invoice.slug, getattr(invoice, "message", None), not getattr(invoice, "show_name", True))
             self.record_purchase(price, ton, slug=invoice.slug)
             self.add_slug(invoice.slug)
             run_on_ui_thread(lambda: self.open_saved_messages(account, f"NFT «{invoice.slug}» куплен"), 1000)
@@ -644,6 +654,65 @@ class LocalNftShowcasePlugin(BasePlugin):
             return []  # our local transactions are all outgoing (purchases)
         recs = [r for r in self.get_transactions() if bool(r.get("ton")) == ton]
         return [self.build_transaction(r, account) for r in recs]
+
+    # Per-gift extras (caption, hidden-from-profile): local, server never sees them.
+
+    def get_meta(self) -> dict:
+        try:
+            return json.loads(self.get_setting("gift_meta", "") or "{}")
+        except ValueError:
+            return {}
+
+    def gift_meta(self, slug: str) -> dict:
+        return self.get_meta().get(slug, {})
+
+    def update_meta(self, slug: str, **changes):
+        meta = self.get_meta()
+        entry = meta.get(slug, {})
+        entry.update(changes)
+        meta[slug] = entry
+        self.set_setting("gift_meta", json.dumps(meta))
+
+    def capture_caption(self, slug: str, message, name_hidden: bool):
+        text = getattr(message, "text", None) if message is not None else None
+        if text:
+            self.update_meta(slug, text=text, name_hidden=bool(name_hidden))
+
+    def apply_meta(self, saved, slug: str):
+        meta = self.gift_meta(slug)
+        if meta.get("text"):
+            tw = TLRPC.TL_textWithEntities()
+            tw.text = meta["text"]
+            tw.entities = ArrayList()
+            saved.message = tw
+            saved.flags |= FLAG_MESSAGE
+        if meta.get("name_hidden"):
+            saved.name_hidden = True
+            saved.flags |= FLAG_NAME_HIDDEN
+        if meta.get("hidden"):
+            saved.unsaved = True
+            saved.flags |= FLAG_UNSAVED
+
+    def save_gift_locally(self, request):
+        slug = self.input_to_slug(request.stargift)
+        if slug is None:
+            return None  # a real gift: let the server handle it
+        self.update_meta(slug, hidden=bool(request.unsave))
+        text = "Подарок скрыт из профиля" if request.unsave else "Подарок виден в профиле"
+        run_on_ui_thread(lambda: BulletinHelper.show_success(text + " (локально). Переоткрой профиль"))
+        return TLRPC.TL_boolTrue(), None
+
+    def drop_caption_locally(self, invoice):
+        slug = self.input_to_slug(invoice.stargift)
+        if slug is None:
+            return None
+        self.update_meta(slug, text="", name_hidden=False)
+        run_on_ui_thread(lambda: BulletinHelper.show_success("Подпись убрана (локально). Переоткрой профиль"))
+        updates = TLRPC.TL_updates()
+        updates.date = int(time.time())
+        response = TLRPC.TL_payments_paymentResult()
+        response.updates = updates
+        return response, None
 
     # Per-gift pinned state: what the user pins by hand, not forced by the global toggle.
 
@@ -1730,6 +1799,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         if saved.msg_id:
             saved.flags |= FLAG_MSG_ID
             self.local_msg_ids[saved.msg_id] = gift.slug
+        self.apply_meta(saved, gift.slug)
         return saved
 
     def make_saved_regular_gift(self, account: int, gift, index: int):
