@@ -11,18 +11,23 @@ __id__ = "local_nft_showcase"
 __name__ = "Local NFT Showcase"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "brokolyone"
-__version__ = "1.2.1"
+__version__ = "1.3.0"
 
+import random
 import re
 import time
 from collections import defaultdict, deque
 from typing import Any, List
 
 from base_plugin import BasePlugin, HookResult, HookStrategy, MethodHook
-from client_utils import get_messages_controller, get_user_config, send_request
+from android_utils import run_on_ui_thread
+from client_utils import get_last_fragment, get_messages_controller, get_user_config, send_request
+from ui.alert import AlertDialogBuilder
 from ui.bulletin import BulletinHelper
 from ui.settings import Divider, Header, Input, Switch, Text
 
+from android.text import InputType
+from android.widget import EditText
 from org.telegram.messenger import UserConfig, Utilities
 from org.telegram.tgnet import SerializedData, TLRPC
 from org.telegram.tgnet.tl import TL_account, TL_stars
@@ -72,6 +77,24 @@ class PremiumHook(MethodHook):
             param.setResult(True)
 
 
+def slug_base(title: str) -> str:
+    """'Durov's Cap' -> 'DurovsCap', the part of the slug before the number."""
+    return re.sub(r"[^0-9A-Za-z]", "", title or "")
+
+
+def describe_unique(gift) -> str:
+    names = {}
+    for attr in gift.attributes:
+        if isinstance(attr, TL_stars.starGiftAttributeModel):
+            names["model"] = attr.name
+        elif isinstance(attr, TL_stars.starGiftAttributeBackdrop):
+            names["backdrop"] = attr.name
+        elif isinstance(attr, TL_stars.starGiftAttributePattern):
+            names["pattern"] = attr.name
+    parts = [names[k] for k in ("model", "backdrop", "pattern") if k in names]
+    return f"#{gift.num} · " + " · ".join(parts)
+
+
 def parse_slugs(text: str) -> List[str]:
     """Several links separated by commas, spaces or new lines, without duplicates."""
     slugs = []
@@ -115,6 +138,17 @@ class LocalNftShowcasePlugin(BasePlugin):
                 default=True,
                 icon="msg_gift_premium",
             ),
+            Text(
+                text="Выбрать NFT из списка",
+                icon="msg_add",
+                accent=True,
+                on_click=lambda _: self.pick_collection(),
+            ),
+            Text(
+                text="Убрать NFT",
+                icon="msg_delete",
+                on_click=lambda _: self.pick_to_remove(),
+            ),
             Input(
                 key="slug",
                 text="Ссылки на NFT",
@@ -151,6 +185,140 @@ class LocalNftShowcasePlugin(BasePlugin):
                          "проверяет сервер (передача и продажа подарков, большие файлы и т.п.), "
                          "работать не будут. Для применения иногда нужен перезапуск."),
         ]
+
+    # Picker: collection -> NFT on resale, by number or a random one.
+
+    def get_activity(self):
+        fragment = get_last_fragment()
+        return fragment.getParentActivity() if fragment else None
+
+    def show_loading(self):
+        activity = self.get_activity()
+        if activity is None:
+            return None
+        dialog = AlertDialogBuilder(activity, AlertDialogBuilder.ALERT_TYPE_SPINNER)
+        dialog.show()
+        return dialog
+
+    def show_items(self, title: str, items: List[str], on_pick):
+        activity = self.get_activity()
+        if activity is None:
+            return
+        builder = AlertDialogBuilder(activity)
+        builder.set_title(title)
+
+        def on_click(bld, which):
+            bld.dismiss()
+            on_pick(which)
+
+        builder.set_items(items, on_click)
+        builder.set_negative_button("Отмена", lambda bld, _: bld.dismiss())
+        builder.show()
+
+    def request_on_ui(self, req, on_result):
+        """Sends a request with a loading spinner and calls on_result(response) on the UI thread."""
+        loading = self.show_loading()
+
+        def on_response(response, error):
+            def finish():
+                if loading:
+                    loading.dismiss()
+                if error or response is None:
+                    BulletinHelper.show_error(f"Ошибка: {error.text if error else 'пустой ответ'}")
+                    return
+                on_result(response)
+            run_on_ui_thread(finish)
+
+        send_request(req, on_response)
+
+    def pick_collection(self):
+        req = TL_stars.getStarGifts()
+        req.hash = 0
+
+        def on_result(response):
+            collections = [
+                gift for gift in getattr(response, "gifts", [])
+                if gift.availability_resale > 0 or gift.upgrade_stars > 0
+            ]
+            collections.sort(key=lambda gift: -gift.availability_resale)
+            if not collections:
+                BulletinHelper.show_error("Коллекции не найдены")
+                return
+            items = [f"{gift.title} ({gift.availability_resale} в продаже)" for gift in collections]
+            self.show_items("Коллекция", items, lambda i: self.pick_from_collection(collections[i]))
+
+        self.request_on_ui(req, on_result)
+
+    def pick_from_collection(self, collection):
+        req = TL_stars.getResaleStarGifts()
+        req.gift_id = collection.id
+        req.sort_by_price = True
+        req.offset = ""
+        req.limit = 50
+
+        def on_result(response):
+            uniques = [gift for gift in response.gifts if gift.slug]
+            base = uniques[0].slug.rsplit("-", 1)[0] if uniques else slug_base(collection.title)
+            items = ["🔢 Ввести номер"]
+            if uniques:
+                items.append("🎲 Случайный")
+            items += [describe_unique(gift) for gift in uniques]
+
+            def on_pick(i):
+                if i == 0:
+                    self.ask_number(collection.title, base)
+                elif i == 1:
+                    self.add_slug(random.choice(uniques).slug)
+                else:
+                    self.add_slug(uniques[i - 2].slug)
+
+            self.show_items(collection.title, items, on_pick)
+
+        self.request_on_ui(req, on_result)
+
+    def ask_number(self, title: str, base: str):
+        activity = self.get_activity()
+        if activity is None:
+            return
+        field = EditText(activity)
+        field.setInputType(InputType.TYPE_CLASS_NUMBER)
+        field.setHint("Например 1")
+        builder = AlertDialogBuilder(activity)
+        builder.set_title(f"{title}: номер")
+        builder.set_view(field)
+
+        def on_ok(bld, _):
+            number = str(field.getText()).strip()
+            bld.dismiss()
+            if number.isdigit():
+                self.add_slug(f"{base}-{int(number)}")
+
+        builder.set_positive_button("Добавить", on_ok)
+        builder.set_negative_button("Отмена", lambda bld, _: bld.dismiss())
+        builder.show()
+
+    def add_slug(self, slug: str):
+        slugs = parse_slugs(self.get_setting("slug", ""))
+        if slug not in slugs:
+            slugs.append(slug)
+        self.save_slugs(slugs)
+
+    def pick_to_remove(self):
+        slugs = parse_slugs(self.get_setting("slug", ""))
+        if not slugs:
+            BulletinHelper.show_info("Список NFT пуст")
+            return
+
+        def on_pick(i):
+            self.save_slugs(slugs[:i] + slugs[i + 1:])
+            BulletinHelper.show_success(f"«{slugs[i]}» убран. Переоткрой профиль")
+
+        self.show_items("Убрать NFT", slugs, on_pick)
+
+    def save_slugs(self, slugs: List[str]):
+        text = ", ".join(slugs)
+        self.set_setting("slug", text, reload_settings=True)
+        self.load_gifts(text)
 
     def load_gifts(self, text: str):
         # Responses to an older list of links are dropped by comparing generations.
