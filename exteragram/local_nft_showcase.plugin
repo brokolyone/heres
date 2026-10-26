@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvoices"
-__version__ = "1.12.0"
+__version__ = "1.13.0"
 
 import json
 import random
@@ -22,16 +22,20 @@ from collections import defaultdict, deque
 from typing import Any, List
 
 from base_plugin import BasePlugin, HookFilter, HookResult, HookStrategy, MethodHook, hook_filters
-from android_utils import run_on_ui_thread
+from android_utils import OnClickListener, run_on_ui_thread
 from hook_utils import get_private_field
 from client_utils import get_last_fragment, get_messages_controller, get_user_config, send_request
 from ui.alert import AlertDialogBuilder
 from ui.bulletin import BulletinHelper
 from ui.settings import Divider, Header, Input, Selector, Switch, Text
 
+from android.graphics import Typeface
+from android.graphics.drawable import GradientDrawable
 from android.os import Bundle
 from android.text import InputType
-from android.widget import EditText, LinearLayout
+from android.util import TypedValue
+from android.view import Gravity
+from android.widget import EditText, LinearLayout, ScrollView, TextView
 from java import jint
 from java.util import ArrayList
 from org.telegram.messenger import AndroidUtilities, MessageObject, MessagesStorage, NotificationCenter, UserConfig, Utilities
@@ -40,6 +44,7 @@ from java.io import BufferedReader, InputStreamReader
 from java.net import URL
 from org.telegram.tgnet.tl import TL_account, TL_fragment, TL_stars
 from org.telegram.ui import ChatActivity
+from org.telegram.ui.ActionBar import BottomSheet
 from org.telegram.ui.Stars import StarsController
 
 NANO = 1_000_000_000
@@ -49,6 +54,18 @@ FALLBACK_RATES = {"USD": 1.22, "EUR": 1.05, "RUB": 98.0}
 RATES_URL = "https://api.coingecko.com/api/v3/simple/price?ids=the-open-network&vs_currencies=usd,eur,rub"
 RATES_TTL = 10 * 60
 DEFAULT_PRICE = 1000  # GRAM, for a username or number without its own price
+
+# Fragment website palette (dark theme). Colors as signed 32-bit ints for Java.
+def _argb(value):
+    return value - 0x100000000 if value & 0x80000000 else value
+
+
+FG_BG = _argb(0xFF14202E)
+FG_CARD = _argb(0xFF1C2A3A)
+FG_ACCENT = _argb(0xFF2EA6FF)
+FG_TEXT = _argb(0xFFFFFFFF)
+FG_SUBTEXT = _argb(0xFF7D8EA0)
+FG_DANGER = _argb(0xFF3A2430)
 
 FLAG_OWNER_ID = 1
 FLAG_OWNER_NAME = 2
@@ -696,6 +713,188 @@ class LocalNftShowcasePlugin(BasePlugin):
         return f"{int(gram)} GRAM (~{symbol}{fiat_value:,.0f})"
 
     def manage_usernames(self):
+        try:
+            self.fragment_usernames_sheet()
+            return
+        except Exception:
+            self.logger.exception("Fragment username sheet failed, using dialogs")
+        self.manage_usernames_dialog()
+
+    def manage_number(self):
+        try:
+            self.fragment_number_sheet()
+            return
+        except Exception:
+            self.logger.exception("Fragment number sheet failed, using dialogs")
+        self.manage_number_dialog()
+
+    # ----- Fragment-styled screens (custom views) -----
+
+    def dp(self, value):
+        return AndroidUtilities.dp(value)
+
+    def fg_text(self, activity, text, size, color, bold=False):
+        view = TextView(activity)
+        view.setText(text)
+        view.setTextColor(color)
+        view.setTextSize(TypedValue.COMPLEX_UNIT_DIP, float(size))
+        if bold:
+            view.setTypeface(Typeface.DEFAULT_BOLD)
+        return view
+
+    def fg_card(self, activity, radius=14):
+        bg = GradientDrawable()
+        bg.setColor(FG_CARD)
+        bg.setCornerRadius(float(self.dp(radius)))
+        view = LinearLayout(activity)
+        view.setOrientation(LinearLayout.VERTICAL)
+        view.setBackground(bg)
+        view.setPadding(self.dp(16), self.dp(14), self.dp(16), self.dp(14))
+        return view
+
+    def fg_root(self, activity, title):
+        scroll = ScrollView(activity)
+        scroll.setBackgroundColor(FG_BG)
+        column = LinearLayout(activity)
+        column.setOrientation(LinearLayout.VERTICAL)
+        column.setPadding(self.dp(16), self.dp(18), self.dp(16), self.dp(20))
+        scroll.addView(column)
+        diamond = self.fg_text(activity, "\u2666", 34, FG_ACCENT, bold=True)
+        diamond.setGravity(Gravity.CENTER)
+        column.addView(diamond)
+        head = self.fg_text(activity, title, 22, FG_TEXT, bold=True)
+        head.setGravity(Gravity.CENTER)
+        head.setPadding(0, self.dp(6), 0, self.dp(14))
+        column.addView(head)
+        return scroll, column
+
+    def fg_show(self, activity, root):
+        builder = BottomSheet.Builder(activity, False)
+        builder.setApplyBottomPadding(False)
+        builder.setApplyTopPadding(False)
+        builder.setCustomView(root)
+        sheet = builder.show()
+        try:
+            sheet.setBackgroundColor(FG_BG)
+        except Exception:
+            pass
+        return sheet
+
+    def fg_button(self, activity, text, on_click, color=FG_ACCENT):
+        bg = GradientDrawable()
+        bg.setColor(color)
+        bg.setCornerRadius(float(self.dp(12)))
+        button = self.fg_text(activity, text, 16, FG_TEXT, bold=True)
+        button.setGravity(Gravity.CENTER)
+        button.setBackground(bg)
+        button.setPadding(0, self.dp(14), 0, self.dp(14))
+        button.setOnClickListener(OnClickListener(lambda v: on_click()))
+        return button
+
+    def fragment_usernames_sheet(self):
+        activity = self.get_activity()
+        if activity is None:
+            return
+        scroll, column = self.fg_root(activity, "Мои юзернеймы")
+        items = self.get_usernames()
+        primary = (self.get_setting("primary_username", "") or "").lower()
+
+        if not items:
+            empty = self.fg_text(activity, "Пока пусто. Добавь свой первый юзернейм.", 15, FG_SUBTEXT)
+            empty.setGravity(Gravity.CENTER)
+            empty.setPadding(0, self.dp(10), 0, self.dp(18))
+            column.addView(empty)
+
+        for d in items:
+            card = self.fg_card(activity)
+            is_primary = d["name"].lower() == primary
+            name_row = LinearLayout(activity)
+            name_row.setOrientation(LinearLayout.HORIZONTAL)
+            name_row.setGravity(Gravity.CENTER_VERTICAL)
+            name_view = self.fg_text(activity, "@" + d["name"], 18, FG_TEXT, bold=True)
+            name_row.addView(name_view)
+            if is_primary:
+                badge = self.fg_text(activity, "  \u2b50 основной", 13, FG_ACCENT)
+                name_row.addView(badge)
+            card.addView(name_row)
+            price = float(d.get("price") or DEFAULT_PRICE)
+            price_view = self.fg_text(activity, "\u2666 " + self.price_label(price), 14, FG_SUBTEXT)
+            price_view.setPadding(0, self.dp(4), 0, 0)
+            card.addView(price_view)
+            card.setOnClickListener(OnClickListener(lambda v, n=d["name"]: (self.active_sheet_dismiss(), self.username_actions(n))))
+            params = LinearLayout.LayoutParams(-1, -2)
+            params.bottomMargin = self.dp(10)
+            column.addView(card, params)
+
+        add = self.fg_button(activity, "+  Добавить юзернейм",
+                             lambda: (self.active_sheet_dismiss(), self.add_username_dialog()))
+        add_params = LinearLayout.LayoutParams(-1, -2)
+        add_params.topMargin = self.dp(6)
+        column.addView(add, add_params)
+
+        hint = self.fg_text(activity, "Видно только тебе. Нажми на юзернейм, чтобы изменить цену, "
+                                      "сделать основным или удалить.", 12, FG_SUBTEXT)
+        hint.setPadding(self.dp(4), self.dp(16), self.dp(4), 0)
+        column.addView(hint)
+        self.active_sheet = self.fg_show(activity, scroll)
+
+    def fragment_number_sheet(self):
+        activity = self.get_activity()
+        if activity is None:
+            return
+        scroll, column = self.fg_root(activity, "Анонимный номер +888")
+        number = parse_phone(self.get_setting("anon_number", ""))
+
+        if number:
+            card = self.fg_card(activity)
+            card.addView(self.fg_text(activity, format_phone(number), 20, FG_TEXT, bold=True))
+            price_view = self.fg_text(activity, "\u2666 " + self.price_label(self.number_price()), 14, FG_SUBTEXT)
+            price_view.setPadding(0, self.dp(4), 0, 0)
+            card.addView(price_view)
+            card_params = LinearLayout.LayoutParams(-1, -2)
+            card_params.bottomMargin = self.dp(12)
+            column.addView(card, card_params)
+
+            for label, action in (
+                ("Изменить номер", lambda: (self.active_sheet_dismiss(), self.set_number_dialog())),
+                ("Изменить цену", lambda: (self.active_sheet_dismiss(),
+                                           self.price_dialog(self.number_price(), self.set_number_price))),
+            ):
+                btn = self.fg_button(activity, label, action, color=FG_CARD)
+                p = LinearLayout.LayoutParams(-1, -2)
+                p.bottomMargin = self.dp(8)
+                column.addView(btn, p)
+            remove = self.fg_button(activity, "Убрать номер",
+                                    lambda: (self.active_sheet_dismiss(), self.remove_number()), color=FG_DANGER)
+            column.addView(remove, LinearLayout.LayoutParams(-1, -2))
+        else:
+            empty = self.fg_text(activity, "Номер не задан.", 15, FG_SUBTEXT)
+            empty.setGravity(Gravity.CENTER)
+            empty.setPadding(0, self.dp(10), 0, self.dp(16))
+            column.addView(empty)
+            add = self.fg_button(activity, "Задать номер +888",
+                                 lambda: (self.active_sheet_dismiss(), self.set_number_dialog()))
+            column.addView(add, LinearLayout.LayoutParams(-1, -2))
+
+        self.active_sheet = self.fg_show(activity, scroll)
+
+    def remove_number(self):
+        self.set_setting("anon_number", "")
+        self.refresh_own_users()
+        BulletinHelper.show_success("Номер убран. Переоткрой профиль")
+
+    def active_sheet_dismiss(self):
+        sheet = getattr(self, "active_sheet", None)
+        if sheet is not None:
+            try:
+                sheet.dismiss()
+            except Exception:
+                pass
+            self.active_sheet = None
+
+    # ----- plain dialog fallback for the two screens -----
+
+    def manage_usernames_dialog(self):
         activity = self.get_activity()
         if activity is None:
             return
@@ -823,7 +1022,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         builder.set_negative_button("Отмена", lambda bld, _: bld.dismiss())
         builder.show()
 
-    def manage_number(self):
+    def manage_number_dialog(self):
         activity = self.get_activity()
         if activity is None:
             return
