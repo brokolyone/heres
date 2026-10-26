@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.18.1"
+__version__ = "1.19.0"
 
 import json
 import random
@@ -101,6 +101,34 @@ def status_to_hex(status) -> str:
 def status_from_hex(text: str):
     data = SerializedData(Utilities.hexToBytes(text))
     return TLRPC.EmojiStatus.TLdeserialize(data, data.readInt32(False), False)
+
+
+def gift_to_hex(gift) -> str:
+    data = SerializedData(gift.getObjectSize())
+    gift.serializeToStream(data)
+    return Utilities.bytesToHex(data.toByteArray())
+
+
+def gift_from_hex(text: str):
+    data = SerializedData(Utilities.hexToBytes(text))
+    return TL_stars.StarGift.TLdeserialize(data, data.readInt32(False), False)
+
+
+def gift_from_hex_slug(text: str):
+    try:
+        g = gift_from_hex(text)
+        return g.slug if g is not None else None
+    except Exception:
+        return None
+
+
+def attr_name(attr) -> str:
+    return getattr(attr, "name", None) or "—"
+
+
+def backdrop_argb(backdrop) -> int:
+    color = int(getattr(backdrop, "center_color", 0) or 0)
+    return (0xFF000000 | (color & 0xFFFFFF)) - 0x100000000
 
 
 class PatchUserHook(MethodHook):
@@ -309,6 +337,8 @@ class LocalNftShowcasePlugin(BasePlugin):
     def on_plugin_load(self):
         self.slugs = []
         self.gifts = {}
+        self.custom = {}  # synthetic slug -> locally built TL_starGiftUnique
+        self.ctor = None  # constructor state
         self.generation = 0
         # Requests for gift lists are answered in order, so remember for each
         # account whether the pending ones were for our own profile.
@@ -335,6 +365,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.catalog = {}  # gift id -> regular gift from the gift catalog
         self.install_java_hooks()
         self.load_gifts(self.get_setting("slug", ""))
+        self.load_custom_gifts()
         self.migrate_fragment_settings()
         self.load_catalog()
 
@@ -376,6 +407,13 @@ class LocalNftShowcasePlugin(BasePlugin):
                 icon="msg_add",
                 accent=True,
                 on_click=lambda _: self.pick_collection(),
+            ),
+            Text(
+                text="Собрать свой NFT",
+                subtext="Выбрать модель, фон и узор",
+                icon="msg_colors",
+                accent=True,
+                on_click=lambda _: self.open_constructor(),
             ),
             Text(
                 text="Убрать NFT",
@@ -1651,6 +1689,176 @@ class LocalNftShowcasePlugin(BasePlugin):
         builder.set_negative_button("Отмена", lambda bld, _: bld.dismiss())
         builder.show()
 
+    # ----- NFT constructor: pick a collection, choose model/backdrop/pattern, build it -----
+
+    def open_constructor(self):
+        req = TL_stars.getStarGifts()
+        req.hash = 0
+
+        def on_result(response):
+            gifts = jlist(getattr(response, "gifts", None))
+            gifts = [g for g in gifts if getattr(g, "title", None)]
+            gifts.sort(key=lambda g: g.title.lower())
+            if not gifts:
+                BulletinHelper.show_error("Коллекции не найдены")
+                return
+            items = [g.title for g in gifts]
+            self.show_items("Коллекция для сборки", items,
+                            lambda i: self.load_constructor_preview(gifts[i]))
+
+        self.request_on_ui(req, on_result)
+
+    def load_constructor_preview(self, collection):
+        req = TL_stars.getStarGiftUpgradePreview()
+        req.gift_id = collection.id
+
+        def on_result(response):
+            attrs = jlist(getattr(response, "sample_attributes", None))
+            models = [a for a in attrs if isinstance(a, TL_stars.starGiftAttributeModel)]
+            backs = [a for a in attrs if isinstance(a, TL_stars.starGiftAttributeBackdrop)]
+            pats = [a for a in attrs if isinstance(a, TL_stars.starGiftAttributePattern)]
+            if not models or not backs:
+                BulletinHelper.show_error("Для этой коллекции нет образцов")
+                return
+            self.ctor = {"collection": collection, "models": models, "backs": backs,
+                         "pats": pats, "mi": 0, "bi": 0, "pi": 0}
+            self.show_constructor()
+
+        self.request_on_ui(req, on_result)
+
+    def show_constructor(self):
+        activity = self.get_activity()
+        c = self.ctor
+        if activity is None or c is None:
+            return
+        scroll, column = self.fg_root(activity, "Конструктор NFT", c["collection"].title)
+
+        model = c["models"][c["mi"]]
+        back = c["backs"][c["bi"]]
+        pat = c["pats"][c["pi"]] if c["pats"] else None
+
+        # Preview box filled with the backdrop colour.
+        preview_bg = GradientDrawable()
+        preview_bg.setColor(backdrop_argb(back))
+        preview_bg.setCornerRadius(float(self.dp(14)))
+        preview = LinearLayout(activity)
+        preview.setOrientation(LinearLayout.VERTICAL)
+        preview.setGravity(Gravity.CENTER)
+        preview.setBackground(preview_bg)
+        preview.setPadding(self.dp(16), self.dp(28), self.dp(16), self.dp(28))
+        name = self.fg_text(activity, attr_name(model), 20, FG_TEXT, bold=True)
+        name.setGravity(Gravity.CENTER)
+        preview.addView(name)
+        sub = self.fg_text(activity, f"{c['collection'].title} #{c['mi'] + 1}", 13, FG_TEXT)
+        sub.setGravity(Gravity.CENTER)
+        sub.setPadding(0, self.dp(4), 0, 0)
+        preview.addView(sub)
+        pp = LinearLayout.LayoutParams(-1, self.dp(150))
+        pp.bottomMargin = self.dp(16)
+        column.addView(preview, pp)
+
+        def selector(label, value, options, key):
+            row = self.fg_card(activity)
+            row.setOrientation(LinearLayout.HORIZONTAL)
+            row.setGravity(Gravity.CENTER_VERTICAL)
+            left = LinearLayout(activity)
+            left.setOrientation(LinearLayout.VERTICAL)
+            left.addView(self.fg_text(activity, label, 13, self.FGA_SUB2))
+            v = self.fg_text(activity, value, 16, FG_TEXT, bold=True)
+            v.setPadding(0, self.dp(2), 0, 0)
+            left.addView(v)
+            left.setLayoutParams(LinearLayout.LayoutParams(0, -2, 1.0))
+            row.addView(left)
+            row.addView(self.fg_text(activity, "изменить  ›", 13, FG_ACCENT))
+            row.setOnClickListener(OnClickListener(
+                lambda vw, opts=options, k=key: self.pick_attr(label, opts, k)))
+            rp = LinearLayout.LayoutParams(-1, -2)
+            rp.bottomMargin = self.dp(8)
+            column.addView(row, rp)
+
+        selector("Модель", attr_name(model), c["models"], "mi")
+        selector("Фон", attr_name(back), c["backs"], "bi")
+        if c["pats"]:
+            selector("Узор", attr_name(pat), c["pats"], "pi")
+
+        dice = self.fg_button(activity, "🎲  Случайно",
+                              lambda: self.randomize_constructor(), color=FG_CARD)
+        dp2 = LinearLayout.LayoutParams(-1, -2)
+        dp2.topMargin = self.dp(6)
+        dp2.bottomMargin = self.dp(8)
+        column.addView(dice, dp2)
+        build = self.fg_button(activity, "Собрать NFT", lambda: self.build_custom_gift())
+        column.addView(build, LinearLayout.LayoutParams(-1, -2))
+
+        note = self.fg_text(activity, "Собранный NFT добавится в твой профиль. Виден только тебе.",
+                            12, self.FGA_SUB2)
+        note.setGravity(Gravity.CENTER)
+        note.setPadding(self.dp(4), self.dp(16), self.dp(4), 0)
+        column.addView(note)
+
+        self.active_sheet = self.fg_show(activity, scroll)
+
+    def pick_attr(self, label, options, key):
+        self.active_sheet_dismiss()
+        items = [attr_name(a) for a in options]
+
+        def on_pick(i):
+            self.ctor[key] = i
+            self.show_constructor()
+
+        self.show_items(label, items, on_pick)
+
+    def randomize_constructor(self):
+        c = self.ctor
+        c["mi"] = random.randrange(len(c["models"]))
+        c["bi"] = random.randrange(len(c["backs"]))
+        if c["pats"]:
+            c["pi"] = random.randrange(len(c["pats"]))
+        self.active_sheet_dismiss()
+        self.show_constructor()
+
+    def build_custom_gift(self):
+        c = self.ctor
+        if c is None:
+            return
+        model = c["models"][c["mi"]]
+        back = c["backs"][c["bi"]]
+        pat = c["pats"][c["pi"]] if c["pats"] else None
+
+        gift = TL_stars.TL_starGiftUnique()
+        gift.id = random.getrandbits(62)
+        gift.gift_id = c["collection"].id
+        gift.title = c["collection"].title or "Custom"
+        gift.num = random.randint(1, 99999)
+        store = self.get_custom_store()
+        gift.slug = f"winft-custom-{len(store)}-{gift.num}"
+        gift.availability_issued = gift.num
+        gift.availability_total = 100000
+        attrs = ArrayList()
+        attrs.add(model)
+        if pat is not None:
+            attrs.add(pat)
+        attrs.add(back)
+        gift.attributes = attrs
+
+        try:
+            store.append(gift_to_hex(gift))
+        except Exception:
+            self.logger.exception("Could not serialize the built NFT")
+            BulletinHelper.show_error("Не удалось собрать NFT")
+            return
+        self.set_setting("custom_gifts", json.dumps(store))
+        self.custom[gift.slug] = gift
+        self.active_sheet_dismiss()
+        self.ctor = None
+        BulletinHelper.show_success(f"NFT «{gift.title} #{gift.num}» собран. Переоткрой профиль")
+
+    def remove_custom_gift(self, slug: str):
+        store = self.get_custom_store()
+        keep = [hx for hx in store if gift_from_hex_slug(hx) != slug]
+        self.set_setting("custom_gifts", json.dumps(keep))
+        self.custom.pop(slug, None)
+
     def add_slug(self, slug: str):
         slugs = parse_slugs(self.get_setting("slug", ""))
         if slug not in slugs:
@@ -1658,16 +1866,26 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.save_slugs(slugs)
 
     def pick_to_remove(self):
-        slugs = parse_slugs(self.get_setting("slug", ""))
-        if not slugs:
+        link_slugs = parse_slugs(self.get_setting("slug", ""))
+        custom_slugs = list(self.custom.keys())
+        if not link_slugs and not custom_slugs:
             BulletinHelper.show_info("Список NFT пуст")
             return
+        labels = list(link_slugs)
+        for slug in custom_slugs:
+            gift = self.custom.get(slug)
+            labels.append(f"🔨 {gift.title} #{gift.num}" if gift else slug)
 
         def on_pick(i):
-            self.save_slugs(slugs[:i] + slugs[i + 1:])
-            BulletinHelper.show_success(f"«{slugs[i]}» убран. Переоткрой профиль")
+            if i < len(link_slugs):
+                self.save_slugs(link_slugs[:i] + link_slugs[i + 1:])
+                BulletinHelper.show_success(f"«{link_slugs[i]}» убран. Переоткрой профиль")
+            else:
+                slug = custom_slugs[i - len(link_slugs)]
+                self.remove_custom_gift(slug)
+                BulletinHelper.show_success("Собранный NFT убран. Переоткрой профиль")
 
-        self.show_items("Убрать NFT", slugs, on_pick)
+        self.show_items("Убрать NFT", labels, on_pick)
 
     def save_slugs(self, slugs: List[str]):
         text = ", ".join(slugs)
@@ -1707,11 +1925,33 @@ class LocalNftShowcasePlugin(BasePlugin):
 
         send_request(req, on_response)
 
+    def all_slugs(self) -> List[str]:
+        return self.slugs + list(self.custom.keys())
+
+    def gift_lookup(self, slug: str):
+        return self.gifts.get(slug) or self.custom.get(slug)
+
     def loaded_gifts(self) -> List[Any]:
-        """Loaded gifts in the order the links were entered."""
+        """Link-based gifts (in entry order) plus locally built ones."""
         if not self.get_setting("enabled", True):
             return []
-        return [self.gifts[slug] for slug in self.slugs if slug in self.gifts]
+        return [self.gift_lookup(slug) for slug in self.all_slugs() if self.gift_lookup(slug)]
+
+    def get_custom_store(self) -> list:
+        try:
+            return json.loads(self.get_setting("custom_gifts", "") or "[]")
+        except ValueError:
+            return []
+
+    def load_custom_gifts(self):
+        self.custom = {}
+        for hx in self.get_custom_store():
+            try:
+                gift = gift_from_hex(hx)
+                if gift is not None and gift.slug:
+                    self.custom[gift.slug] = gift
+            except Exception:
+                self.logger.exception("Could not restore a built NFT")
 
     def is_own_peer(self, account: int, peer) -> bool:
         if isinstance(peer, TLRPC.TL_inputPeerSelf):
@@ -1911,7 +2151,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         BulletinHelper.show_success("Статус снят. Переоткрой профиль")
 
     def local_gift_ids(self):
-        return {gift.id for gift in self.gifts.values()}
+        return {gift.id for gift in self.gifts.values()} | {gift.id for gift in self.custom.values()}
 
     def make_saved_gift(self, account: int, gift):
         user_config = get_user_config(account)
@@ -1929,7 +2169,8 @@ class LocalNftShowcasePlugin(BasePlugin):
         saved.pinned_to_top = self.get_pinned_map().get(gift.slug, self.get_setting("pinned", True))
         # A unique saved_id: without it the app cannot tell our gifts apart and drops
         # their pinned state when the profile is reopened.
-        index = self.slugs.index(gift.slug) if gift.slug in self.slugs else 0
+        all_slugs = self.all_slugs()
+        index = all_slugs.index(gift.slug) if gift.slug in all_slugs else 0
         saved.saved_id = LOCAL_SAVED_ID_BASE + index
         saved.flags |= FLAG_SAVED_ID
         # The gift screen sends this id back when listing the gift for sale.
