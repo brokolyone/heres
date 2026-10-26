@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.26.0"
+__version__ = "1.27.0"
 
 import json
 import random
@@ -1908,8 +1908,12 @@ class LocalNftShowcasePlugin(BasePlugin):
             write_log("constructor: buttons added")
         except Exception:
             write_log(f"buttons failed:\n{traceback.format_exc()}")
+        try:
+            self.add_build_check(sheet)
+            write_log("constructor: check added")
+        except Exception:
+            write_log(f"check failed:\n{traceback.format_exc()}")
         self.update_ctor_header()
-        sheet.setOnDismissListener(R(lambda: run_on_ui_thread(self.confirm_build, 150)))
         write_log("constructor: showing")
         sheet.show()
         write_log("constructor: shown")
@@ -1957,6 +1961,45 @@ class LocalNftShowcasePlugin(BasePlugin):
 
         self.ctor_layout_listener = layout_listener(place)  # keep the proxy alive
         tabs.addOnLayoutChangeListener(self.ctor_layout_listener)
+
+    def add_build_check(self, sheet):
+        """Turns the native play/pause circle into a white check that builds the NFT. The
+        sheet resets that image on every mode change, so the play icon is faded out and the
+        check is drawn as the view's foreground; the native tinted circle stays as it is."""
+        from android.graphics import PorterDuff, PorterDuffColorFilter
+        play = get_private_field(sheet, "headerPlay")
+        activity = self.get_activity()
+        res = activity.getResources()
+        icon = None
+        for name in ("ic_ab_done", "checkbig", "msg_check"):
+            rid = res.getIdentifier(name, "drawable", activity.getPackageName())
+            if rid:
+                icon = activity.getDrawable(rid).mutate()
+                break
+        if icon is None:
+            return
+        icon.setColorFilter(PorterDuffColorFilter(_argb(0xFFFFFFFF), PorterDuff.Mode.SRC_IN))
+        play.setImageAlpha(0)
+        play.setForeground(icon)
+        play.setForegroundGravity(Gravity.CENTER)
+        play.setOnClickListener(OnClickListener(lambda v: self.build_and_close()))
+
+    def build_and_close(self):
+        c = self.ctor
+        if c is None or c["built"]:
+            return
+        try:
+            model, back, pat = self.ctor_selection(c["sheet"])
+        except Exception:
+            write_log(f"selection failed:\n{traceback.format_exc()}")
+            BulletinHelper.show_error("Не удалось прочитать выбор")
+            return
+        if model is None or back is None:
+            BulletinHelper.show_error("Выбери модель и фон")
+            return
+        self.build_from_ctor(model, back, pat)
+        if c["built"]:
+            c["sheet"].dismiss()
 
     def ctor_value_label(self):
         value = self.ctor.get("value") if self.ctor else None
@@ -2047,35 +2090,6 @@ class LocalNftShowcasePlugin(BasePlugin):
         top = get_private_field(sheet, "topView")
         return (top.getUpgradeImageViewAttribute(), top.getUpgradeBackdropAttribute(),
                 top.getUpgradePatternAttribute())
-
-    def confirm_build(self):
-        c = self.ctor
-        activity = self.get_activity()
-        if c is None or c["built"] or activity is None:
-            return
-        try:
-            model, back, pat = self.ctor_selection(c["sheet"])
-        except Exception:
-            self.logger.exception("Could not read the constructor selection")
-            return
-        if model is None or back is None:
-            return
-        lines = [f"{c['title']} #{c['num']}", f"Модель: {attr_name(model)}",
-                 f"Фон: {attr_name(back)}", f"Узор: {attr_name(pat)}"]
-        label = self.ctor_value_label()
-        if label:
-            lines.append(label)
-        builder = AlertDialogBuilder(activity)
-        builder.set_title("Собрать NFT?")
-        builder.set_message("\n".join(lines))
-
-        def on_build(bld, _):
-            bld.dismiss()
-            self.build_from_ctor(model, back, pat)
-
-        builder.set_positive_button("Собрать", on_build)
-        builder.set_negative_button("Отмена", lambda bld, _: bld.dismiss())
-        builder.show()
 
     def to_usd(self, amount, code):
         if code == "USD":
