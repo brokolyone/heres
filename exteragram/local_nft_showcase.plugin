@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.23.0"
+__version__ = "1.24.0"
 
 import json
 import random
@@ -422,11 +422,11 @@ class LocalNftShowcasePlugin(BasePlugin):
                 icon="msg_gift_premium",
             ),
             Text(
-                text="Добавить подарок (каталог)",
-                subtext="Родной каталог Telegram — покупка идёт локально",
-                icon="msg_gift_premium",
+                text="NFT конструктор",
+                subtext="Список неулучшенных → родной экран с моделями/фонами/узорами",
+                icon="msg_colors",
                 accent=True,
-                on_click=lambda _: self.open_gift_catalog(),
+                on_click=lambda _: self.open_nft_preview_list(),
             ),
             Text(
                 text="Убрать NFT",
@@ -1603,19 +1603,40 @@ class LocalNftShowcasePlugin(BasePlugin):
         builder.set_negative_button("Отмена", lambda bld, _: bld.dismiss())
         builder.show()
 
-    def open_gift_catalog(self):
-        """Open Telegram's own gift catalog for yourself; buying there is intercepted locally."""
-        activity = self.get_activity()
-        if activity is None:
-            return
-        try:
-            from org.telegram.ui.Gifts import GiftSheet
-            account = UserConfig.selectedAccount
-            uid = get_user_config(account).getClientUserId()
-            GiftSheet(activity, account, uid, None).show()
-        except Exception:
-            self.logger.exception("Could not open the native gift catalog")
-            BulletinHelper.show_error("Не удалось открыть каталог. Открой подарки в профиле вручную")
+    def open_nft_preview_list(self):
+        """List non-upgraded gifts; tapping one opens Telegram's own attribute-preview screen."""
+        req = TL_stars.getStarGifts()
+        req.hash = 0
+
+        def on_result(response):
+            gifts = [g for g in jlist(getattr(response, "gifts", None)) if getattr(g, "title", None)]
+            gifts.sort(key=lambda g: g.title.lower())
+            if not gifts:
+                BulletinHelper.show_error("Подарки не найдены")
+                return
+            self.show_items("Выбери подарок", [g.title for g in gifts],
+                            lambda i: self.open_preview_sheet(gifts[i]))
+
+        self.request_on_ui(req, on_result)
+
+    def open_preview_sheet(self, gift):
+        req = TL_stars.getStarGiftUpgradePreview()
+        req.gift_id = gift.id
+
+        def on_result(response):
+            attrs = getattr(response, "sample_attributes", None)
+            if attrs is None or attrs.size() == 0:
+                BulletinHelper.show_error("Нет образцов для этой коллекции")
+                return
+            try:
+                from org.telegram.ui.Stars import StarGiftPreviewSheet
+                account = UserConfig.selectedAccount
+                StarGiftPreviewSheet(self.get_activity(), None, account, gift.title, attrs, True).show()
+            except Exception:
+                self.logger.exception("Could not open the native preview sheet")
+                BulletinHelper.show_error("Не удалось открыть родной экран")
+
+        self.request_on_ui(req, on_result)
 
     def request_on_ui(self, req, on_result):
         """Sends a request with a loading spinner and calls on_result(response) on the UI thread."""
