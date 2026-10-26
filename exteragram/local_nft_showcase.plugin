@@ -6,10 +6,11 @@ sees it: other people opening your profile see your real gifts.
 
 __id__ = "local_nft_showcase"
 __name__ = "Local NFT Showcase"
-__description__ = "Локально показывает выбранный NFT-подарок в твоём профиле (видишь только ты)"
+__description__ = "Локально показывает выбранные NFT-подарки в твоём профиле (видишь только ты)"
 __author__ = "brokolyone"
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
+import re
 import time
 from collections import defaultdict, deque
 from typing import Any, List
@@ -36,15 +37,27 @@ def parse_slug(text: str) -> str:
     return text.split("?", 1)[0].strip("/ ")
 
 
+def parse_slugs(text: str) -> List[str]:
+    """Several links separated by commas, spaces or new lines, without duplicates."""
+    slugs = []
+    for part in re.split(r"[\s,;]+", text or ""):
+        slug = parse_slug(part)
+        if slug and slug not in slugs:
+            slugs.append(slug)
+    return slugs
+
+
 class LocalNftShowcasePlugin(BasePlugin):
     def on_plugin_load(self):
-        self.gift = None
+        self.slugs = []
+        self.gifts = {}
+        self.generation = 0
         # Requests for gift lists are answered in order, so remember for each
         # account whether the pending ones were for our own profile.
         self.pending = defaultdict(deque)
         self.add_hook("getSavedStarGifts", match_substring=True)
         self.add_hook("TL_users_getFullUser")
-        self.load_gift()
+        self.load_gifts(self.get_setting("slug", ""))
 
     def create_settings(self) -> List[Any]:
         return [
@@ -57,11 +70,11 @@ class LocalNftShowcasePlugin(BasePlugin):
             ),
             Input(
                 key="slug",
-                text="Ссылка на NFT",
+                text="Ссылки на NFT",
                 default="",
-                subtext="Например t.me/nft/PlushPepe-1",
+                subtext="Через запятую: t.me/nft/PlushPepe-1, t.me/nft/DurovsCap-1",
                 icon="msg_link",
-                on_change=lambda _: self.load_gift(),
+                on_change=self.load_gifts,
             ),
             Switch(
                 key="pinned",
@@ -69,31 +82,44 @@ class LocalNftShowcasePlugin(BasePlugin):
                 default=True,
                 icon="msg_pin",
             ),
-            Divider(text="Подарок виден только тебе. В Telegram ничего не меняется, "
-                         "другие люди в твоём профиле его не увидят. После смены "
+            Divider(text="Подарки видны только тебе. В Telegram ничего не меняется, "
+                         "другие люди в твоём профиле их не увидят. После смены "
                          "настроек переоткрой профиль."),
         ]
 
-    def load_gift(self):
-        self.gift = None
-        slug = parse_slug(self.get_setting("slug", ""))
-        if not slug:
-            return
+    def load_gifts(self, text: str):
+        # Responses to an older list of links are dropped by comparing generations.
+        self.generation += 1
+        generation = self.generation
+        self.slugs = parse_slugs(text)
+        self.gifts = {}
+        for slug in self.slugs:
+            self.load_gift(slug, generation)
+
+    def load_gift(self, slug: str, generation: int):
         req = TL_stars.getUniqueStarGift()
         req.slug = slug
 
         def on_response(response, error):
+            if generation != self.generation:
+                return
             if error or response is None or response.gift is None:
                 text = error.text if error else "пустой ответ"
                 BulletinHelper.show_error(f"NFT «{slug}» не найден: {text}")
                 return
-            self.gift = response.gift
-            BulletinHelper.show_success(f"NFT «{self.gift.title} #{self.gift.num}» загружен")
+            gift = response.gift
+            self.gifts[slug] = gift
+            BulletinHelper.show_success(
+                f"NFT «{gift.title} #{gift.num}» загружен ({len(self.gifts)}/{len(self.slugs)})"
+            )
 
         send_request(req, on_response)
 
-    def is_active(self) -> bool:
-        return self.get_setting("enabled", True) and self.gift is not None
+    def loaded_gifts(self) -> List[Any]:
+        """Loaded gifts in the order the links were entered."""
+        if not self.get_setting("enabled", True):
+            return []
+        return [self.gifts[slug] for slug in self.slugs if slug in self.gifts]
 
     def is_own_peer(self, account: int, peer) -> bool:
         if isinstance(peer, TLRPC.TL_inputPeerSelf):
@@ -117,25 +143,27 @@ class LocalNftShowcasePlugin(BasePlugin):
         if "getSavedStarGifts" in request_name:
             queue = self.pending[account]
             own_first_page = queue.popleft() if queue else False
-            if own_first_page and not error and response is not None and self.is_active():
-                response.gifts.add(0, self.make_saved_gift(account))
-                response.count += 1
+            gifts = self.loaded_gifts()
+            if own_first_page and not error and response is not None and gifts:
+                for i, gift in enumerate(gifts):
+                    response.gifts.add(i, self.make_saved_gift(account, gift))
+                response.count += len(gifts)
                 return HookResult(strategy=HookStrategy.MODIFY, response=response)
         elif request_name == "TL_users_getFullUser":
-            if not error and response is not None and self.is_active():
+            gifts = self.loaded_gifts()
+            if not error and response is not None and gifts:
                 full = response.full_user
                 if full is not None and full.id == get_user_config(account).getClientUserId():
-                    full.stargifts_count += 1
+                    full.stargifts_count += len(gifts)
                     full.flags2 |= FLAG_STARGIFTS_COUNT
                     return HookResult(strategy=HookStrategy.MODIFY, response=response)
         return HookResult()
 
-    def make_saved_gift(self, account: int):
+    def make_saved_gift(self, account: int, gift):
         user_config = get_user_config(account)
         me = TLRPC.TL_peerUser()
         me.user_id = user_config.getClientUserId()
 
-        gift = self.gift
         gift.owner_id = me
         gift.flags = (gift.flags | FLAG_OWNER_ID) & ~(FLAG_OWNER_NAME | FLAG_OWNER_ADDRESS)
         gift.owner_name = None
