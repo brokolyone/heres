@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.36.0"
+__version__ = "1.37.0"
 
 import json
 import random
@@ -472,6 +472,16 @@ class SendRequestHook(MethodHook):
         args = list(param.args)
         if not args:
             return
+        # sendRequest overloads call one another with the same request object: answer it once,
+        # or the screen that sent it opens (or upgrades, or buys) once per overload.
+        for i, (done, at, answered) in enumerate(self.plugin.answered_requests):
+            if done.equals(args[0]):
+                if time.time() - at < 5:
+                    if answered:
+                        param.setResult(0)
+                    return  # already looked at: answered above, or passed on to the server
+                del self.plugin.answered_requests[i]
+                break
         delegate = next((a for a in args[1:] if a is not None and hasattr(a, "run")), None)
         account = get_private_field(param.thisObject, "currentAccount") or 0
         if isinstance(args[0], TL_stars.TL_payments_sendStarsForm):
@@ -492,6 +502,8 @@ class SendRequestHook(MethodHook):
         else:
             return
         self.plugin.trace_request(args[0], result)
+        self.plugin.answered_requests = (self.plugin.answered_requests
+                                         + [(args[0], time.time(), result is not None)])[-20:]
         if result is None:
             return  # not ours: let the real request go
         param.setResult(0)
@@ -663,6 +675,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.previews = {}  # gift id -> (models, backdrops, patterns) for an instant local upgrade
         self.upgraded = {}  # "msg:saved:gift" -> (slug of the NFT it became, "" while building; time)
         self.fake_updates = []  # updates objects kept away from MessagesController
+        self.answered_requests = []  # (request, time, answered) seen here, so nested overloads skip them
         self.error_depth = 0  # > 0 while Telegram builds an error bulletin
         self.muted_bulletins = []  # error bulletins built but not shown yet
         self.pending_create = deque()  # local keys for collections being created
