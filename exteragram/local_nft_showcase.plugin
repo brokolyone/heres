@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.31.0"
+__version__ = "1.32.0"
 
 import json
 import random
@@ -1912,6 +1912,8 @@ class LocalNftShowcasePlugin(BasePlugin):
         bar.setLayoutParams(LinearLayout.LayoutParams(-1, self.fg3_dp(48)))
         return bar
 
+    FG3_TABS_H = 54  # the tab row is the top of the sheet: no FRAGMENT header above it
+
     def fg3_tabs(self, ctx, items, active_index):
         from android.view import View
         from android.widget import FrameLayout
@@ -1923,7 +1925,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             label, on_click = item[0], item[1]
             active = index == active_index
             cell = FrameLayout(ctx)
-            text = self.fg3_text(ctx, label, 14, self.FG3_TEXT if active else self.FG3_TAB_INACTIVE, bold=True)
+            text = self.fg3_text(ctx, label, 18, self.FG3_TEXT if active else self.FG3_TAB_INACTIVE, bold=True)
             text.setSingleLine(True)
             text.setGravity(Gravity.CENTER_VERTICAL)
             cell.addView(text, FrameLayout.LayoutParams(-2, -1))
@@ -1937,7 +1939,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             if index > 0:
                 params.leftMargin = self.fg3_dp(17)
             row.addView(cell, params)
-        row.setLayoutParams(LinearLayout.LayoutParams(-1, self.fg3_dp(42)))
+        row.setLayoutParams(LinearLayout.LayoutParams(-1, self.fg3_dp(self.FG3_TABS_H)))
         return row
 
     def fg3_box(self, ctx):
@@ -2030,12 +2032,11 @@ class LocalNftShowcasePlugin(BasePlugin):
         root.setBackground(self.fg3_shape(self.FG3_PAGE, 12, top_only=True))
         root.setClipToOutline(True)
         root.setMinimumHeight(AndroidUtilities.displaySize.y)  # full height (clamped by the sheet)
-        root.addView(self.fg3_header(ctx), LinearLayout.LayoutParams(-1, self.fg3_dp(48)))
         self.fg3_tab_index = tab_index
         if tab_index is not None:
             items = [("Usernames", lambda: self.fg3_switch_tab(0)),
                      ("Numbers", lambda: self.fg3_switch_tab(1))]
-            root.addView(self.fg3_tabs(ctx, items, tab_index), LinearLayout.LayoutParams(-1, self.fg3_dp(42)))
+            root.addView(self.fg3_tabs(ctx, items, tab_index), LinearLayout.LayoutParams(-1, self.fg3_dp(self.FG3_TABS_H)))
         scroll = ScrollView(ctx)
         scroll.setFillViewport(True)
         scroll.setVerticalScrollBarEnabled(False)
