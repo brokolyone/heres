@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.19.0"
+__version__ = "1.20.0"
 
 import json
 import random
@@ -403,17 +403,11 @@ class LocalNftShowcasePlugin(BasePlugin):
                 icon="msg_gift_premium",
             ),
             Text(
-                text="Выбрать NFT из списка",
-                icon="msg_add",
-                accent=True,
-                on_click=lambda _: self.pick_collection(),
-            ),
-            Text(
-                text="Собрать свой NFT",
-                subtext="Выбрать модель, фон и узор",
+                text="NFT конструктор",
+                subtext="Собрать свой или добавить неулучшенный",
                 icon="msg_colors",
                 accent=True,
-                on_click=lambda _: self.open_constructor(),
+                on_click=lambda _: self.open_nft_constructor(),
             ),
             Text(
                 text="Убрать NFT",
@@ -1688,6 +1682,38 @@ class LocalNftShowcasePlugin(BasePlugin):
         builder.set_positive_button("Добавить", on_ok)
         builder.set_negative_button("Отмена", lambda bld, _: bld.dismiss())
         builder.show()
+
+    # ----- NFT constructor hub: build your own, or add a non-upgraded gift -----
+
+    def open_nft_constructor(self):
+        self.show_items("NFT конструктор", [
+            "🔨 Собрать свой NFT",
+            "➕ Добавить неулучшенный подарок",
+        ], lambda i: self.open_constructor() if i == 0 else self.add_regular_picker())
+
+    def add_regular_picker(self):
+        req = TL_stars.getStarGifts()
+        req.hash = 0
+
+        def on_result(response):
+            gifts = jlist(getattr(response, "gifts", None))
+            gifts = [g for g in gifts if getattr(g, "title", None)]
+            gifts.sort(key=lambda g: int(getattr(g, "stars", 0) or 0))
+            if not gifts:
+                BulletinHelper.show_error("Подарки не найдены")
+                return
+            items = [f"{g.title} · {int(getattr(g, 'stars', 0) or 0)} ⭐" for g in gifts]
+            self.show_items("Неулучшенный подарок", items,
+                            lambda i: self.add_regular_gift(gifts[i]))
+
+        self.request_on_ui(req, on_result)
+
+    def add_regular_gift(self, gift):
+        self.catalog[gift.id] = gift
+        ids = self.regular_gift_ids()
+        ids.insert(0, gift.id)
+        self.set_setting("regular_gifts", ",".join(str(i) for i in ids))
+        BulletinHelper.show_success(f"«{gift.title}» добавлен. Переоткрой профиль")
 
     # ----- NFT constructor: pick a collection, choose model/backdrop/pattern, build it -----
 
