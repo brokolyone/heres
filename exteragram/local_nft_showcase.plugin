@@ -11,7 +11,7 @@ __id__ = "local_nft_showcase"
 __name__ = "Local NFT Showcase"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "brokolyone"
-__version__ = "1.7.0"
+__version__ = "1.7.1"
 
 import json
 import random
@@ -550,33 +550,64 @@ class LocalNftShowcasePlugin(BasePlugin):
     def request_on_ui(self, req, on_result):
         """Sends a request with a loading spinner and calls on_result(response) on the UI thread."""
         loading = self.show_loading()
+        state = {"done": False}
+
+        def close_loading():
+            if loading:
+                try:
+                    loading.dismiss()
+                except Exception:
+                    pass
 
         def on_response(response, error):
             def finish():
-                if loading:
-                    loading.dismiss()
+                if state["done"]:
+                    return
+                state["done"] = True
+                close_loading()
                 if error or response is None:
                     BulletinHelper.show_error(f"Ошибка: {error.text if error else 'пустой ответ'}")
                     return
-                on_result(response)
+                try:
+                    on_result(response)
+                except Exception as e:
+                    self.logger.exception("Picker failed")
+                    BulletinHelper.show_error(f"Ошибка плагина: {type(e).__name__}: {e}")
             run_on_ui_thread(finish)
 
-        send_request(req, on_response)
+        def on_timeout():
+            if not state["done"]:
+                state["done"] = True
+                close_loading()
+                BulletinHelper.show_error("Сервер не ответил. Попробуй ещё раз")
+
+        try:
+            send_request(req, on_response)
+        except Exception as e:
+            self.logger.exception("Could not send the picker request")
+            state["done"] = True
+            close_loading()
+            BulletinHelper.show_error(f"Ошибка плагина: {type(e).__name__}: {e}")
+            return
+        run_on_ui_thread(on_timeout, 15000)
 
     def pick_collection(self):
         req = TL_stars.getStarGifts()
         req.hash = 0
 
         def on_result(response):
+            gifts = list(getattr(response, "gifts", None) or [])
+            self.logger.info(f"Gift catalog: {response.getClass().getSimpleName()}, {len(gifts)} gifts")
+            resale = lambda gift: int(getattr(gift, "availability_resale", 0) or 0)
             collections = [
-                gift for gift in getattr(response, "gifts", [])
-                if gift.availability_resale > 0 or gift.upgrade_stars > 0
+                gift for gift in gifts
+                if resale(gift) > 0 or int(getattr(gift, "upgrade_stars", 0) or 0) > 0
             ]
-            collections.sort(key=lambda gift: -gift.availability_resale)
+            collections.sort(key=lambda gift: -resale(gift))
             if not collections:
-                BulletinHelper.show_error("Коллекции не найдены")
+                BulletinHelper.show_error(f"Коллекции не найдены (в каталоге {len(gifts)} подарков)")
                 return
-            items = [f"{gift.title} ({gift.availability_resale} в продаже)" for gift in collections]
+            items = [f"{gift.title or 'Без названия'} ({resale(gift)} в продаже)" for gift in collections]
             self.show_items("Коллекция", items, lambda i: self.pick_from_collection(collections[i]))
 
         self.request_on_ui(req, on_result)
