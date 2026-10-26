@@ -11,7 +11,7 @@ __id__ = "local_nft_showcase"
 __name__ = "Local NFT Showcase"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "brokolyone"
-__version__ = "1.8.2"
+__version__ = "1.9.0"
 
 import json
 import random
@@ -31,6 +31,7 @@ from ui.settings import Divider, Header, Input, Switch, Text
 from android.os import Bundle
 from android.text import InputType
 from android.widget import EditText
+from java import jint
 from java.util import ArrayList
 from org.telegram.messenger import MessageObject, MessagesStorage, NotificationCenter, UserConfig, Utilities
 from org.telegram.tgnet import ConnectionsManager, SerializedData, TLRPC
@@ -46,6 +47,7 @@ FLAG_OWNER_ADDRESS = 4
 FLAG_STARGIFTS_COUNT = 1 << 18  # UserFull.flags2
 FLAG_RESELL_AMOUNT = 16  # StarGiftUnique.flags
 FLAG_MSG_ID = 8  # SavedStarGift.flags
+FLAG_USERNAMES = 1  # User.flags2
 LOCAL_MSG_ID_BASE = 2_000_000_000  # fake message ids that let us tell local gifts apart
 
 
@@ -191,6 +193,22 @@ class SendRequestHook(MethodHook):
             delegate.run(response, error, 0)  # RequestDelegateTimestamp
 
 
+def parse_usernames(text: str) -> List[str]:
+    """'@durov, t.me/telegram fragment' -> ['durov', 'telegram', 'fragment']"""
+    names = []
+    for part in re.split(r"[\s,;]+", text or ""):
+        name = part.strip().split("t.me/")[-1].lstrip("@").strip("/")
+        if re.fullmatch(r"[A-Za-z0-9_]{4,32}", name) and name.lower() not in [n.lower() for n in names]:
+            names.append(name)
+    return names
+
+
+def parse_phone(text: str) -> str:
+    """'+888 0123 4567' -> '88801234567', empty when it is not a +888 number."""
+    digits = re.sub(r"\D", "", text or "")
+    return digits if digits.startswith("888") and len(digits) >= 7 else ""
+
+
 def parse_slugs(text: str) -> List[str]:
     """Several links separated by commas, spaces or new lines, without duplicates."""
     slugs = []
@@ -219,6 +237,8 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.local_msg_ids = {}  # fake SavedStarGift.msg_id -> slug
         self.announce = {}  # slug or gift id -> account: post a card in Saved Messages once loaded
         self.own_ids = set()
+        self.added_usernames = set()
+        self.real_phones = {}  # user id -> real phone, to restore when the +888 number is cleared
         self.statuses = {}
         self.catalog = {}  # gift id -> regular gift from the gift catalog
         self.install_java_hooks()
@@ -323,6 +343,26 @@ class LocalNftShowcasePlugin(BasePlugin):
             Divider(text="Купленные себе подарки (обычные и NFT с маркета) добавляются "
                          "в твой локальный список. Купить в подарок другому человеку "
                          "локально нельзя: такая покупка идёт как обычно, с настоящими звёздами."),
+            Header(text="Fragment"),
+            Input(
+                key="fragment_usernames",
+                text="Коллекционные юзернеймы",
+                default="",
+                subtext="Через запятую: @durov, @telegram",
+                icon="msg_mention",
+                on_change=lambda _: self.refresh_own_users(),
+            ),
+            Input(
+                key="anon_number",
+                text="Анонимный номер",
+                default="",
+                subtext="Например +888 0123 4567. Пусто — настоящий номер",
+                icon="msg_calls",
+                on_change=lambda _: self.refresh_own_users(),
+            ),
+            Divider(text="Юзернеймы и номер показываются только у тебя в профиле. "
+                         "Входить и звонить всё так же по настоящему номеру. "
+                         "После смены переоткрой профиль."),
             Header(text="Локальный премиум"),
             Switch(
                 key="local_premium",
@@ -888,13 +928,61 @@ class LocalNftShowcasePlugin(BasePlugin):
         status = self.get_status(user.id)
         if status is not None:
             user.emoji_status = status
+        self.patch_usernames(user)
+        self.patch_phone(user)
+
+    def patch_usernames(self, user):
+        names = parse_usernames(self.get_setting("fragment_usernames", ""))
+        if user.usernames is None:
+            user.usernames = ArrayList()
+        # Drop what we added last time, so removed names go away without a restart.
+        for i in reversed(range(user.usernames.size())):
+            entry = user.usernames.get(i)
+            if not entry.editable and entry.username in self.added_usernames:
+                user.usernames.remove(jint(i))  # by index, not by value
+        self.added_usernames = set(names)
+        if not names:
+            return
+        if user.usernames.size() == 0 and user.username:
+            own = TLRPC.TL_username()
+            own.editable = True
+            own.active = True
+            own.username = user.username
+            user.usernames.add(own)
+        present = {user.usernames.get(i).username.lower() for i in range(user.usernames.size())}
+        for name in names:
+            if name.lower() in present:
+                continue
+            entry = TLRPC.TL_username()
+            entry.active = True
+            entry.username = name
+            user.usernames.add(entry)
+        user.flags2 |= FLAG_USERNAMES
+
+    def patch_phone(self, user):
+        fake = parse_phone(self.get_setting("anon_number", ""))
+        key = f"real_phone_{user.id}"
+        if user.phone and not user.phone.startswith("888") and self.real_phones.get(user.id) != user.phone:
+            self.real_phones[user.id] = user.phone
+            self.set_setting(key, user.phone)
+        real = self.real_phones.get(user.id) or self.get_setting(key, "")
+        if fake:
+            user.phone = fake
+        elif user.phone and user.phone.startswith("888") and real:
+            user.phone = real
 
     def refresh_own_users(self):
         self.own_ids = set()
         for account in range(UserConfig.MAX_ACCOUNT_COUNT):
-            user = get_user_config(account).getCurrentUser()
+            config = get_user_config(account)
+            if not config.isClientActivated():
+                continue
+            user = config.getCurrentUser()
             if user is not None:
                 self.patch_user(user)
+            cached = get_messages_controller(account).getUser(config.getClientUserId())
+            if cached is not None and cached is not user:
+                self.patch_user(cached)
 
     def clear_statuses(self):
         for user_id in list(self.get_own_ids()):
