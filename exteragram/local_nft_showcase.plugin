@@ -11,7 +11,7 @@ __id__ = "local_nft_showcase"
 __name__ = "Local NFT Showcase"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "brokolyone"
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 import random
 import re
@@ -124,6 +124,17 @@ class BalanceHook(MethodHook):
             param.setResult(self.plugin.balance_amount(param.thisObject.ton))
 
 
+class BuyGiftHook(MethodHook):
+    """StarsController.buyStarGift(gift, anonymous, upgraded, dialogId, text, whenDone)."""
+
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def before_hooked_method(self, param):
+        if self.plugin.buy_regular_locally(param.thisObject, *param.args):
+            param.setResult(None)
+
+
 class BuyResaleHook(MethodHook):
     """StarsController.buyResellingGift(form, gift, dialogId, message, hideMyName, whenDone)."""
 
@@ -158,8 +169,10 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.add_hook("updateEmojiStatus", match_substring=True)
         self.own_ids = set()
         self.statuses = {}
+        self.catalog = {}  # gift id -> regular gift from the gift catalog
         self.install_java_hooks()
         self.load_gifts(self.get_setting("slug", ""))
+        self.load_catalog()
 
     def install_java_hooks(self):
         # Take java.lang.Class from live objects: find_class may return a Python proxy.
@@ -172,6 +185,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         for name, count, hook in (
             ("getBalance", 3, BalanceHook(self)),
             ("buyResellingGift", 6, BuyResaleHook(self)),
+            ("buyStarGift", 6, BuyGiftHook(self)),
         ):
             method = find_method(stars, name, count)
             if method is None:
@@ -245,9 +259,14 @@ class LocalNftShowcasePlugin(BasePlugin):
                 subtext="Выключи, чтобы баланс не уменьшался",
                 icon="msg_payment_card",
             ),
-            Divider(text="Купленный на маркете себе NFT добавляется в твой локальный "
-                         "список. Купить в подарок другому человеку локально нельзя: "
-                         "такая покупка идёт как обычно, с настоящими звёздами."),
+            Text(
+                text="Убрать купленные обычные подарки",
+                icon="msg_delete",
+                on_click=lambda _: self.clear_regular_gifts(),
+            ),
+            Divider(text="Купленные себе подарки (обычные и NFT с маркета) добавляются "
+                         "в твой локальный список. Купить в подарок другому человеку "
+                         "локально нельзя: такая покупка идёт как обычно, с настоящими звёздами."),
             Header(text="Локальный премиум"),
             Switch(
                 key="local_premium",
@@ -294,22 +313,77 @@ class LocalNftShowcasePlugin(BasePlugin):
             return False  # gifts for other people are never faked
 
         price = sum(p.amount for p in form.invoice.prices)  # stars, or nanoTON for TON
-        if self.get_setting("spend_balance", True):
-            key, default, scale = ("ton_balance", "1000", NANO) if controller.ton else ("stars_balance", "100000", 1)
-            balance = parse_amount(self.get_setting(key, default), 0) * scale
-            if balance < price:
-                BulletinHelper.show_error("Не хватает локального баланса. Пополни его в настройках плагина")
-                if when_done is not None:
-                    when_done.run(False, None)
-                return True
-            left = balance - price
-            self.set_setting(key, f"{left / NANO:.2f}" if controller.ton else str(int(left)))
-            self.notify_balance()
+        if not self.spend(controller.ton, price):
+            if when_done is not None:
+                when_done.run(False, None)
+            return True
 
         self.add_slug(gift.slug)
         if when_done is not None:
             when_done.run(True, None)
         BulletinHelper.show_success(f"«{gift.title} #{gift.num}» куплен. Переоткрой профиль")
+        return True
+
+    def regular_gift_ids(self) -> List[int]:
+        text = self.get_setting("regular_gifts", "")
+        return [int(x) for x in text.split(",") if x.strip().isdigit()]
+
+    def load_catalog(self):
+        if not self.regular_gift_ids():
+            return
+        req = TL_stars.getStarGifts()
+        req.hash = 0
+
+        def on_response(response, error):
+            for gift in getattr(response, "gifts", None) or []:
+                self.catalog[gift.id] = gift
+
+        send_request(req, on_response)
+
+    def loaded_regular_gifts(self) -> List[Any]:
+        if not self.get_setting("enabled", True):
+            return []
+        return [self.catalog[gift_id] for gift_id in self.regular_gift_ids() if gift_id in self.catalog]
+
+    def clear_regular_gifts(self):
+        self.set_setting("regular_gifts", "")
+        BulletinHelper.show_success("Обычные подарки убраны. Переоткрой профиль")
+
+    def spend(self, ton: bool, price: int) -> bool:
+        """Takes price (stars, or nanoTON for TON) from the local balance. False if it is too low."""
+        if not self.get_setting("spend_balance", True):
+            return True
+        key, default, scale = ("ton_balance", "1000", NANO) if ton else ("stars_balance", "100000", 1)
+        balance = parse_amount(self.get_setting(key, default), 0) * scale
+        if balance < price:
+            BulletinHelper.show_error("Не хватает локального баланса. Пополни его в настройках плагина")
+            return False
+        left = balance - price
+        self.set_setting(key, f"{left / NANO:.2f}" if ton else str(int(left)))
+        self.notify_balance()
+        return True
+
+    def buy_regular_locally(self, controller, gift, anonymous, upgraded, dialog_id, text, when_done) -> bool:
+        """Returns True when the purchase was handled locally and the real one must be skipped."""
+        account = controller.currentAccount
+        if not self.get_setting("local_balance", True) or gift is None:
+            return False
+        if dialog_id != get_user_config(account).getClientUserId():
+            return False  # gifts for other people are never faked
+
+        price = gift.stars + (gift.upgrade_stars if upgraded else 0)
+        if not self.spend(False, price):
+            if when_done is not None:
+                when_done.run(False, None)
+            return True
+
+        self.catalog[gift.id] = gift
+        ids = self.regular_gift_ids()
+        ids.insert(0, gift.id)
+        self.set_setting("regular_gifts", ",".join(str(i) for i in ids))
+        if when_done is not None:
+            when_done.run(True, None)
+        BulletinHelper.show_success("Подарок куплен. Переоткрой профиль")
         return True
 
     # Picker: collection -> NFT on resale, by number or a random one.
@@ -494,10 +568,9 @@ class LocalNftShowcasePlugin(BasePlugin):
             own_first_page = (
                 self.is_own_peer(account, request.peer)
                 and not request.offset
-                and not request.exclude_unique
                 and (request.flags & 64) == 0  # not a collection
             )
-            self.pending[account].append(own_first_page)
+            self.pending[account].append(request if own_first_page else None)
         return HookResult()
 
     def on_update_emoji_status(self, account: int, request) -> HookResult:
@@ -518,19 +591,28 @@ class LocalNftShowcasePlugin(BasePlugin):
     def post_request_hook(self, request_name: str, account: int, response: Any, error: Any) -> HookResult:
         if "getSavedStarGifts" in request_name:
             queue = self.pending[account]
-            own_first_page = queue.popleft() if queue else False
-            gifts = self.loaded_gifts()
-            if own_first_page and not error and response is not None and gifts:
-                for i, gift in enumerate(gifts):
-                    response.gifts.add(i, self.make_saved_gift(account, gift))
-                response.count += len(gifts)
+            request = queue.popleft() if queue else None
+            if request is None or error or response is None:
+                return HookResult()
+            saved = []
+            if not request.exclude_unique:
+                saved += [self.make_saved_gift(account, gift) for gift in self.loaded_gifts()]
+            if not request.exclude_unlimited:
+                saved += [
+                    self.make_saved_regular_gift(account, gift, i)
+                    for i, gift in enumerate(self.loaded_regular_gifts())
+                ]
+            if saved:
+                for i, gift in enumerate(saved):
+                    response.gifts.add(i, gift)
+                response.count += len(saved)
                 return HookResult(strategy=HookStrategy.MODIFY, response=response)
         elif request_name == "TL_users_getFullUser":
-            gifts = self.loaded_gifts()
-            if not error and response is not None and gifts:
+            added = len(self.loaded_gifts()) + len(self.loaded_regular_gifts())
+            if not error and response is not None and added:
                 full = response.full_user
                 if full is not None and full.id == get_user_config(account).getClientUserId():
-                    full.stargifts_count += len(gifts)
+                    full.stargifts_count += added
                     full.flags2 |= FLAG_STARGIFTS_COUNT
                     return HookResult(strategy=HookStrategy.MODIFY, response=response)
         return HookResult()
@@ -600,4 +682,14 @@ class LocalNftShowcasePlugin(BasePlugin):
         saved.gift = gift
         saved.date = int(time.time())
         saved.pinned_to_top = self.get_setting("pinned", True)
+        return saved
+
+    def make_saved_regular_gift(self, account: int, gift, index: int):
+        me = TLRPC.TL_peerUser()
+        me.user_id = get_user_config(account).getClientUserId()
+        saved = TL_stars.TL_savedStarGift()
+        saved.gift = gift
+        saved.from_id = me
+        saved.date = int(time.time())
+        saved.saved_id = 10 ** 12 + index  # distinct ids so the list tells copies apart
         return saved
