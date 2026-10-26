@@ -11,11 +11,12 @@ __id__ = "local_nft_showcase"
 __name__ = "Local NFT Showcase"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "brokolyone"
-__version__ = "1.9.0"
+__version__ = "1.10.0"
 
 import json
 import random
 import re
+import threading
 import time
 from collections import defaultdict, deque
 from typing import Any, List
@@ -26,7 +27,7 @@ from hook_utils import get_private_field
 from client_utils import get_last_fragment, get_messages_controller, get_user_config, send_request
 from ui.alert import AlertDialogBuilder
 from ui.bulletin import BulletinHelper
-from ui.settings import Divider, Header, Input, Switch, Text
+from ui.settings import Divider, Header, Input, Selector, Switch, Text
 
 from android.os import Bundle
 from android.text import InputType
@@ -35,11 +36,19 @@ from java import jint
 from java.util import ArrayList
 from org.telegram.messenger import MessageObject, MessagesStorage, NotificationCenter, UserConfig, Utilities
 from org.telegram.tgnet import ConnectionsManager, SerializedData, TLRPC
-from org.telegram.tgnet.tl import TL_account, TL_stars
+from java.io import BufferedReader, InputStreamReader
+from java.net import URL
+from org.telegram.tgnet.tl import TL_account, TL_fragment, TL_stars
 from org.telegram.ui import ChatActivity
 from org.telegram.ui.Stars import StarsController
 
 NANO = 1_000_000_000
+FIAT = ["USD", "EUR", "RUB"]
+# Rough TON rates, used only until the first successful download.
+FALLBACK_RATES = {"USD": 1.22, "EUR": 1.05, "RUB": 98.0}
+RATES_URL = "https://api.coingecko.com/api/v3/simple/price?ids=the-open-network&vs_currencies=usd,eur,rub"
+RATES_TTL = 10 * 60
+DEFAULT_PRICE = 1000  # GRAM, for a username or number without its own price
 
 FLAG_OWNER_ID = 1
 FLAG_OWNER_NAME = 2
@@ -168,6 +177,7 @@ class SendRequestHook(MethodHook):
     @hook_filters(HookFilter.Or(
         HookFilter.ArgumentIsInstanceOf(0, TL_stars.TL_payments_sendStarsForm().getClass()),
         HookFilter.ArgumentIsInstanceOf(0, TL_stars.updateStarGiftPrice().getClass()),
+        HookFilter.ArgumentIsInstanceOf(0, TL_fragment.TL_getCollectibleInfo().getClass()),
     ))
     def before_hooked_method(self, param):
         args = list(param.args)
@@ -179,6 +189,8 @@ class SendRequestHook(MethodHook):
             result = self.plugin.pay_locally(account, args[0])
         elif isinstance(args[0], TL_stars.updateStarGiftPrice):
             result = self.plugin.set_price_locally(args[0])
+        elif isinstance(args[0], TL_fragment.TL_getCollectibleInfo):
+            result = self.plugin.collectible_info(args[0])
         else:
             return
         if result is None:
@@ -209,6 +221,41 @@ def parse_phone(text: str) -> str:
     return digits if digits.startswith("888") and len(digits) >= 7 else ""
 
 
+def parse_prices(text: str) -> dict:
+    """'durov=7000, telegram=15k, number=3000' -> {'durov': 7000.0, 'telegram': 15000.0, 'number': 3000.0}"""
+    prices = {}
+    for part in re.split(r"[,;\n]+", text or ""):
+        if "=" not in part:
+            continue
+        name, value = part.split("=", 1)
+        name = name.strip().lstrip("@").lower()
+        value = value.strip().lower().replace(" ", "").replace(",", ".")
+        scale = 1
+        if value.endswith(("k", "к")):
+            value, scale = value[:-1], 1000
+        try:
+            prices[name] = float(value) * scale
+        except ValueError:
+            continue
+    return prices
+
+
+def http_get(url: str) -> str:
+    """Through Java: the app's Python may lack CA certificates for urllib."""
+    connection = URL(url).openConnection()
+    connection.setConnectTimeout(10000)
+    connection.setReadTimeout(10000)
+    reader = BufferedReader(InputStreamReader(connection.getInputStream()))
+    lines = []
+    while True:
+        line = reader.readLine()
+        if line is None:
+            break
+        lines.append(line)
+    reader.close()
+    return "\n".join(lines)
+
+
 def parse_slugs(text: str) -> List[str]:
     """Several links separated by commas, spaces or new lines, without duplicates."""
     slugs = []
@@ -233,6 +280,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.add_hook("getPaymentForm", match_substring=True)
         self.form_prices = {}  # payment form id -> price (stars, or nanoTON)
         self.balance_cache = {}
+        self.rates_loading = False
         self.last_purchase = None  # (slug or gift id, time)
         self.local_msg_ids = {}  # fake SavedStarGift.msg_id -> slug
         self.announce = {}  # slug or gift id -> account: post a card in Saved Messages once loaded
@@ -360,7 +408,23 @@ class LocalNftShowcasePlugin(BasePlugin):
                 icon="msg_calls",
                 on_change=lambda _: self.refresh_own_users(),
             ),
+            Input(
+                key="fragment_prices",
+                text="Цены покупки (GRAM)",
+                default="",
+                subtext="durov=7000, telegram=15k, number=3000. Без цены — 1000",
+                icon="msg_ton",
+            ),
+            Selector(
+                key="fiat_currency",
+                text="Эквивалент в",
+                default=0,
+                items=["Доллары ($)", "Евро (€)", "Рубли (₽)"],
+                icon="msg_currency",
+            ),
             Divider(text="Юзернеймы и номер показываются только у тебя в профиле. "
+                         "Нажми на юзернейм или номер: покажется цена покупки и её "
+                         "эквивалент по текущему курсу GRAM. "
                          "Входить и звонить всё так же по настоящему номеру. "
                          "После смены переоткрой профиль."),
             Header(text="Локальный премиум"),
@@ -565,6 +629,63 @@ class LocalNftShowcasePlugin(BasePlugin):
         updates = TLRPC.TL_updates()
         updates.date = int(time.time())
         return updates, None
+
+    # Fragment: purchase info for the local usernames and +888 number.
+
+    def ton_rate(self, fiat: str) -> float:
+        """GRAM (TON) price in fiat. Refreshes in the background, never blocks."""
+        try:
+            cached = json.loads(self.get_setting("ton_rates", "") or "{}")
+        except ValueError:
+            cached = {}
+        if time.time() - cached.get("time", 0) > RATES_TTL and not self.rates_loading:
+            self.rates_loading = True
+            threading.Thread(target=self.load_rates, daemon=True).start()
+        return float(cached.get(fiat) or FALLBACK_RATES[fiat])
+
+    def load_rates(self):
+        try:
+            data = json.loads(http_get(RATES_URL))["the-open-network"]
+            rates = {fiat: float(data[fiat.lower()]) for fiat in FIAT}
+            rates["time"] = time.time()
+            self.set_setting("ton_rates", json.dumps(rates))
+        except Exception:
+            self.logger.exception("Could not load GRAM rates, using the last known ones")
+        finally:
+            self.rates_loading = False
+
+    def collectible_info(self, request):
+        collectible = request.collectible
+        if isinstance(collectible, TL_fragment.TL_inputCollectibleUsername):
+            names = {n.lower(): n for n in parse_usernames(self.get_setting("fragment_usernames", ""))}
+            name = names.get((collectible.username or "").lower())
+            if name is None:
+                return None
+            key, url = name.lower(), f"https://fragment.com/username/{name}"
+        elif isinstance(collectible, TL_fragment.TL_inputCollectiblePhone):
+            phone = parse_phone(self.get_setting("anon_number", ""))
+            if not phone or re.sub(r"\D", "", collectible.phone or "") != phone:
+                return None
+            key, url = "number", f"https://fragment.com/number/{phone}"
+        else:
+            return None
+
+        price = parse_prices(self.get_setting("fragment_prices", "")).get(key, DEFAULT_PRICE)
+        fiat = FIAT[self.get_setting("fiat_currency", 0)]
+        date_key = f"bought_at_{key}"
+        bought_at = self.get_setting(date_key, 0)
+        if not bought_at:
+            bought_at = int(time.time())
+            self.set_setting(date_key, bought_at)
+
+        info = TL_fragment.TL_collectibleInfo()
+        info.purchase_date = int(bought_at)
+        info.crypto_currency = "TON"
+        info.crypto_amount = int(price * NANO)
+        info.currency = fiat
+        info.amount = int(round(price * self.ton_rate(fiat) * 100))  # cents / kopecks
+        info.url = url
+        return info, None
 
     def open_saved_messages(self, account: int, text: str):
         try:
