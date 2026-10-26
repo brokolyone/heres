@@ -2,26 +2,31 @@
 Local NFT Showcase: shows any existing collectible gift in YOUR OWN profile,
 only on your own screen. Nothing is sent to Telegram servers and nobody else
 sees it: other people opening your profile see your real gifts.
+
+Local Premium makes the app think your account has Premium, so you can wear
+gifts and set emoji statuses. Those statuses are also kept only on your device.
 """
 
 __id__ = "local_nft_showcase"
 __name__ = "Local NFT Showcase"
-__description__ = "Локально показывает выбранные NFT-подарки в твоём профиле (видишь только ты)"
+__description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "brokolyone"
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 import re
 import time
 from collections import defaultdict, deque
 from typing import Any, List
 
-from base_plugin import BasePlugin, HookResult, HookStrategy
+from base_plugin import BasePlugin, HookResult, HookStrategy, MethodHook
 from client_utils import get_user_config, send_request
+from hook_utils import find_class
 from ui.bulletin import BulletinHelper
-from ui.settings import Divider, Header, Input, Switch
+from ui.settings import Divider, Header, Input, Switch, Text
 
-from org.telegram.tgnet import TLRPC
-from org.telegram.tgnet.tl import TL_stars
+from org.telegram.messenger import UserConfig, Utilities
+from org.telegram.tgnet import SerializedData, TLRPC
+from org.telegram.tgnet.tl import TL_account, TL_stars
 
 FLAG_OWNER_ID = 1
 FLAG_OWNER_NAME = 2
@@ -35,6 +40,37 @@ def parse_slug(text: str) -> str:
     if "/nft/" in text:
         text = text.split("/nft/", 1)[1]
     return text.split("?", 1)[0].strip("/ ")
+
+
+def status_to_hex(status) -> str:
+    data = SerializedData(status.getObjectSize())
+    status.serializeToStream(data)
+    return Utilities.bytesToHex(data.toByteArray())
+
+
+def status_from_hex(text: str):
+    data = SerializedData(Utilities.hexToBytes(text))
+    return TLRPC.EmojiStatus.TLdeserialize(data, data.readInt32(False), False)
+
+
+class PatchUserHook(MethodHook):
+    """Puts local Premium and the locally worn status on our own user objects."""
+
+    def __init__(self, plugin, arg_index):
+        self.plugin = plugin
+        self.arg_index = arg_index
+
+    def before_hooked_method(self, param):
+        self.plugin.patch_user(param.args[self.arg_index])
+
+
+class PremiumHook(MethodHook):
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def after_hooked_method(self, param):
+        if self.plugin.get_setting("local_premium", True):
+            param.setResult(True)
 
 
 def parse_slugs(text: str) -> List[str]:
@@ -57,7 +93,18 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.pending = defaultdict(deque)
         self.add_hook("getSavedStarGifts", match_substring=True)
         self.add_hook("TL_users_getFullUser")
+        self.add_hook("updateEmojiStatus", match_substring=True)
+        self.own_ids = set()
+        self.statuses = {}
+        self.install_java_hooks()
         self.load_gifts(self.get_setting("slug", ""))
+
+    def install_java_hooks(self):
+        user_config = find_class("org.telegram.messenger.UserConfig")
+        controller = find_class("org.telegram.messenger.MessagesController")
+        self.hook_method(user_config.getDeclaredMethod("isPremium"), PremiumHook(self))
+        self.hook_all_methods(user_config, "setCurrentUser", PatchUserHook(self, 0))
+        self.hook_all_methods(controller, "putUser", PatchUserHook(self, 0))
 
     def create_settings(self) -> List[Any]:
         return [
@@ -85,6 +132,24 @@ class LocalNftShowcasePlugin(BasePlugin):
             Divider(text="Подарки видны только тебе. В Telegram ничего не меняется, "
                          "другие люди в твоём профиле их не увидят. После смены "
                          "настроек переоткрой профиль."),
+            Header(text="Локальный премиум"),
+            Switch(
+                key="local_premium",
+                text="Локальный премиум",
+                default=True,
+                subtext="Можно носить подарки и ставить эмодзи-статус",
+                icon="msg_premium_prolfilestar",
+                on_change=lambda _: self.refresh_own_users(),
+            ),
+            Text(
+                text="Снять надетый подарок/статус",
+                icon="msg_delete",
+                red=True,
+                on_click=lambda _: self.clear_statuses(),
+            ),
+            Divider(text="Премиум и статус тоже видны только тебе. Функции, которые "
+                         "проверяет сервер (передача и продажа подарков, большие файлы и т.п.), "
+                         "работать не будут. Для применения иногда нужен перезапуск."),
         ]
 
     def load_gifts(self, text: str):
@@ -129,6 +194,8 @@ class LocalNftShowcasePlugin(BasePlugin):
         return False
 
     def pre_request_hook(self, request_name: str, account: int, request: Any) -> HookResult:
+        if isinstance(request, TL_account.updateEmojiStatus):
+            return self.on_update_emoji_status(account, request)
         if "getSavedStarGifts" in request_name:
             own_first_page = (
                 self.is_own_peer(account, request.peer)
@@ -138,6 +205,21 @@ class LocalNftShowcasePlugin(BasePlugin):
             )
             self.pending[account].append(own_first_page)
         return HookResult()
+
+    def on_update_emoji_status(self, account: int, request) -> HookResult:
+        # The app has already put the new status on our user object before sending
+        # the request, so keep it locally and do not send anything to the server.
+        is_local_gift = (
+            isinstance(request.emoji_status, TLRPC.TL_inputEmojiStatusCollectible)
+            and request.emoji_status.collectible_id in self.local_gift_ids()
+        )
+        if not self.get_setting("local_premium", True) and not is_local_gift:
+            return HookResult()
+        user = get_user_config(account).getCurrentUser()
+        if user is None:
+            return HookResult()
+        self.save_status(user.id, user.emoji_status)
+        return HookResult(strategy=HookStrategy.CANCEL)
 
     def post_request_hook(self, request_name: str, account: int, response: Any, error: Any) -> HookResult:
         if "getSavedStarGifts" in request_name:
@@ -158,6 +240,57 @@ class LocalNftShowcasePlugin(BasePlugin):
                     full.flags2 |= FLAG_STARGIFTS_COUNT
                     return HookResult(strategy=HookStrategy.MODIFY, response=response)
         return HookResult()
+
+    def get_own_ids(self):
+        if not self.own_ids:
+            for account in range(UserConfig.MAX_ACCOUNT_COUNT):
+                user_id = get_user_config(account).getClientUserId()
+                if user_id:
+                    self.own_ids.add(user_id)
+        return self.own_ids
+
+    def get_status(self, user_id: int):
+        if user_id not in self.statuses:
+            text = self.get_setting(f"status_{user_id}", "")
+            try:
+                self.statuses[user_id] = status_from_hex(text) if text else None
+            except Exception:
+                self.logger.exception("Could not restore the worn status")
+                self.statuses[user_id] = None
+        return self.statuses[user_id]
+
+    def save_status(self, user_id: int, status):
+        empty = status is None or isinstance(status, TLRPC.TL_emojiStatusEmpty)
+        self.statuses[user_id] = None if empty else status
+        self.set_setting(f"status_{user_id}", "" if empty else status_to_hex(status))
+
+    def patch_user(self, user):
+        if user is None or user.id not in self.get_own_ids():
+            return
+        if self.get_setting("local_premium", True):
+            user.premium = True
+        status = self.get_status(user.id)
+        if status is not None:
+            user.emoji_status = status
+
+    def refresh_own_users(self):
+        self.own_ids = set()
+        for account in range(UserConfig.MAX_ACCOUNT_COUNT):
+            user = get_user_config(account).getCurrentUser()
+            if user is not None:
+                self.patch_user(user)
+
+    def clear_statuses(self):
+        for user_id in list(self.get_own_ids()):
+            self.save_status(user_id, None)
+        for account in range(UserConfig.MAX_ACCOUNT_COUNT):
+            user = get_user_config(account).getCurrentUser()
+            if user is not None:
+                user.emoji_status = TLRPC.TL_emojiStatusEmpty()
+        BulletinHelper.show_success("Статус снят. Переоткрой профиль")
+
+    def local_gift_ids(self):
+        return {gift.id for gift in self.gifts.values()}
 
     def make_saved_gift(self, account: int, gift):
         user_config = get_user_config(account)
