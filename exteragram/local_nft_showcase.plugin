@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.39.0"
+__version__ = "1.40.0"
 
 import json
 import random
@@ -740,13 +740,16 @@ class LocalNftShowcasePlugin(BasePlugin):
         so its offsets stay and the tab bar's height is added while the profile is a tab."""
         try:
             fragment = get_private_field(bulletin, "containerFragment")
-            if fragment is None or fragment.getClass().getSimpleName() != "ProfileActivity":
+            last = get_last_fragment()
+            name = fragment.getClass().getName() if fragment is not None else None
+            write_log(f"bulletin: container={name} "
+                      f"last={last.getClass().getName() if last is not None else None}")
+            if fragment is None or "Profile" not in fragment.getClass().getSimpleName():
                 return
             current = fragment.getBulletinDelegate()
             if current is not None and getattr(self, "profile_bulletin_wrapper", None) is not None \
                     and current.equals(self.profile_bulletin_wrapper):
                 return
-            last = get_last_fragment()
             as_tab = last is None or not last.equals(fragment)  # a tab inside exteraGram's main screen
             write_log(f"bulletin: profile delegate={current is not None} tab={as_tab} "
                       f"last={last.getClass().getSimpleName() if last is not None else None}")
