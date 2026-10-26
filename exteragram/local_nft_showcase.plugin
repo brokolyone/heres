@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvoices"
-__version__ = "1.16.0"
+__version__ = "1.16.1"
 
 import json
 import random
@@ -201,6 +201,7 @@ class SendRequestHook(MethodHook):
         HookFilter.ArgumentIsInstanceOf(0, TL_stars.updateStarGiftPrice().getClass()),
         HookFilter.ArgumentIsInstanceOf(0, TL_fragment.TL_getCollectibleInfo().getClass()),
         HookFilter.ArgumentIsInstanceOf(0, TL_stars.saveStarGift().getClass()),
+        HookFilter.ArgumentIsInstanceOf(0, TLRPC.TL_payments_getPaymentForm().getClass()),
     ))
     def before_hooked_method(self, param):
         args = list(param.args)
@@ -216,6 +217,8 @@ class SendRequestHook(MethodHook):
             result = self.plugin.collectible_info(args[0])
         elif isinstance(args[0], TL_stars.saveStarGift):
             result = self.plugin.save_gift_locally(args[0])
+        elif isinstance(args[0], TLRPC.TL_payments_getPaymentForm):
+            result = self.plugin.drop_details_form(args[0])
         else:
             return
         if result is None:
@@ -702,17 +705,42 @@ class LocalNftShowcasePlugin(BasePlugin):
         run_on_ui_thread(lambda: BulletinHelper.show_success(text + " (локально). Переоткрой профиль"))
         return TLRPC.TL_boolTrue(), None
 
+    def drop_details_form(self, request):
+        """getPaymentForm for removing a local gift caption: the server has no such gift,
+        so hand back a free form and let the flow continue to sendStarsForm."""
+        invoice = request.invoice
+        if not isinstance(invoice, TLRPC.TL_inputInvoiceStarGiftDropOriginalDetails):
+            return None
+        if self.input_to_slug(invoice.stargift) is None:
+            return None
+        form = TLRPC.TL_payments_paymentFormStarGift()
+        form.form_id = int(time.time() * 1000)
+        form.invoice = TLRPC.TL_invoice()
+        form.invoice.prices = ArrayList()  # free, no stars needed
+        return form, None
+
     def drop_caption_locally(self, invoice):
         slug = self.input_to_slug(invoice.stargift)
         if slug is None:
             return None
-        self.update_meta(slug, text="", name_hidden=False)
+        self.update_meta(slug, text="", name_hidden=False, drop_details=True)
+        gift = self.gifts.get(slug)
+        if gift is not None:
+            self.strip_original_details(gift)
         run_on_ui_thread(lambda: BulletinHelper.show_success("Подпись убрана (локально). Переоткрой профиль"))
         updates = TLRPC.TL_updates()
         updates.date = int(time.time())
         response = TLRPC.TL_payments_paymentResult()
         response.updates = updates
         return response, None
+
+    def strip_original_details(self, gift):
+        attrs = gift.attributes
+        if attrs is None:
+            return
+        for i in reversed(range(attrs.size())):
+            if isinstance(attrs.get(i), TL_stars.starGiftAttributeOriginalDetails):
+                attrs.remove(jint(i))
 
     # Per-gift pinned state: what the user pins by hand, not forced by the global toggle.
 
@@ -1560,6 +1588,8 @@ class LocalNftShowcasePlugin(BasePlugin):
                 return
             gift = response.gift
             self.apply_listing(gift)
+            if self.gift_meta(slug).get("drop_details"):
+                self.strip_original_details(gift)
             self.gifts[slug] = gift
             if slug in self.announce:
                 self.post_saved_card(self.announce.pop(slug), gift, unique=True)
