@@ -11,7 +11,7 @@ __id__ = "local_nft_showcase"
 __name__ = "Local NFT Showcase"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "brokolyone"
-__version__ = "1.7.2"
+__version__ = "1.8.0"
 
 import json
 import random
@@ -134,7 +134,11 @@ class BalanceHook(MethodHook):
 
     def after_hooked_method(self, param):
         if self.plugin.get_setting("local_balance", True):
-            param.setResult(self.plugin.balance_amount(param.thisObject.ton))
+            amount = self.plugin.balance_amount(param.thisObject.ton)
+            # Some screens read the field directly. If it keeps the real balance they open
+            # "Stars needed", and that sheet buys again on every balance change: a purchase loop.
+            param.thisObject.balance = amount
+            param.setResult(amount)
 
 
 class SendRequestHook(MethodHook):
@@ -197,6 +201,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.add_hook("getPaymentForm", match_substring=True)
         self.form_prices = {}  # payment form id -> price (stars, or nanoTON)
         self.balance_cache = {}
+        self.last_purchase = None  # (slug or gift id, time)
         self.local_msg_ids = {}  # fake SavedStarGift.msg_id -> slug
         self.announce = {}  # slug or gift id -> account: post a card in Saved Messages once loaded
         self.own_ids = set()
@@ -397,6 +402,17 @@ class LocalNftShowcasePlugin(BasePlugin):
         if not self.is_own_peer(account, buyer):
             return None  # gifts for other people are never faked
 
+        # A second purchase of the same thing right away is a loop in the app, not the user.
+        key = invoice.slug if isinstance(invoice, TLRPC.TL_inputInvoiceStarGiftResale) else invoice.gift_id
+        now = time.time()
+        if self.last_purchase and self.last_purchase[0] == key and now - self.last_purchase[1] < 3:
+            self.logger.warning(f"Repeated purchase of {key} blocked")
+            error = TLRPC.TL_error()
+            error.code = 400
+            error.text = "LOCAL_REPEATED_PURCHASE"
+            return None, error
+        self.last_purchase = (key, now)
+
         price = self.form_prices.get(request.form_id, 0)
         if not self.spend(ton, price):
             error = TLRPC.TL_error()
@@ -406,7 +422,7 @@ class LocalNftShowcasePlugin(BasePlugin):
 
         if isinstance(invoice, TLRPC.TL_inputInvoiceStarGiftResale):
             self.forget_listing(invoice.slug)
-            self.announce[invoice.slug] = account
+            self.announce[invoice.slug] = (account, price, ton)
             self.add_slug(invoice.slug)
             BulletinHelper.show_success(f"NFT «{invoice.slug}» куплен. Переоткрой профиль")
         else:
@@ -414,9 +430,9 @@ class LocalNftShowcasePlugin(BasePlugin):
             ids.insert(0, invoice.gift_id)
             self.set_setting("regular_gifts", ",".join(str(i) for i in ids))
             if invoice.gift_id in self.catalog:
-                self.post_saved_card(account, self.catalog[invoice.gift_id], unique=False)
+                self.post_saved_card((account, price, ton), self.catalog[invoice.gift_id], unique=False)
             else:
-                self.announce[invoice.gift_id] = account
+                self.announce[invoice.gift_id] = (account, price, ton)
                 self.load_catalog()
             BulletinHelper.show_success("Подарок куплен. Переоткрой профиль")
 
@@ -442,11 +458,12 @@ class LocalNftShowcasePlugin(BasePlugin):
     def apply_listing(self, gift):
         """A bought gift arrives with the seller's price: show only our own local listing."""
         listing = self.listings().get(gift.slug)
-        gift.resell_amount = ArrayList()
         if not listing:
+            gift.resell_amount = None
             gift.flags &= ~FLAG_RESELL_AMOUNT
             gift.resale_ton_only = False
             return
+        gift.resell_amount = ArrayList()
         stars = TL_stars.StarsAmount.ofStars(int(listing["stars"]))
         ton = TL_stars.TL_starsTonAmount()
         ton.amount = int(listing["ton"])
@@ -487,7 +504,9 @@ class LocalNftShowcasePlugin(BasePlugin):
 
     # Cards in Saved Messages for local purchases. They are only in this app's database.
 
-    def post_saved_card(self, account: int, gift, unique: bool):
+    def post_saved_card(self, purchase, gift, unique: bool):
+        """purchase is (account, price, ton): price in stars, or nanoTON when ton."""
+        account, price, ton = purchase
         try:
             user_id = get_user_config(account).getClientUserId()
             me = TLRPC.TL_peerUser()
@@ -497,6 +516,13 @@ class LocalNftShowcasePlugin(BasePlugin):
                 action = TLRPC.TL_messageActionStarGiftUnique()
                 action.saved = True
                 action.flags |= 4
+                # With a resale amount the app writes "You bought this gift for ...".
+                if ton:
+                    action.resale_amount = TL_stars.TL_starsTonAmount()
+                    action.resale_amount.amount = int(price)
+                else:
+                    action.resale_amount = TL_stars.StarsAmount.ofStars(int(price))
+                action.flags |= 256
             else:
                 action = TLRPC.TL_messageActionStarGift()
                 action.saved = True
