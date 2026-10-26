@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.25.0"
+__version__ = "1.25.1"
 
 import json
 import random
@@ -233,6 +233,18 @@ class StarsNeededHook(MethodHook):
     def before_hooked_method(self, param):
         if self.plugin.get_setting("local_balance", True):
             param.setResult(None)
+
+
+def layout_listener(fn):
+    """View.OnLayoutChangeListener backed by a Python callable."""
+    from java import dynamic_proxy
+    from android.view import View
+
+    class _Listener(dynamic_proxy(View.OnLayoutChangeListener)):
+        def onLayoutChange(self, v, left, top, right, bottom, ol, ot, orr, ob):
+            fn()
+
+    return _Listener()
 
 
 class MarketRedirectHook(MethodHook):
@@ -1683,16 +1695,36 @@ class LocalNftShowcasePlugin(BasePlugin):
             from org.telegram.ui.Gifts import GiftSheet
             account = UserConfig.selectedAccount
             uid = get_user_config(account).getClientUserId()
+            self.restore_resale()
+            self.hide_resale(account)  # only non-upgraded versions, no resale listings
             sheet = GiftSheet(activity, account, uid, None)
-            try:
-                sheet.setBrowseCollectibles()  # open on the collectibles tab
-            except Exception:
-                pass
+            sheet.setOnDismissListener(R(self.restore_resale))
             self.market_sheet = sheet
             sheet.show()
         except Exception:
             self.logger.exception("Could not open the gift market")
             BulletinHelper.show_error("Не удалось открыть маркет")
+
+    def hide_resale(self, account):
+        self.resale_backup = {}
+        gifts = StarsController.getInstance(account).gifts
+        for i in range(gifts.size()):
+            gift = gifts.get(i)
+            if int(getattr(gift, "availability_resale", 0) or 0) > 0:
+                self.resale_backup[gift.id] = gift.availability_resale
+                gift.availability_resale = 0
+        self.resale_account = account
+
+    def restore_resale(self):
+        backup = getattr(self, "resale_backup", None)
+        if not backup:
+            return
+        gifts = StarsController.getInstance(self.resale_account).gifts
+        for i in range(gifts.size()):
+            gift = gifts.get(i)
+            if gift.id in backup:
+                gift.availability_resale = backup[gift.id]
+        self.resale_backup = {}
 
     def market_active(self) -> bool:
         sheet = getattr(self, "market_sheet", None)
@@ -1737,16 +1769,21 @@ class LocalNftShowcasePlugin(BasePlugin):
         sheet.show()
 
     def add_constructor_buttons(self, sheet):
-        """Two round buttons beside the native glass tabs, using the sheet's own glass factory."""
+        """Two round buttons beside the native glass tab bar. The glass comes from the sheet's
+        own fallback source: its live-blur source only tracks the tab bar and crashes others."""
         from android.widget import FrameLayout
         from org.telegram.ui.ActionBar import Theme
+        from org.telegram.ui.Components.blur3 import BlurredBackgroundDrawableViewFactory
         from org.telegram.ui.Components.blur3.drawable.color import BlurredBackgroundColorProviderThemed
         container = get_private_field(sheet, "containerView")
-        factory = get_private_field(sheet, "glassFactory")
+        tabs = get_private_field(sheet, "tabsSelectorView")
+        fallback = get_private_field(sheet, "glassSourceFallback")
+        factory = BlurredBackgroundDrawableViewFactory(fallback) if fallback is not None else None
         activity = self.get_activity()
         side = (AndroidUtilities.displaySize.x - self.dp(268)) // 2
-        size = max(self.dp(36), min(self.dp(56), side - self.dp(12)))
-        for text, sign, action in (("#", -1, self.ask_ctor_number), ("?", 1, self.ask_ctor_value)):
+        size = max(self.dp(36), min(self.dp(56), side - self.dp(14)))
+        views = []
+        for text, action in (("#", self.ask_ctor_number), ("?", self.ask_ctor_value)):
             view = TextView(activity)
             view.setText(text)
             view.setGravity(Gravity.CENTER)
@@ -1756,14 +1793,24 @@ class LocalNftShowcasePlugin(BasePlugin):
             if factory is not None:
                 drawable = factory.create(view)
                 drawable.setPadding(self.dp(4))
-                drawable.setRadius(float(size // 2 - self.dp(4)))
+                drawable.setRadius(size // 2 - self.dp(4))
                 drawable.setColorProvider(BlurredBackgroundColorProviderThemed(None, Theme.key_windowBackgroundWhite))
                 view.setBackground(drawable)
-            params = FrameLayout.LayoutParams(size, size, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL)
-            params.bottomMargin = self.dp(5) + (self.dp(64) - size) // 2
-            container.addView(view, params)
-            view.setTranslationX(float(sign * (self.dp(134) + side // 2)))
+            container.addView(view, FrameLayout.LayoutParams(size, size, Gravity.TOP | Gravity.LEFT))
             view.setOnClickListener(OnClickListener(lambda v, a=action: a()))
+            views.append(view)
+
+        def place():
+            gap = self.dp(10)
+            y = tabs.getY() + (tabs.getHeight() - size) / 2.0
+            left, right = views
+            left.setX(float(max(self.dp(4), tabs.getX() - gap - size)))
+            right.setX(float(min(container.getWidth() - size - self.dp(4), tabs.getX() + tabs.getWidth() + gap)))
+            left.setY(float(y))
+            right.setY(float(y))
+
+        self.ctor_layout_listener = layout_listener(place)  # keep the proxy alive
+        tabs.addOnLayoutChangeListener(self.ctor_layout_listener)
 
     def ctor_value_label(self):
         value = self.ctor.get("value") if self.ctor else None
