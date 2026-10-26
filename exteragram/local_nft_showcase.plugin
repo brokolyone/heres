@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvoices"
-__version__ = "1.14.0"
+__version__ = "1.15.0"
 
 import json
 import random
@@ -308,6 +308,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.add_hook("getPaymentForm", match_substring=True)
         self.add_hook("getStarsStatus", match_substring=True)
         self.add_hook("getStarsTransactions", match_substring=True)
+        self.add_hook("toggleStarGiftsPinnedToTop", match_substring=True)
         self.tx_pending = defaultdict(deque)
         self.form_prices = {}  # payment form id -> price (stars, or nanoTON)
         self.balance_cache = {}
@@ -569,7 +570,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         if isinstance(invoice, TLRPC.TL_inputInvoiceStarGiftResale):
             self.forget_listing(invoice.slug)
             self.announce[invoice.slug] = (account, price, ton)
-            self.record_purchase(f"NFT {invoice.slug}", price, ton)
+            self.record_purchase(price, ton, slug=invoice.slug)
             self.add_slug(invoice.slug)
             if ton:
                 # Purchases for Stars open Saved Messages on their own, ones for TON do not.
@@ -580,8 +581,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             ids = self.regular_gift_ids()
             ids.insert(0, invoice.gift_id)
             self.set_setting("regular_gifts", ",".join(str(i) for i in ids))
-            title = self.catalog[invoice.gift_id].title if invoice.gift_id in self.catalog else "Подарок"
-            self.record_purchase(title or "Подарок", price, ton)
+            self.record_purchase(price, ton, gift_id=invoice.gift_id)
             if invoice.gift_id in self.catalog:
                 self.post_saved_card((account, price, ton), self.catalog[invoice.gift_id], unique=False)
             else:
@@ -603,36 +603,92 @@ class LocalNftShowcasePlugin(BasePlugin):
         except ValueError:
             return []
 
-    def record_purchase(self, title: str, price, ton: bool):
+    def record_purchase(self, price, ton: bool, slug=None, gift_id=None):
         txs = self.get_transactions()
         txs.insert(0, {
             "id": f"local{int(time.time() * 1000)}",
-            "title": title,
             "price": int(price),
             "ton": bool(ton),
             "date": int(time.time()),
+            "slug": slug,
+            "gift_id": gift_id,
         })
         self.set_setting("transactions_json", json.dumps(txs[:100]))
 
-    def build_transaction(self, rec):
+    def build_transaction(self, rec, account):
         t = TL_stars.TL_starsTransaction()
         t.id = rec["id"]
         t.date = int(rec["date"])
-        t.title = rec.get("title") or "Покупка"
         if rec.get("ton"):
             amount = TL_stars.TL_starsTonAmount()
             amount.amount = -int(rec["price"])
         else:
             amount = TL_stars.StarsAmount.ofStars(-int(rec["price"]))
         t.amount = amount
-        t.peer = TL_stars.TL_starsTransactionPeerFragment()
+        # Pay as yourself, like a real gift purchase, not "Вывод через Fragment".
+        me = TLRPC.TL_peerUser()
+        me.user_id = get_user_config(account).getClientUserId()
+        peer = TL_stars.TL_starsTransactionPeer()
+        peer.peer = me
+        t.peer = peer
+        gift = None
+        if rec.get("slug"):
+            gift = self.gifts.get(rec["slug"])
+        elif rec.get("gift_id"):
+            gift = self.catalog.get(rec["gift_id"])
+        if gift is not None:
+            t.stargift = gift
+            t.stargift_resale = True  # renders as "Покупка подарка" with the gift sticker
+        else:
+            t.title = "Покупка подарка"
         return t
 
-    def transactions_for(self, ton: bool, inbound: bool, outbound: bool) -> list:
+    def transactions_for(self, ton: bool, inbound: bool, outbound: bool, account: int) -> list:
         if inbound:
             return []  # our local transactions are all outgoing (purchases)
         recs = [r for r in self.get_transactions() if bool(r.get("ton")) == ton]
-        return [self.build_transaction(r) for r in recs]
+        return [self.build_transaction(r, account) for r in recs]
+
+    # Per-gift pinned state: what the user pins by hand, not forced by the global toggle.
+
+    def get_pinned_map(self) -> dict:
+        try:
+            return json.loads(self.get_setting("pinned_slugs", "") or "{}")
+        except ValueError:
+            return {}
+
+    def input_to_slug(self, entry):
+        if isinstance(entry, TL_stars.TL_inputSavedStarGiftSlug):
+            return entry.slug if entry.slug in self.slugs else None
+        if isinstance(entry, TL_stars.TL_inputSavedStarGiftUser):
+            return self.local_msg_ids.get(entry.msg_id)
+        return None
+
+    def on_toggle_pinned(self, account: int, request) -> HookResult:
+        if not self.is_own_peer(account, getattr(request, "peer", None)):
+            return HookResult()
+        lst = request.stargift
+        pinned, keep = set(), []
+        for i in range(lst.size()):
+            entry = lst.get(i)
+            slug = self.input_to_slug(entry)
+            if slug:
+                pinned.add(slug)
+            else:
+                keep.append(entry)
+        if len(keep) == lst.size():
+            return HookResult()  # no local gifts in this request
+        pmap = self.get_pinned_map()
+        for slug in self.slugs:
+            pmap[slug] = slug in pinned
+        self.set_setting("pinned_slugs", json.dumps(pmap))
+        new_list = ArrayList()
+        for entry in keep:
+            new_list.add(entry)
+        if new_list.size() == 0:
+            return HookResult(strategy=HookStrategy.CANCEL)
+        request.stargift = new_list
+        return HookResult(strategy=HookStrategy.MODIFY, request=request)
 
     # Local listings on the marketplace: prices are kept per slug in the "listings" setting.
 
@@ -1464,6 +1520,8 @@ class LocalNftShowcasePlugin(BasePlugin):
     def pre_request_hook(self, request_name: str, account: int, request: Any) -> HookResult:
         if isinstance(request, TL_account.updateEmojiStatus):
             return self.on_update_emoji_status(account, request)
+        if "toggleStarGiftsPinnedToTop" in request_name:
+            return self.on_toggle_pinned(account, request)
         if "getSavedStarGifts" in request_name:
             own_first_page = (
                 self.is_own_peer(account, request.peer)
@@ -1520,8 +1578,11 @@ class LocalNftShowcasePlugin(BasePlugin):
                 return HookResult(strategy=HookStrategy.MODIFY, response=response)
         elif "getStarsStatus" in request_name or "getStarsTransactions" in request_name:
             meta = self.tx_pending[account].popleft() if self.tx_pending[account] else None
-            if meta and meta["self"] and meta["first"] and not error and response is not None and self.get_setting("local_balance", True):
-                txs = self.transactions_for(meta["ton"], meta["inbound"], meta["outbound"])
+            # Inject only into the paged transaction list, never the balance status,
+            # so a purchase never shows up under "Зачисления".
+            if meta and meta["self"] and meta["first"] and "getStarsTransactions" in request_name \
+                    and not error and response is not None and self.get_setting("local_balance", True):
+                txs = self.transactions_for(meta["ton"], meta["inbound"], meta["outbound"], account)
                 if txs:
                     for t in reversed(txs):
                         response.history.add(0, t)
@@ -1662,7 +1723,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         saved = TL_stars.TL_savedStarGift()
         saved.gift = gift
         saved.date = int(time.time())
-        saved.pinned_to_top = self.get_setting("pinned", True)
+        saved.pinned_to_top = self.get_pinned_map().get(gift.slug, self.get_setting("pinned", True))
         # A unique saved_id: without it the app cannot tell our gifts apart and drops
         # their pinned state when the profile is reopened.
         index = self.slugs.index(gift.slug) if gift.slug in self.slugs else 0
