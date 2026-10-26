@@ -11,7 +11,7 @@ __id__ = "local_nft_showcase"
 __name__ = "Local NFT Showcase"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "brokolyone"
-__version__ = "1.8.0"
+__version__ = "1.8.1"
 
 import json
 import random
@@ -141,6 +141,18 @@ class BalanceHook(MethodHook):
             param.setResult(amount)
 
 
+class StarsNeededHook(MethodHook):
+    """StarsIntroActivity.StarsNeededSheet.show(): with the local balance this sheet only does harm.
+    Shown with enough balance it buys again at once, and it rebuys on every balance change."""
+
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def before_hooked_method(self, param):
+        if self.plugin.get_setting("local_balance", True):
+            param.setResult(None)
+
+
 class SendRequestHook(MethodHook):
     """ConnectionsManager.sendRequest(...): every gift purchase ends with payments.sendStarsForm,
     whichever screen started it, so local purchases are answered here without the server."""
@@ -224,6 +236,12 @@ class LocalNftShowcasePlugin(BasePlugin):
             self.logger.error("StarsController.getBalance not found, local balance is off")
         else:
             self.hook_method(method, BalanceHook(self))
+        try:
+            loader = stars.getClassLoader()
+            sheet = loader.loadClass("org.telegram.ui.Stars.StarsIntroActivity$StarsNeededSheet")
+            self.hook_method(find_method(sheet, "show", 0), StarsNeededHook(self))
+        except Exception:
+            self.logger.exception("StarsNeededSheet not found, purchases may repeat")
         connections = get_private_field(get_messages_controller(), "connectionsManager")
         connections_class = (connections or ConnectionsManager.getInstance(0)).getClass()
         if not self.hook_all_methods(connections_class, "sendRequest", SendRequestHook(self)):
