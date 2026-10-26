@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.38.0"
+__version__ = "1.39.0"
 
 import json
 import random
@@ -1839,7 +1839,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             if evenodd:
                 path.setFillType(Path.FillType.EVEN_ODD)
             paint = Paint(Paint.ANTI_ALIAS_FLAG)
-            paint.setColor(color if (color is not None and recolor) else part_color)
+            paint.setColor(jint(color if (color is not None and recolor) else part_color))  # int overload, not setColor(long)
             if kind == "stroke":
                 paint.setStyle(Paint.Style.STROKE)
                 paint.setStrokeWidth(float(stroke))
@@ -2585,7 +2585,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         left, right = self.FG3B_SORT_DESC_PATHS
         colors = (self.FG3B_SORT_GREY, self.FG3B_WHITE) if desc else (self.FG3B_WHITE, self.FG3B_SORT_GREY)
         for d, color in ((left, colors[0]), (right, colors[1])):
-            paint.setColor(color)
+            paint.setColor(jint(color))  # int overload, not setColor(long)
             canvas.drawPath(self.fg3_svg_path(d), paint)
         return bmp
 
