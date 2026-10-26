@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvoices"
-__version__ = "1.16.1"
+__version__ = "1.17.0"
 
 import json
 import random
@@ -60,12 +60,14 @@ def _argb(value):
     return value - 0x100000000 if value & 0x80000000 else value
 
 
-FG_BG = _argb(0xFF14202E)
-FG_CARD = _argb(0xFF1C2A3A)
-FG_ACCENT = _argb(0xFF2EA6FF)
+FG_BG = _argb(0xFF1A2026)        # page background
+FG_CARD = _argb(0xFF242E38)      # card / field background
+FG_CARD_HOVER = _argb(0xFF293440)
+FG_ACCENT = _argb(0xFF4DB2FF)    # bright gem blue
+FG_BTN = _argb(0xFF248BDA)       # primary button
 FG_TEXT = _argb(0xFFFFFFFF)
-FG_SUBTEXT = _argb(0xFF7D8EA0)
-FG_DANGER = _argb(0xFF3A2430)
+FG_SUBTEXT = _argb(0xFF8794A1)
+FG_DANGER = _argb(0xFF8A3A3A)
 
 FLAG_OWNER_ID = 1
 FLAG_OWNER_NAME = 2
@@ -936,7 +938,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             view.setTypeface(Typeface.DEFAULT_BOLD)
         return view
 
-    def fg_card(self, activity, radius=14):
+    def fg_card(self, activity, radius=12):
         bg = GradientDrawable()
         bg.setColor(FG_CARD)
         bg.setCornerRadius(float(self.dp(radius)))
@@ -946,20 +948,24 @@ class LocalNftShowcasePlugin(BasePlugin):
         view.setPadding(self.dp(16), self.dp(14), self.dp(16), self.dp(14))
         return view
 
-    def fg_root(self, activity, title):
+    def fg_root(self, activity, title, subtitle=None):
         scroll = ScrollView(activity)
         scroll.setBackgroundColor(FG_BG)
         column = LinearLayout(activity)
         column.setOrientation(LinearLayout.VERTICAL)
-        column.setPadding(self.dp(16), self.dp(18), self.dp(16), self.dp(20))
+        column.setPadding(self.dp(18), self.dp(22), self.dp(18), self.dp(22))
         scroll.addView(column)
-        diamond = self.fg_text(activity, "\u2666", 34, FG_ACCENT, bold=True)
+        diamond = self.fg_text(activity, "\u2756", 40, FG_ACCENT, bold=True)
         diamond.setGravity(Gravity.CENTER)
         column.addView(diamond)
-        head = self.fg_text(activity, title, 22, FG_TEXT, bold=True)
+        head = self.fg_text(activity, title, 23, FG_TEXT, bold=True)
         head.setGravity(Gravity.CENTER)
-        head.setPadding(0, self.dp(6), 0, self.dp(14))
+        head.setPadding(0, self.dp(10), 0, 0)
         column.addView(head)
+        sub = self.fg_text(activity, subtitle or "fragment.com", 13, FG_SUBTEXT)
+        sub.setGravity(Gravity.CENTER)
+        sub.setPadding(0, self.dp(3), 0, self.dp(18))
+        column.addView(sub)
         return scroll, column
 
     def fg_show(self, activity, root):
@@ -974,14 +980,14 @@ class LocalNftShowcasePlugin(BasePlugin):
             pass
         return sheet
 
-    def fg_button(self, activity, text, on_click, color=FG_ACCENT):
+    def fg_button(self, activity, text, on_click, color=FG_BTN):
         bg = GradientDrawable()
         bg.setColor(color)
-        bg.setCornerRadius(float(self.dp(12)))
-        button = self.fg_text(activity, text, 16, FG_TEXT, bold=True)
+        bg.setCornerRadius(float(self.dp(10)))
+        button = self.fg_text(activity, text, 15, FG_TEXT, bold=True)
         button.setGravity(Gravity.CENTER)
         button.setBackground(bg)
-        button.setPadding(0, self.dp(14), 0, self.dp(14))
+        button.setPadding(0, self.dp(15), 0, self.dp(15))
         button.setOnClickListener(OnClickListener(lambda v: on_click()))
         return button
 
