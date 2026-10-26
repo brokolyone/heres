@@ -11,7 +11,7 @@ __id__ = "local_nft_showcase"
 __name__ = "Local NFT Showcase"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "brokolyone"
-__version__ = "1.8.1"
+__version__ = "1.8.2"
 
 import json
 import random
@@ -28,12 +28,14 @@ from ui.alert import AlertDialogBuilder
 from ui.bulletin import BulletinHelper
 from ui.settings import Divider, Header, Input, Switch, Text
 
+from android.os import Bundle
 from android.text import InputType
 from android.widget import EditText
 from java.util import ArrayList
 from org.telegram.messenger import MessageObject, MessagesStorage, NotificationCenter, UserConfig, Utilities
 from org.telegram.tgnet import ConnectionsManager, SerializedData, TLRPC
 from org.telegram.tgnet.tl import TL_account, TL_stars
+from org.telegram.ui import ChatActivity
 from org.telegram.ui.Stars import StarsController
 
 NANO = 1_000_000_000
@@ -442,7 +444,11 @@ class LocalNftShowcasePlugin(BasePlugin):
             self.forget_listing(invoice.slug)
             self.announce[invoice.slug] = (account, price, ton)
             self.add_slug(invoice.slug)
-            BulletinHelper.show_success(f"NFT «{invoice.slug}» куплен. Переоткрой профиль")
+            if ton:
+                # Purchases for Stars open Saved Messages on their own, ones for TON do not.
+                run_on_ui_thread(lambda: self.open_saved_messages(account, f"NFT «{invoice.slug}» куплен"), 500)
+            else:
+                BulletinHelper.show_success(f"NFT «{invoice.slug}» куплен. Переоткрой профиль")
         else:
             ids = self.regular_gift_ids()
             ids.insert(0, invoice.gift_id)
@@ -519,6 +525,20 @@ class LocalNftShowcasePlugin(BasePlugin):
         updates = TLRPC.TL_updates()
         updates.date = int(time.time())
         return updates, None
+
+    def open_saved_messages(self, account: int, text: str):
+        try:
+            fragment = get_last_fragment()
+            if fragment is None:
+                return
+            args = Bundle()
+            args.putLong("user_id", get_user_config(account).getClientUserId())
+            chat = ChatActivity(args)
+            fragment.presentFragment(chat)
+            run_on_ui_thread(lambda: BulletinHelper.show_success(text, chat), 400)
+        except Exception:
+            self.logger.exception("Could not open Saved Messages")
+            BulletinHelper.show_success(text)
 
     # Cards in Saved Messages for local purchases. They are only in this app's database.
 
