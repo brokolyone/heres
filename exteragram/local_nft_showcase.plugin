@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.35.0"
+__version__ = "1.36.0"
 
 import json
 import random
@@ -166,6 +166,46 @@ class PatchUserHook(MethodHook):
         self.plugin.patch_user(param.args[self.arg_index])
 
 
+def bulletin_delegate(bottom_offset):
+    """Bulletin.Delegate that keeps bulletins bottom_offset px above the screen bottom.
+    Every method is written out: a proxy has no Java default methods to fall back on."""
+    from java import dynamic_proxy
+    from org.telegram.ui.Components import Bulletin
+
+    class _Delegate(dynamic_proxy(Bulletin.Delegate)):
+        def getBottomOffset(self, tag):
+            return bottom_offset
+
+        def bottomOffsetAnimated(self):
+            return True
+
+        def getLeftPadding(self):
+            return 0
+
+        def getRightPadding(self):
+            return 0
+
+        def getTopOffset(self, tag):
+            return 0
+
+        def clipWithGradient(self, tag):
+            return False
+
+        def onBottomOffsetChange(self, offset):
+            pass
+
+        def onShow(self, bulletin):
+            pass
+
+        def onHide(self, bulletin):
+            pass
+
+        def allowLayoutChanges(self):
+            return True
+
+    return _Delegate()
+
+
 class ErrorGateHook(MethodHook):
     """BulletinFactory.showForError / makeForError: while one runs, the error bulletin it
     builds is marked, and BulletinShowHook keeps it off the screen."""
@@ -189,6 +229,7 @@ class BulletinShowHook(MethodHook):
 
     def before_hooked_method(self, param):
         if not self.plugin.get_setting("hide_errors", True):
+            self.plugin.lift_profile_bulletins()
             return
         bulletin = param.thisObject
         muted = self.plugin.error_depth > 0
@@ -199,6 +240,8 @@ class BulletinShowHook(MethodHook):
                 break
         if muted:
             param.setResult(bulletin)
+            return
+        self.plugin.lift_profile_bulletins()
 
 
 class ProcessErrorHook(MethodHook):
@@ -673,6 +716,21 @@ class LocalNftShowcasePlugin(BasePlugin):
         connections_class = (connections or ConnectionsManager.getInstance(0)).getClass()
         if not self.hook_all_methods(connections_class, "sendRequest", SendRequestHook(self)):
             self.logger.error("ConnectionsManager.sendRequest not found, local purchases are off")
+
+    def lift_profile_bulletins(self):
+        """exteraGram's floating tab bar covers bulletins on the profile ("Скопировано в буфер
+        обмена" sits behind Чаты/Контакты): give the profile a delegate that lifts them above it."""
+        try:
+            fragment = get_last_fragment()
+            if fragment is None or fragment.getClass().getSimpleName() != "ProfileActivity":
+                return
+            if fragment.getBulletinDelegate() is not None:
+                return
+            if getattr(self, "profile_bulletin_delegate", None) is None:
+                self.profile_bulletin_delegate = bulletin_delegate(AndroidUtilities.dp(84))
+            fragment.setBulletinDelegate(self.profile_bulletin_delegate)
+        except Exception:
+            self.logger.exception("Could not lift profile bulletins")
 
     def install_error_hooks(self, loader):
         factory = loader.loadClass("org.telegram.ui.Components.BulletinFactory")
@@ -5117,11 +5175,12 @@ class LocalNftShowcasePlugin(BasePlugin):
             choice = primary[0]
             if self.real_username.get(user.id) is None:
                 self.real_username[user.id] = user.username or ""
-            user.username = choice
-            # The chosen one should not also repeat in the "also" list.
-            for i in reversed(range(user.usernames.size())):
-                if user.usernames.get(i).username.lower() == choice.lower():
-                    user.usernames.remove(jint(i))
+            # Keep the chosen one in the list as a collectible (not editable): tapping the main
+            # username then opens Telegram's own Fragment sheet. The profile leaves it out of
+            # the "also" list by exact name, so user.username takes the entry's spelling.
+            entry = next((user.usernames.get(i) for i in range(user.usernames.size())
+                          if user.usernames.get(i).username.lower() == choice.lower()), None)
+            user.username = entry.username if entry is not None else choice
         elif user.id in self.real_username:
             user.username = self.real_username[user.id]
 
