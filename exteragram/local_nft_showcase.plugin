@@ -10,8 +10,8 @@ gifts and set emoji statuses. Those statuses are also kept only on your device.
 __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
-__author__ = "wlyffi · @vvoices"
-__version__ = "1.18.0"
+__author__ = "wlyffi · @vvooices"
+__version__ = "1.18.1"
 
 import json
 import random
