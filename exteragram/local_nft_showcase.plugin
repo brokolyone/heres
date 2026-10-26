@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.28.0"
+__version__ = "1.29.0"
 
 import json
 import random
@@ -38,12 +38,13 @@ from android.util import TypedValue
 from android.view import Gravity
 from android.widget import EditText, LinearLayout, ScrollView, TextView
 from java import jint
+from java.lang import Integer
 from java.util import ArrayList
 from org.telegram.messenger import AndroidUtilities, MessageObject, MessagesStorage, NotificationCenter, UserConfig, Utilities
 from org.telegram.tgnet import ConnectionsManager, SerializedData, TLRPC
 from java.io import BufferedReader, InputStreamReader
 from java.net import URL
-from org.telegram.tgnet.tl import TL_account, TL_fragment, TL_stars
+from org.telegram.tgnet.tl import TL_account, TL_fragment, TL_stars, TL_update
 from org.telegram.ui import ChatActivity
 from org.telegram.ui.ActionBar import BottomSheet
 from org.telegram.ui.Stars import StarsController
@@ -82,6 +83,7 @@ FLAG_MESSAGE = 4  # SavedStarGift.flags
 FLAG_UNSAVED = 32  # SavedStarGift.flags
 FLAG_CAN_UPGRADE = 1024  # SavedStarGift.flags
 FLAG_VALUE = 256  # StarGiftUnique.flags: value_amount / value_currency
+FLAG_COLLECTIONS = 1 << 15  # SavedStarGift.flags: collection_id
 CURRENCIES = [("EUR", "€", "евро"), ("USD", "$", "доллары"), ("RUB", "₽", "рубли")]
 LOCAL_SAVED_ID_BASE = 3_000_000_000  # unique saved ids so pinned state survives a reload
 FLAG_USERNAMES = 1  # User.flags2
@@ -337,6 +339,23 @@ class MarketFillHook(MethodHook):
             self.plugin.hide_resale_now()
 
 
+class FakeUpdatesHook(MethodHook):
+    """MessagesController.processUpdates: the updates made for a local upgrade only feed the
+    gift screen's upgrade animation and must never reach the chats."""
+
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    @hook_filters(HookFilter.ArgumentIsInstanceOf(0, TLRPC.TL_updatesCombined().getClass()))
+    def before_hooked_method(self, param):
+        updates = param.args[0]
+        for i, fake in enumerate(self.plugin.fake_updates):
+            if fake.equals(updates):
+                del self.plugin.fake_updates[i]
+                param.setResult(None)
+                return
+
+
 class SendRequestHook(MethodHook):
     """ConnectionsManager.sendRequest(...): every gift purchase ends with payments.sendStarsForm,
     whichever screen started it, so local purchases are answered here without the server."""
@@ -352,6 +371,9 @@ class SendRequestHook(MethodHook):
         HookFilter.ArgumentIsInstanceOf(0, TL_stars.saveStarGift().getClass()),
         HookFilter.ArgumentIsInstanceOf(0, TLRPC.TL_payments_getPaymentForm().getClass()),
         HookFilter.ArgumentIsInstanceOf(0, TL_stars.upgradeStarGift().getClass()),
+        HookFilter.ArgumentIsInstanceOf(0, TL_stars.createStarGiftCollection().getClass()),
+        HookFilter.ArgumentIsInstanceOf(0, TL_stars.updateStarGiftCollection().getClass()),
+        HookFilter.ArgumentIsInstanceOf(0, TL_stars.deleteStarGiftCollection().getClass()),
     ))
     def before_hooked_method(self, param):
         args = list(param.args)
@@ -370,9 +392,13 @@ class SendRequestHook(MethodHook):
         elif isinstance(args[0], TLRPC.TL_payments_getPaymentForm):
             result = self.plugin.drop_details_form(args[0])
         elif isinstance(args[0], TL_stars.upgradeStarGift):
-            result = self.plugin.upgrade_gift_locally(args[0])
+            result = self.plugin.upgrade_gift_locally(account, args[0])
+        elif isinstance(args[0], (TL_stars.createStarGiftCollection, TL_stars.updateStarGiftCollection,
+                                  TL_stars.deleteStarGiftCollection)):
+            result = self.plugin.collection_request(account, args[0])
         else:
             return
+        self.plugin.trace_request(args[0], result)
         if result is None:
             return  # not ours: let the real request go
         param.setResult(0)
@@ -530,6 +556,9 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.add_hook("getStarsStatus", match_substring=True)
         self.add_hook("getStarsTransactions", match_substring=True)
         self.add_hook("toggleStarGiftsPinnedToTop", match_substring=True)
+        self.add_hook("getStarGiftCollections", match_substring=True)
+        self.add_hook("updateStarGiftCollection", match_substring=True)
+        self.add_hook("createStarGiftCollection", match_substring=True)
         self.tx_pending = defaultdict(deque)
         self.form_prices = {}  # payment form id -> price (stars, or nanoTON)
         self.balance_cache = {}
@@ -537,6 +566,11 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.last_purchase = None  # (slug or gift id, time)
         self.local_msg_ids = {}  # fake SavedStarGift.msg_id -> slug
         self.local_regular_msg = {}  # fake msg_id -> catalog gift id (for local upgrade)
+        self.local_saved_ids = {}  # fake SavedStarGift.saved_id -> local key (slug or "r:<gift id>")
+        self.previews = {}  # gift id -> (models, backdrops, patterns) for an instant local upgrade
+        self.fake_updates = []  # updates objects kept away from MessagesController
+        self.pending_create = deque()  # local keys for collections being created
+        self.collection_pending = defaultdict(deque)  # own-profile flags for collection requests
         self.announce = {}  # slug or gift id -> account: post a card in Saved Messages once loaded
         self.own_ids = set()
         self.added_usernames = set()
@@ -573,6 +607,11 @@ class LocalNftShowcasePlugin(BasePlugin):
             self.install_market_hooks(stars.getClassLoader())
         except Exception:
             self.logger.exception("NFT constructor market hooks failed")
+        method = find_method(controller, "processUpdates", 2)
+        if method is not None:
+            self.hook_method(method, FakeUpdatesHook(self))
+        else:
+            self.logger.error("processUpdates not found, the upgrade animation is off")
         connections = get_private_field(get_messages_controller(), "connectionsManager")
         connections_class = (connections or ConnectionsManager.getInstance(0)).getClass()
         if not self.hook_all_methods(connections_class, "sendRequest", SendRequestHook(self)):
@@ -827,11 +866,8 @@ class LocalNftShowcasePlugin(BasePlugin):
             gift_id = self.regular_gift_id_from_input(invoice.stargift)
             if gift_id is None:
                 return None
-            self.do_local_upgrade(gift_id)
-            updates = TLRPC.TL_updates()
-            updates.date = int(time.time())
             response = TLRPC.TL_payments_paymentResult()
-            response.updates = updates
+            response.updates = self.local_upgrade_result(account, gift_id)
             return response, None
         if not self.get_setting("local_balance", True):
             return None
@@ -996,8 +1032,10 @@ class LocalNftShowcasePlugin(BasePlugin):
             if self.input_to_slug(invoice.stargift) is None:
                 return None
         elif isinstance(invoice, TLRPC.TL_inputInvoiceStarGiftUpgrade):
-            if self.regular_gift_id_from_input(invoice.stargift) is None:
+            gift_id = self.regular_gift_id_from_input(invoice.stargift)
+            if gift_id is None:
                 return None
+            self.prefetch_preview(gift_id)
         else:
             return None
         form = TLRPC.TL_payments_paymentFormStarGift()
@@ -1037,12 +1075,29 @@ class LocalNftShowcasePlugin(BasePlugin):
         except ValueError:
             return {}
 
-    def input_to_slug(self, entry):
+    def local_key(self, entry):
+        """The local gift an InputSavedStarGift points at: its slug, "r:<gift id>" for a
+        non-upgraded one, or None when it is a real gift."""
         if isinstance(entry, TL_stars.TL_inputSavedStarGiftSlug):
-            return entry.slug if entry.slug in self.slugs else None
+            return entry.slug if entry.slug in self.all_slugs() else None
         if isinstance(entry, TL_stars.TL_inputSavedStarGiftUser):
-            return self.local_msg_ids.get(entry.msg_id)
+            if entry.msg_id in self.local_msg_ids:
+                return self.local_msg_ids[entry.msg_id]
+            if entry.msg_id in self.local_regular_msg:
+                return f"r:{self.local_regular_msg[entry.msg_id]}"
+            if entry.msg_id >= REGULAR_MSG_BASE:  # list not loaded since a plugin reload
+                regular = self.loaded_regular_gifts()
+                index = entry.msg_id - REGULAR_MSG_BASE
+                if 0 <= index < len(regular):
+                    return f"r:{regular[index].id}"
+            return None
+        if isinstance(entry, TL_stars.TL_inputSavedStarGiftChat):
+            return self.local_saved_ids.get(entry.saved_id)
         return None
+
+    def input_to_slug(self, entry):
+        key = self.local_key(entry)
+        return key if key and not key.startswith("r:") else None
 
     def on_toggle_pinned(self, account: int, request) -> HookResult:
         if not self.is_own_peer(account, getattr(request, "peer", None)):
@@ -1059,7 +1114,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         if len(keep) == lst.size():
             return HookResult()  # no local gifts in this request
         pmap = self.get_pinned_map()
-        for slug in self.slugs:
+        for slug in self.all_slugs():
             pmap[slug] = slug in pinned
         self.set_setting("pinned_slugs", json.dumps(pmap))
         new_list = ArrayList()
@@ -2342,12 +2397,216 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.custom[gift.slug] = gift
         return True
 
+    # ----- Gift collections: local gifts are kept in collections on this device -----
+
+    def get_collections(self) -> dict:
+        """collection id (str) -> local keys in order: slugs, "r:<gift id>" for non-upgraded."""
+        try:
+            return json.loads(self.get_setting("local_collections", "") or "{}")
+        except ValueError:
+            return {}
+
+    def save_collections(self, data: dict):
+        self.set_setting("local_collections", json.dumps({k: v for k, v in data.items() if v}))
+
+    def rename_collection_key(self, old, new):
+        data = self.get_collections()
+        for keys in data.values():
+            if old in keys:
+                keys[keys.index(old)] = new
+        self.save_collections(data)
+
+    def saved_key(self, saved):
+        if saved.saved_id in self.local_saved_ids:
+            return self.local_saved_ids[saved.saved_id]
+        return getattr(saved.gift, "slug", None)
+
+    def apply_collections(self, saved, key):
+        ids = [int(cid) for cid, keys in self.get_collections().items() if key in keys]
+        if ids:
+            saved.collection_id = ArrayList()
+            for cid in ids:
+                saved.collection_id.add(Integer(cid))
+            saved.flags |= FLAG_COLLECTIONS
+
+    def split_local(self, lst):
+        """Takes local gifts out of a Java list of InputSavedStarGift, returns their keys."""
+        keys = []
+        for i in reversed(range(lst.size())):
+            key = self.local_key(lst.get(i))
+            if key is not None:
+                keys.insert(0, key)
+                lst.remove(jint(i))
+        return keys
+
+    def collection_request(self, account, request):
+        """The server rejects local gifts, so they are taken out of collection requests and
+        kept here; the real gifts in the same request still go to the server."""
+        if not self.is_own_peer(account, request.peer):
+            return None
+        if isinstance(request, TL_stars.deleteStarGiftCollection):
+            data = self.get_collections()
+            data.pop(str(request.collection_id), None)
+            self.save_collections(data)
+            return None
+        if isinstance(request, TL_stars.createStarGiftCollection):
+            self.pending_create.append(self.split_local(request.stargift))
+            return None
+        data = self.get_collections()
+        members = data.setdefault(str(request.collection_id), [])
+        if request.flags & 2:
+            for key in self.split_local(request.delete_stargift):
+                if key in members:
+                    members.remove(key)
+            if request.delete_stargift.size() == 0:
+                request.flags &= ~2
+        if request.flags & 4:
+            for key in self.split_local(request.add_stargift):
+                if key not in members:
+                    members.insert(0, key)
+            if request.add_stargift.size() == 0:
+                request.flags &= ~4
+        if request.flags & 8:
+            order = self.split_local(request.order)
+            members.sort(key=lambda k: order.index(k) if k in order else len(order))
+            if request.order.size() == 0:
+                request.flags &= ~8
+        self.save_collections(data)
+        return None
+
+    def patch_collections(self, response) -> bool:
+        """Adds local gifts to the counts (and icon) of collections the server returns."""
+        if isinstance(response, TL_stars.TL_starGiftCollections):
+            items = jlist(response.collections)
+        elif isinstance(response, TL_stars.TL_starGiftCollection):
+            items = [response]
+            if self.pending_create and response.collection_id not in [int(c) for c in self.get_collections()]:
+                keys = self.pending_create.popleft()
+                if keys:
+                    data = self.get_collections()
+                    data[str(response.collection_id)] = keys
+                    self.save_collections(data)
+        else:
+            return False
+        data = self.get_collections()
+        changed = False
+        for collection in items:
+            members = [k for k in data.get(str(collection.collection_id), []) if self.key_gift(k) is not None]
+            if not members:
+                continue
+            collection.gifts_count += len(members)
+            if collection.icon is None:
+                document = self.key_gift(members[0]).getDocument()
+                if document is not None:
+                    collection.icon = document
+                    collection.flags |= 1
+            changed = True
+        return changed
+
+    def key_gift(self, key):
+        if key.startswith("r:"):
+            gift_id = int(key[2:])
+            return self.catalog.get(gift_id) if gift_id in self.regular_gift_ids() else None
+        return self.gift_lookup(key)
+
+    def trace_request(self, request, result):
+        """Logs the gift requests the plugin looks at, to find what fails on a device."""
+        try:
+            invoice = getattr(request, "invoice", None)
+            target = getattr(invoice, "stargift", None) if invoice is not None else getattr(request, "stargift", None)
+            ident = ""
+            if target is not None and not hasattr(target, "size"):
+                ident = f" msg={getattr(target, 'msg_id', '')} saved={getattr(target, 'saved_id', '')}"
+            kind = invoice.getClass().getSimpleName() if invoice is not None else ""
+            where = "server" if result is None else "local"
+            write_log(f"req {request.getClass().getSimpleName()} {kind}{ident} -> {where}")
+        except Exception:
+            pass
+
     # ----- Local upgrade of a non-upgraded gift -----
 
     def regular_gift_id_from_input(self, stargift):
-        if isinstance(stargift, TL_stars.TL_inputSavedStarGiftUser):
-            return self.local_regular_msg.get(stargift.msg_id)
-        return None
+        key = self.local_key(stargift)
+        return int(key[2:]) if key and key.startswith("r:") else None
+
+    def prefetch_preview(self, gift_id):
+        """Loads upgrade samples while the upgrade screen is open, so pressing the button
+        can answer at once with the new gift and Telegram plays its own upgrade animation."""
+        if gift_id in self.previews:
+            return
+        req = TL_stars.getStarGiftUpgradePreview()
+        req.gift_id = gift_id
+
+        def on_response(response, error):
+            attrs = jlist(getattr(response, "sample_attributes", None))
+            models = [a for a in attrs if isinstance(a, TL_stars.starGiftAttributeModel)]
+            backs = [a for a in attrs if isinstance(a, TL_stars.starGiftAttributeBackdrop)]
+            pats = [a for a in attrs if isinstance(a, TL_stars.starGiftAttributePattern)]
+            if models and backs:
+                self.previews[gift_id] = (models, backs, pats)
+
+        send_request(req, on_response)
+
+    def upgrade_now(self, gift_id):
+        """Builds and stores the upgraded gift from cached samples, or None if not loaded yet."""
+        samples = self.previews.get(gift_id)
+        if samples is None:
+            return None
+        models, backs, pats = samples
+        collection = self.catalog.get(gift_id)
+        gift = self.assemble_unique(gift_id, collection.title if collection is not None else "Gift",
+                                    random.choice(models), random.choice(backs),
+                                    random.choice(pats) if pats else None)
+        if not self.store_custom(gift):
+            return None
+        self.finish_regular_upgrade(gift_id, gift)
+        return gift
+
+    def finish_regular_upgrade(self, gift_id, gift):
+        ids = self.regular_gift_ids()
+        if gift_id in ids:
+            ids.remove(gift_id)  # one copy: the same gift can be owned twice
+        self.set_setting("regular_gifts", ",".join(str(i) for i in ids))
+        self.rename_collection_key(f"r:{gift_id}", gift.slug)
+
+    def upgrade_updates(self, account, gift):
+        """Updates the gift screen reads after an upgrade: a service message with the new
+        unique gift. It drives the native upgrade animation and is kept out of the chats."""
+        me = TLRPC.TL_peerUser()
+        me.user_id = get_user_config(account).getClientUserId()
+        action = TLRPC.TL_messageActionStarGiftUnique()
+        action.upgrade = True
+        action.saved = True
+        action.gift = gift
+        message = TLRPC.TL_messageService()
+        message.id = LOCAL_MSG_ID_BASE + 400000 + len(self.custom)
+        message.from_id = me
+        message.peer_id = me
+        message.dialog_id = me.user_id
+        message.date = int(time.time())
+        message.out = True
+        message.action = action
+        self.local_msg_ids[message.id] = gift.slug
+        update = TL_update.TL_updateNewMessage()
+        update.message = message
+        updates = TLRPC.TL_updatesCombined()
+        updates.updates.add(update)
+        updates.date = message.date
+        self.fake_updates.append(updates)
+        return updates
+
+    def local_upgrade_result(self, account, gift_id):
+        """Updates for a local upgrade: with the new gift when samples are ready, else empty
+        (the screen closes and the gift is built in the background as before)."""
+        gift = self.upgrade_now(gift_id)
+        if gift is not None:
+            write_log(f"upgrade: instant {gift.slug}")
+            return self.upgrade_updates(account, gift)
+        write_log("upgrade: samples not ready, building in background")
+        self.do_local_upgrade(gift_id)
+        updates = TLRPC.TL_updates()
+        updates.date = int(time.time())
+        return updates
 
     def do_local_upgrade(self, gift_id):
         collection = self.catalog.get(gift_id)
@@ -2366,21 +2625,17 @@ class LocalNftShowcasePlugin(BasePlugin):
             gift = self.assemble_unique(gift_id, title, random.choice(models),
                                         random.choice(backs), random.choice(pats) if pats else None)
             if self.store_custom(gift):
-                ids = [i for i in self.regular_gift_ids() if i != gift_id]
-                self.set_setting("regular_gifts", ",".join(str(i) for i in ids))
+                self.finish_regular_upgrade(gift_id, gift)
                 run_on_ui_thread(lambda: BulletinHelper.show_success(
                     f"Подарок улучшен в «{gift.title} #{gift.num}». Переоткрой профиль"))
 
         send_request(req, on_response)
 
-    def upgrade_gift_locally(self, request):
+    def upgrade_gift_locally(self, account, request):
         gift_id = self.regular_gift_id_from_input(request.stargift)
         if gift_id is None:
             return None
-        self.do_local_upgrade(gift_id)
-        updates = TLRPC.TL_updates()
-        updates.date = int(time.time())
-        return updates, None
+        return self.local_upgrade_result(account, gift_id), None
 
     def remove_custom_gift(self, slug: str):
         store = self.get_custom_store()
@@ -2495,12 +2750,10 @@ class LocalNftShowcasePlugin(BasePlugin):
         if "toggleStarGiftsPinnedToTop" in request_name:
             return self.on_toggle_pinned(account, request)
         if "getSavedStarGifts" in request_name:
-            own_first_page = (
-                self.is_own_peer(account, request.peer)
-                and not request.offset
-                and (request.flags & 64) == 0  # not a collection
-            )
+            own_first_page = self.is_own_peer(account, request.peer) and not request.offset
             self.pending[account].append(request if own_first_page else None)
+        elif "StarGiftCollection" in request_name:
+            self.collection_pending[account].append(self.is_own_peer(account, getattr(request, "peer", None)))
         elif "getStarsStatus" in request_name or "getStarsTransactions" in request_name:
             self.tx_pending[account].append({
                 "ton": bool(getattr(request, "ton", False)),
@@ -2543,11 +2796,21 @@ class LocalNftShowcasePlugin(BasePlugin):
                     self.make_saved_regular_gift(account, gift, i)
                     for i, gift in enumerate(self.loaded_regular_gifts())
                 ]
+            if request.flags & 64:  # a collection: only the local gifts put into it
+                members = self.get_collections().get(str(request.collection_id), [])
+                saved = [g for g in saved if self.saved_key(g) in members]
+                saved.sort(key=lambda g: members.index(self.saved_key(g)))
             if saved:
                 for i, gift in enumerate(saved):
                     response.gifts.add(i, gift)
                 response.count += len(saved)
                 return HookResult(strategy=HookStrategy.MODIFY, response=response)
+        elif "StarGiftCollection" in request_name:
+            queue = self.collection_pending[account]
+            own = queue.popleft() if queue else False
+            if own and not error and response is not None:
+                if self.patch_collections(response):
+                    return HookResult(strategy=HookStrategy.MODIFY, response=response)
         elif "getStarsStatus" in request_name or "getStarsTransactions" in request_name:
             meta = self.tx_pending[account].popleft() if self.tx_pending[account] else None
             # Inject only into the paged transaction list, never the balance status,
@@ -2707,6 +2970,8 @@ class LocalNftShowcasePlugin(BasePlugin):
         if saved.msg_id:
             saved.flags |= FLAG_MSG_ID
             self.local_msg_ids[saved.msg_id] = gift.slug
+        self.local_saved_ids[saved.saved_id] = gift.slug
+        self.apply_collections(saved, gift.slug)
         self.apply_meta(saved, gift.slug)
         return saved
 
@@ -2725,4 +2990,6 @@ class LocalNftShowcasePlugin(BasePlugin):
         saved.msg_id = REGULAR_MSG_BASE + index
         saved.flags |= FLAG_MSG_ID
         self.local_regular_msg[saved.msg_id] = gift.id
+        self.local_saved_ids[saved.saved_id] = f"r:{gift.id}"
+        self.apply_collections(saved, f"r:{gift.id}")
         return saved
