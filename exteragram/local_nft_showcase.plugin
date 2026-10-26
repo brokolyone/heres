@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvoices"
-__version__ = "1.15.0"
+__version__ = "1.15.1"
 
 import json
 import random
@@ -572,11 +572,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             self.announce[invoice.slug] = (account, price, ton)
             self.record_purchase(price, ton, slug=invoice.slug)
             self.add_slug(invoice.slug)
-            if ton:
-                # Purchases for Stars open Saved Messages on their own, ones for TON do not.
-                run_on_ui_thread(lambda: self.open_saved_messages(account, f"NFT «{invoice.slug}» куплен"), 500)
-            else:
-                BulletinHelper.show_success(f"NFT «{invoice.slug}» куплен. Переоткрой профиль")
+            run_on_ui_thread(lambda: self.open_saved_messages(account, f"NFT «{invoice.slug}» куплен"), 1000)
         else:
             ids = self.regular_gift_ids()
             ids.insert(0, invoice.gift_id)
@@ -587,7 +583,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             else:
                 self.announce[invoice.gift_id] = (account, price, ton)
                 self.load_catalog()
-            BulletinHelper.show_success("Подарок куплен. Переоткрой профиль")
+            run_on_ui_thread(lambda: self.open_saved_messages(account, "Подарок куплен"), 1000)
 
         updates = TLRPC.TL_updates()
         updates.date = int(time.time())
