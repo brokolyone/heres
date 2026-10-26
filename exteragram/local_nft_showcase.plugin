@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvoices"
-__version__ = "1.11.3"
+__version__ = "1.12.0"
 
 import json
 import random
@@ -31,10 +31,10 @@ from ui.settings import Divider, Header, Input, Selector, Switch, Text
 
 from android.os import Bundle
 from android.text import InputType
-from android.widget import EditText
+from android.widget import EditText, LinearLayout
 from java import jint
 from java.util import ArrayList
-from org.telegram.messenger import MessageObject, MessagesStorage, NotificationCenter, UserConfig, Utilities
+from org.telegram.messenger import AndroidUtilities, MessageObject, MessagesStorage, NotificationCenter, UserConfig, Utilities
 from org.telegram.tgnet import ConnectionsManager, SerializedData, TLRPC
 from java.io import BufferedReader, InputStreamReader
 from java.net import URL
@@ -223,6 +223,15 @@ def parse_phone(text: str) -> str:
     return digits if digits.startswith("888") and len(digits) >= 7 else ""
 
 
+def format_phone(digits: str) -> str:
+    """'88801234567' -> '+888 0123 4567'."""
+    if not digits:
+        return ""
+    rest = digits[3:]
+    groups = [digits[:3]] + [rest[i:i + 4] for i in range(0, len(rest), 4)]
+    return "+" + " ".join(groups)
+
+
 def parse_prices(text: str) -> dict:
     """'durov=7000, telegram=15k, number=3000' -> {'durov': 7000.0, 'telegram': 15000.0, 'number': 3000.0}"""
     prices = {}
@@ -294,6 +303,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.catalog = {}  # gift id -> regular gift from the gift catalog
         self.install_java_hooks()
         self.load_gifts(self.get_setting("slug", ""))
+        self.migrate_fragment_settings()
         self.load_catalog()
 
     def install_java_hooks(self):
@@ -395,36 +405,17 @@ class LocalNftShowcasePlugin(BasePlugin):
                          "в твой локальный список. Купить в подарок другому человеку "
                          "локально нельзя: такая покупка идёт как обычно, с настоящими звёздами."),
             Header(text="Fragment"),
-            Input(
-                key="fragment_usernames",
-                text="Коллекционные юзернеймы",
-                default="",
-                subtext="Через запятую: @durov, @telegram",
+            Text(
+                text="Мои юзернеймы",
+                subtext=self.usernames_subtext(),
                 icon="msg_mention",
-                on_change=lambda _: self.refresh_own_users(),
+                on_click=lambda _: self.manage_usernames(),
             ),
-            Input(
-                key="primary_username",
-                text="Основной юзернейм",
-                default="",
-                subtext="Какой показывать под именем. Пусто — настоящий",
-                icon="msg_openprofile",
-                on_change=lambda _: self.refresh_own_users(),
-            ),
-            Input(
-                key="anon_number",
-                text="Анонимный номер",
-                default="",
-                subtext="Например +888 0123 4567. Пусто — настоящий номер",
+            Text(
+                text="Анонимный номер +888",
+                subtext=self.number_subtext(),
                 icon="msg_calls",
-                on_change=lambda _: self.refresh_own_users(),
-            ),
-            Input(
-                key="fragment_prices",
-                text="Цены покупки (GRAM)",
-                default="",
-                subtext="durov=7000, telegram=15k, number=3000. Без цены — 1000",
-                icon="msg_ton",
+                on_click=lambda _: self.manage_number(),
             ),
             Selector(
                 key="fiat_currency",
@@ -641,6 +632,263 @@ class LocalNftShowcasePlugin(BasePlugin):
         updates.date = int(time.time())
         return updates, None
 
+    # Fragment data model: usernames as a JSON list of {name, price}, the +888
+    # number and its price, each managed from the settings UI.
+
+    def get_usernames(self) -> list:
+        try:
+            data = json.loads(self.get_setting("usernames_json", "") or "[]")
+        except ValueError:
+            data = []
+        return [d for d in data if isinstance(d, dict) and d.get("name")]
+
+    def save_usernames(self, items: list):
+        self.set_setting("usernames_json", json.dumps(items))
+        self.refresh_own_users()
+
+    def username_names(self) -> List[str]:
+        return [d["name"] for d in self.get_usernames()]
+
+    def price_of(self, name: str) -> float:
+        for d in self.get_usernames():
+            if d["name"].lower() == name.lower():
+                return float(d.get("price") or DEFAULT_PRICE)
+        return float(DEFAULT_PRICE)
+
+    def number_price(self) -> float:
+        try:
+            return float(self.get_setting("number_price", "") or DEFAULT_PRICE)
+        except ValueError:
+            return float(DEFAULT_PRICE)
+
+    def migrate_fragment_settings(self):
+        if self.get_setting("usernames_json", None) is not None:
+            return  # already on the new model
+        old = parse_usernames(self.get_setting("fragment_usernames", ""))
+        if not old:
+            return
+        prices = parse_prices(self.get_setting("fragment_prices", ""))
+        items = [{"name": n, "price": prices.get(n.lower(), DEFAULT_PRICE)} for n in old]
+        self.set_setting("usernames_json", json.dumps(items))
+        if "number" in prices:
+            self.set_setting("number_price", str(prices["number"]))
+
+    # Subtitles shown on the two entry rows.
+
+    def usernames_subtext(self) -> str:
+        items = self.get_usernames()
+        if not items:
+            return "Нет. Нажми, чтобы добавить"
+        primary = (self.get_setting("primary_username", "") or "").lower()
+        names = ["@" + d["name"] + (" ⭐" if d["name"].lower() == primary else "") for d in items]
+        return ", ".join(names)
+
+    def number_subtext(self) -> str:
+        number = parse_phone(self.get_setting("anon_number", ""))
+        return format_phone(number) if number else "Не задан. Нажми, чтобы задать"
+
+    # Management screens, built from AlertDialogs so they refresh after every change.
+
+    def price_label(self, gram: float) -> str:
+        fiat = FIAT[self.get_setting("fiat_currency", 0)]
+        symbol = {"USD": "$", "EUR": "€", "RUB": "₽"}[fiat]
+        fiat_value = gram * self.ton_rate(fiat)
+        return f"{int(gram)} GRAM (~{symbol}{fiat_value:,.0f})"
+
+    def manage_usernames(self):
+        activity = self.get_activity()
+        if activity is None:
+            return
+        items = self.get_usernames()
+        primary = (self.get_setting("primary_username", "") or "").lower()
+        rows = []
+        for d in items:
+            star = " ⭐ основной" if d["name"].lower() == primary else ""
+            rows.append(f"@{d['name']}  ·  {self.price_label(float(d.get('price') or DEFAULT_PRICE))}{star}")
+        rows.append("➕ Добавить юзернейм")
+
+        builder = AlertDialogBuilder(activity)
+        builder.set_title("Мои юзернеймы")
+
+        def on_click(bld, which):
+            bld.dismiss()
+            if which == len(items):
+                self.add_username_dialog()
+            else:
+                self.username_actions(items[which]["name"])
+
+        builder.set_items(rows, on_click)
+        builder.set_negative_button("Закрыть", lambda bld, _: bld.dismiss())
+        builder.show()
+
+    def username_actions(self, name: str):
+        activity = self.get_activity()
+        if activity is None:
+            return
+        is_primary = (self.get_setting("primary_username", "") or "").lower() == name.lower()
+        actions = ["Изменить цену", "Убрать основной" if is_primary else "Сделать основным", "Удалить"]
+
+        builder = AlertDialogBuilder(activity)
+        builder.set_title(f"@{name}")
+
+        def on_click(bld, which):
+            bld.dismiss()
+            if which == 0:
+                self.price_dialog(self.price_of(name), lambda value: self.set_username_price(name, value))
+            elif which == 1:
+                self.set_setting("primary_username", "" if is_primary else name)
+                self.refresh_own_users()
+                self.manage_usernames()
+            else:
+                self.save_usernames([d for d in self.get_usernames() if d["name"].lower() != name.lower()])
+                if is_primary:
+                    self.set_setting("primary_username", "")
+                self.manage_usernames()
+
+        builder.set_items(actions, on_click)
+        builder.set_negative_button("Назад", lambda bld, _: (bld.dismiss(), self.manage_usernames()))
+        builder.show()
+
+    def set_username_price(self, name: str, price: float):
+        items = self.get_usernames()
+        for d in items:
+            if d["name"].lower() == name.lower():
+                d["price"] = price
+        self.save_usernames(items)
+        self.manage_usernames()
+
+    def add_username_dialog(self):
+        activity = self.get_activity()
+        if activity is None:
+            return
+        layout = LinearLayout(activity)
+        layout.setOrientation(LinearLayout.VERTICAL)
+        pad = AndroidUtilities.dp(22)
+        layout.setPadding(pad, 0, pad, 0)
+        name_field = EditText(activity)
+        name_field.setHint("Юзернейм, например durov")
+        name_field.setInputType(InputType.TYPE_CLASS_TEXT)
+        price_field = EditText(activity)
+        price_field.setHint("Цена в GRAM, например 7000")
+        price_field.setInputType(InputType.TYPE_CLASS_NUMBER)
+        layout.addView(name_field)
+        layout.addView(price_field)
+
+        builder = AlertDialogBuilder(activity)
+        builder.set_title("Новый юзернейм")
+        builder.set_view(layout)
+
+        def on_ok(bld, _):
+            names = parse_usernames(str(name_field.getText()))
+            bld.dismiss()
+            if not names:
+                BulletinHelper.show_error("Юзернейм: 4-32 латинских буквы, цифры или _")
+                self.manage_usernames()
+                return
+            name = names[0]
+            try:
+                price = float(str(price_field.getText()).replace(",", ".")) if str(price_field.getText()).strip() else DEFAULT_PRICE
+            except ValueError:
+                price = DEFAULT_PRICE
+            items = [d for d in self.get_usernames() if d["name"].lower() != name.lower()]
+            items.append({"name": name, "price": price})
+            self.save_usernames(items)
+            self.manage_usernames()
+
+        builder.set_positive_button("Добавить", on_ok)
+        builder.set_negative_button("Отмена", lambda bld, _: (bld.dismiss(), self.manage_usernames()))
+        builder.show()
+
+    def price_dialog(self, current: float, on_value):
+        activity = self.get_activity()
+        if activity is None:
+            return
+        field = EditText(activity)
+        field.setInputType(InputType.TYPE_CLASS_NUMBER)
+        field.setHint("Цена в GRAM")
+        field.setText(str(int(current)))
+
+        builder = AlertDialogBuilder(activity)
+        builder.set_title("Цена покупки (GRAM)")
+        builder.set_view(field)
+
+        def on_ok(bld, _):
+            bld.dismiss()
+            try:
+                on_value(float(str(field.getText()).replace(",", ".")))
+            except ValueError:
+                BulletinHelper.show_error("Нужно число")
+
+        builder.set_positive_button("Сохранить", on_ok)
+        builder.set_negative_button("Отмена", lambda bld, _: bld.dismiss())
+        builder.show()
+
+    def manage_number(self):
+        activity = self.get_activity()
+        if activity is None:
+            return
+        number = parse_phone(self.get_setting("anon_number", ""))
+        if number:
+            rows = [f"Номер: {format_phone(number)}", f"Цена: {self.price_label(self.number_price())}",
+                    "Изменить номер", "Изменить цену", "Убрать номер"]
+            offset = 2
+        else:
+            rows = ["Задать номер +888"]
+            offset = 0
+
+        builder = AlertDialogBuilder(activity)
+        builder.set_title("Анонимный номер +888")
+
+        def on_click(bld, which):
+            bld.dismiss()
+            if not number:
+                self.set_number_dialog()
+                return
+            if which == offset:       # change number
+                self.set_number_dialog()
+            elif which == offset + 1:  # change price
+                self.price_dialog(self.number_price(), self.set_number_price)
+            elif which == offset + 2:  # remove
+                self.set_setting("anon_number", "")
+                self.refresh_own_users()
+                BulletinHelper.show_success("Номер убран. Переоткрой профиль")
+
+        builder.set_items(rows, on_click)
+        builder.set_negative_button("Закрыть", lambda bld, _: bld.dismiss())
+        builder.show()
+
+    def set_number_price(self, price: float):
+        self.set_setting("number_price", str(price))
+        self.manage_number()
+
+    def set_number_dialog(self):
+        activity = self.get_activity()
+        if activity is None:
+            return
+        field = EditText(activity)
+        field.setInputType(InputType.TYPE_CLASS_PHONE)
+        field.setHint("+888 0123 4567")
+        field.setText("+" + parse_phone(self.get_setting("anon_number", "")))
+
+        builder = AlertDialogBuilder(activity)
+        builder.set_title("Анонимный номер +888")
+        builder.set_view(field)
+
+        def on_ok(bld, _):
+            bld.dismiss()
+            phone = parse_phone(str(field.getText()))
+            if not phone:
+                BulletinHelper.show_error("Это не номер +888")
+                return
+            self.set_setting("anon_number", phone)
+            self.refresh_own_users()
+            BulletinHelper.show_success("Номер задан. Переоткрой профиль")
+            self.manage_number()
+
+        builder.set_positive_button("Сохранить", on_ok)
+        builder.set_negative_button("Отмена", lambda bld, _: bld.dismiss())
+        builder.show()
+
     # Fragment: purchase info for the local usernames and +888 number.
 
     def ton_rate(self, fiat: str) -> float:
@@ -668,20 +916,19 @@ class LocalNftShowcasePlugin(BasePlugin):
     def collectible_info(self, request):
         collectible = request.collectible
         if isinstance(collectible, TL_fragment.TL_inputCollectibleUsername):
-            names = {n.lower(): n for n in parse_usernames(self.get_setting("fragment_usernames", ""))}
-            name = names.get((collectible.username or "").lower())
+            name = next((n for n in self.username_names()
+                         if n.lower() == (collectible.username or "").lower()), None)
             if name is None:
                 return None
-            key, url = name.lower(), f"https://fragment.com/username/{name}"
+            key, url, price = name.lower(), f"https://fragment.com/username/{name}", self.price_of(name)
         elif isinstance(collectible, TL_fragment.TL_inputCollectiblePhone):
             phone = parse_phone(self.get_setting("anon_number", ""))
             if not phone or re.sub(r"\D", "", collectible.phone or "") != phone:
                 return None
-            key, url = "number", f"https://fragment.com/number/{phone}"
+            key, url, price = "number", f"https://fragment.com/number/{phone}", self.number_price()
         else:
             return None
 
-        price = parse_prices(self.get_setting("fragment_prices", "")).get(key, DEFAULT_PRICE)
         fiat = FIAT[self.get_setting("fiat_currency", 0)]
         date_key = f"bought_at_{key}"
         bought_at = self.get_setting(date_key, 0)
@@ -1064,7 +1311,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.patch_phone(user)
 
     def patch_usernames(self, user):
-        names = parse_usernames(self.get_setting("fragment_usernames", ""))
+        names = self.username_names()
         if user.usernames is None:
             user.usernames = ArrayList()
         # Drop what we added last time, so removed names go away without a restart.
