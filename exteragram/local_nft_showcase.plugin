@@ -1,0 +1,148 @@
+"""
+Local NFT Showcase: shows any existing collectible gift in YOUR OWN profile,
+only on your own screen. Nothing is sent to Telegram servers and nobody else
+sees it: other people opening your profile see your real gifts.
+"""
+
+__id__ = "local_nft_showcase"
+__name__ = "Local NFT Showcase"
+__description__ = "Локально показывает выбранный NFT-подарок в твоём профиле (видишь только ты)"
+__author__ = "brokolyone"
+__version__ = "1.0.0"
+
+import time
+from collections import defaultdict, deque
+from typing import Any, List
+
+from base_plugin import BasePlugin, HookResult, HookStrategy
+from client_utils import get_user_config, send_request
+from ui.bulletin import BulletinHelper
+from ui.settings import Divider, Header, Input, Switch
+
+from org.telegram.tgnet import TLRPC
+from org.telegram.tgnet.tl import TL_stars
+
+FLAG_OWNER_ID = 1
+FLAG_OWNER_NAME = 2
+FLAG_OWNER_ADDRESS = 4
+FLAG_STARGIFTS_COUNT = 1 << 18  # UserFull.flags2
+
+
+def parse_slug(text: str) -> str:
+    """Accepts 'PlushPepe-1', 't.me/nft/PlushPepe-1' or 'https://t.me/nft/PlushPepe-1'."""
+    text = (text or "").strip()
+    if "/nft/" in text:
+        text = text.split("/nft/", 1)[1]
+    return text.split("?", 1)[0].strip("/ ")
+
+
+class LocalNftShowcasePlugin(BasePlugin):
+    def on_plugin_load(self):
+        self.gift = None
+        # Requests for gift lists are answered in order, so remember for each
+        # account whether the pending ones were for our own profile.
+        self.pending = defaultdict(deque)
+        self.add_hook("getSavedStarGifts", match_substring=True)
+        self.add_hook("TL_users_getFullUser")
+        self.load_gift()
+
+    def create_settings(self) -> List[Any]:
+        return [
+            Header(text="Локальный NFT"),
+            Switch(
+                key="enabled",
+                text="Показывать NFT в профиле",
+                default=True,
+                icon="msg_gift_premium",
+            ),
+            Input(
+                key="slug",
+                text="Ссылка на NFT",
+                default="",
+                subtext="Например t.me/nft/PlushPepe-1",
+                icon="msg_link",
+                on_change=lambda _: self.load_gift(),
+            ),
+            Switch(
+                key="pinned",
+                text="Закрепить у аватарки",
+                default=True,
+                icon="msg_pin",
+            ),
+            Divider(text="Подарок виден только тебе. В Telegram ничего не меняется, "
+                         "другие люди в твоём профиле его не увидят. После смены "
+                         "настроек переоткрой профиль."),
+        ]
+
+    def load_gift(self):
+        self.gift = None
+        slug = parse_slug(self.get_setting("slug", ""))
+        if not slug:
+            return
+        req = TL_stars.getUniqueStarGift()
+        req.slug = slug
+
+        def on_response(response, error):
+            if error or response is None or response.gift is None:
+                text = error.text if error else "пустой ответ"
+                BulletinHelper.show_error(f"NFT «{slug}» не найден: {text}")
+                return
+            self.gift = response.gift
+            BulletinHelper.show_success(f"NFT «{self.gift.title} #{self.gift.num}» загружен")
+
+        send_request(req, on_response)
+
+    def is_active(self) -> bool:
+        return self.get_setting("enabled", True) and self.gift is not None
+
+    def is_own_peer(self, account: int, peer) -> bool:
+        if isinstance(peer, TLRPC.TL_inputPeerSelf):
+            return True
+        if isinstance(peer, TLRPC.TL_inputPeerUser):
+            return peer.user_id == get_user_config(account).getClientUserId()
+        return False
+
+    def pre_request_hook(self, request_name: str, account: int, request: Any) -> HookResult:
+        if "getSavedStarGifts" in request_name:
+            own_first_page = (
+                self.is_own_peer(account, request.peer)
+                and not request.offset
+                and not request.exclude_unique
+                and (request.flags & 64) == 0  # not a collection
+            )
+            self.pending[account].append(own_first_page)
+        return HookResult()
+
+    def post_request_hook(self, request_name: str, account: int, response: Any, error: Any) -> HookResult:
+        if "getSavedStarGifts" in request_name:
+            queue = self.pending[account]
+            own_first_page = queue.popleft() if queue else False
+            if own_first_page and not error and response is not None and self.is_active():
+                response.gifts.add(0, self.make_saved_gift(account))
+                response.count += 1
+                return HookResult(strategy=HookStrategy.MODIFY, response=response)
+        elif request_name == "TL_users_getFullUser":
+            if not error and response is not None and self.is_active():
+                full = response.full_user
+                if full is not None and full.id == get_user_config(account).getClientUserId():
+                    full.stargifts_count += 1
+                    full.flags2 |= FLAG_STARGIFTS_COUNT
+                    return HookResult(strategy=HookStrategy.MODIFY, response=response)
+        return HookResult()
+
+    def make_saved_gift(self, account: int):
+        user_config = get_user_config(account)
+        me = TLRPC.TL_peerUser()
+        me.user_id = user_config.getClientUserId()
+
+        gift = self.gift
+        gift.owner_id = me
+        gift.flags = (gift.flags | FLAG_OWNER_ID) & ~(FLAG_OWNER_NAME | FLAG_OWNER_ADDRESS)
+        gift.owner_name = None
+        gift.owner_address = None
+
+        saved = TL_stars.TL_savedStarGift()
+        saved.gift = gift
+        saved.date = int(time.time())
+        saved.pinned_to_top = self.get_setting("pinned", True)
+        return saved
