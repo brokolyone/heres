@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.32.0"
+__version__ = "1.33.0"
 
 import json
 import random
@@ -1341,6 +1341,11 @@ class LocalNftShowcasePlugin(BasePlugin):
     def dp(self, value):
         return AndroidUtilities.dp(value)
 
+    def fg3_log_error(self, message):
+        """Logs a Fragment-screen failure with its traceback to the plugin log and «Лог winft»."""
+        self.logger.exception(message)
+        write_log(f"fragment: {message}\n{traceback.format_exc()}")
+
     # ===================================================================
     # Fragment (fragment.com) design system: shared core (builder A)
     # ===================================================================
@@ -1556,7 +1561,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             face = Typeface.createFromFile(path)
         except Exception:
             try:
-                self.logger.exception("ProductSans load failed, using the default typeface")
+                self.fg3_log_error("ProductSans load failed, using the default typeface")
             except Exception:
                 pass
             face = None
@@ -1623,7 +1628,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             try:
                 on_click()
             except Exception:
-                self.logger.exception("Fragment click handler failed")
+                self.fg3_log_error("Fragment click handler failed")
         view.setOnClickListener(OnClickListener(handler))
         return view
 
@@ -1770,7 +1775,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         try:
             view.setImageBitmap(self.fg3_icon_bitmap(name, width, height, color))
         except Exception:
-            self.logger.exception("Fragment icon %s failed" % name)
+            self.fg3_log_error("Fragment icon %s failed" % name)
         view.setLayoutParams(LinearLayout.LayoutParams(w, h))
         return view
 
@@ -2134,7 +2139,7 @@ class LocalNftShowcasePlugin(BasePlugin):
                         pass
                 run_on_ui_thread(hide, 2000)
             except Exception:
-                self.logger.exception("Fragment toast failed, using a bulletin")
+                self.fg3_log_error("Fragment toast failed, using a bulletin")
                 BulletinHelper.show_info(text)
         run_on_ui_thread(show)
 
@@ -2174,7 +2179,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         try:
             self.fg3b_build_usernames_sheet()
         except Exception:
-            self.logger.exception("Fragment usernames page failed, using dialogs")
+            self.fg3_log_error("Fragment usernames page failed, using dialogs")
             try:
                 self.active_sheet_dismiss()
             except Exception:
@@ -2190,13 +2195,19 @@ class LocalNftShowcasePlugin(BasePlugin):
         root, column = self.fg3_page(ctx, 0)
         state = {"query": "", "desc": True, "edit": None}
 
-        column.addView(self.fg3b_intro(ctx), LinearLayout.LayoutParams(-1, -2))
+        try:
+            column.addView(self.fg3b_intro(ctx), LinearLayout.LayoutParams(-1, -2))
+        except Exception:
+            self.fg3_log_error("usernames intro failed")
 
-        search, edit = self.fg3b_search_field(ctx, state)
-        state["edit"] = edit
-        lp = LinearLayout.LayoutParams(-1, self.fg3_dp(42))
-        lp.bottomMargin = self.fg3_dp(5)
-        column.addView(search, lp)
+        try:
+            search, edit = self.fg3b_search_field(ctx, state)
+            state["edit"] = edit
+            lp = LinearLayout.LayoutParams(-1, self.fg3_dp(42))
+            lp.bottomMargin = self.fg3_dp(5)
+            column.addView(search, lp)
+        except Exception:
+            self.fg3_log_error("usernames search field failed")
 
         header, title, sort_btn = self.fg3b_section_header(ctx, state)
         column.addView(header, LinearLayout.LayoutParams(-1, -2))
@@ -2245,7 +2256,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         try:
             fn()
         except Exception:
-            self.logger.exception("Fragment usernames page action failed")
+            self.fg3_log_error("Fragment usernames page action failed")
 
     def fg3b_filtered(self, query, desc):
         primary = (self.get_setting("primary_username", "") or "").lower()
@@ -2442,10 +2453,13 @@ class LocalNftShowcasePlugin(BasePlugin):
         btn.setPadding(dp(9), dp(5), dp(9), dp(5))
         self.fg3_pressable(btn, self.FG3B_FIELD, self.FG3B_THEAD, 8)
 
-        sort_icon = self.fg3b_sort_icon(ctx, state["desc"])
-        lp = LinearLayout.LayoutParams(dp(18), dp(18))
-        lp.rightMargin = dp(4)
-        btn.addView(sort_icon, lp)
+        try:
+            sort_icon = self.fg3b_sort_icon(ctx, state["desc"])
+            lp = LinearLayout.LayoutParams(dp(18), dp(18))
+            lp.rightMargin = dp(4)
+            btn.addView(sort_icon, lp)
+        except Exception:
+            self.fg3_log_error("usernames sort icon failed")
         btn.addView(self.fg3_text(ctx, "Price", 13, self.FG3B_WHITE, bold=True, line_height=18))
         caret = self.fg3_icon(ctx, "caret", 11, 18)
         lp = LinearLayout.LayoutParams(dp(11), dp(18))
@@ -2468,7 +2482,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         try:
             btn.getChildAt(0).setImageBitmap(self.fg3b_sort_bitmap(desc))
         except Exception:
-            self.logger.exception("sort icon update failed")
+            self.fg3_log_error("sort icon update failed")
 
     def fg3b_sort_bitmap(self, desc):
         # Fragment sort-desc / sort-asc icon (18x18 viewBox, stroke 1.5, round caps):
@@ -2606,7 +2620,7 @@ class LocalNftShowcasePlugin(BasePlugin):
                 page(name)
                 return
             except Exception:
-                self.logger.exception("fragment_username_page failed, using the actions dialog")
+                self.fg3_log_error("fragment_username_page failed, using the actions dialog")
         self.active_sheet_dismiss()
         self.username_actions(name)
 
@@ -2618,7 +2632,7 @@ class LocalNftShowcasePlugin(BasePlugin):
                 modal()
                 return
             except Exception:
-                self.logger.exception("fg3_add_username_modal failed, using the dialog")
+                self.fg3_log_error("fg3_add_username_modal failed, using the dialog")
         self.active_sheet_dismiss()
         self.add_username_dialog()
 
@@ -2637,7 +2651,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         try:
             self.fg3c_build_page(name)
         except Exception:
-            self.logger.exception("Fragment username page failed, using dialogs")
+            self.fg3_log_error("Fragment username page failed, using dialogs")
             try:
                 self.fg3c_dismiss()
             except Exception:
@@ -2716,7 +2730,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         try:
             self.fragment_usernames_sheet()
         except Exception:
-            self.logger.exception("Fragment usernames sheet failed")
+            self.fg3_log_error("Fragment usernames sheet failed")
             self.manage_usernames_dialog()
 
     def fg3c_toast(self, text):
@@ -2730,7 +2744,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             copy_to_clipboard(text)
             self.fg3c_toast("Скопировано: " + text)
         except Exception:
-            self.logger.exception("copy failed")
+            self.fg3_log_error("copy failed")
 
     def fg3c_date(self, ts, long_form=False):
         # long_form: "18 Nov 2022 at 10:16" (bid card); short: "Jun 2 at 17:33" / "Nov 18, 2022 at 10:16"
@@ -2912,7 +2926,7 @@ class LocalNftShowcasePlugin(BasePlugin):
                 modal(current, on_value)
                 return
             except Exception:
-                self.logger.exception("fg3_price_modal failed")
+                self.fg3_log_error("fg3_price_modal failed")
         self.price_dialog(current, on_value)
 
     def fg3c_confirm(self, title, text, ok_text, on_ok):
@@ -2922,7 +2936,7 @@ class LocalNftShowcasePlugin(BasePlugin):
                 confirm(title, text, ok_text, on_ok, danger=True)
                 return
             except Exception:
-                self.logger.exception("fg3_confirm failed")
+                self.fg3_log_error("fg3_confirm failed")
         ctx = self.get_activity()
         if ctx is None:
             return
@@ -2971,7 +2985,7 @@ class LocalNftShowcasePlugin(BasePlugin):
                 self.fg3d_empty_state(activity, column)
             self.fg3_show(activity, root)
         except Exception:
-            self.logger.exception("Fragment number page failed, using dialogs")
+            self.fg3_log_error("Fragment number page failed, using dialogs")
             self.manage_number_dialog()
 
     # ----- layout pieces -----
@@ -3168,7 +3182,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             copy_to_clipboard(text)
             self.fg3_toast("Copied to clipboard.")
         except Exception:
-            self.logger.exception("Copy failed")
+            self.fg3_log_error("Copy failed")
 
     def fg3d_change_number(self):
         try:
@@ -3177,7 +3191,7 @@ class LocalNftShowcasePlugin(BasePlugin):
                 modal()
                 return
         except Exception:
-            self.logger.exception("Number modal failed, using the dialog")
+            self.fg3_log_error("Number modal failed, using the dialog")
         self.set_number_dialog()
 
     def fg3d_change_price(self):
@@ -3187,7 +3201,7 @@ class LocalNftShowcasePlugin(BasePlugin):
                 modal(self.number_price(), self.set_number_price)
                 return
         except Exception:
-            self.logger.exception("Price modal failed, using the dialog")
+            self.fg3_log_error("Price modal failed, using the dialog")
         self.price_dialog(self.number_price(), self.set_number_price)
 
     def fg3d_remove(self, shown):
@@ -3204,7 +3218,7 @@ class LocalNftShowcasePlugin(BasePlugin):
                 confirm(title, text, "Убрать", do_remove, danger=True)
                 return
         except Exception:
-            self.logger.exception("Confirm modal failed, using the dialog")
+            self.fg3_log_error("Confirm modal failed, using the dialog")
         activity = self.get_activity()
         if activity is None:
             return
@@ -3287,7 +3301,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             edit.setImeOptions(EditorInfo.IME_ACTION_DONE)
             edit.setOnEditorActionListener(cls(on_done))
         except Exception:
-            self.logger.exception("fg3e: IME action not set")
+            self.fg3_log_error("fg3e: IME action not set")
 
     def fg3e_fiat_line(self, gram) -> str:
         """'Примерно $31,174' from the core '~ $31,174'."""
@@ -3480,7 +3494,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             self.fg3e_primary(ctx, column, "Сохранить", save)
             sheet_ref[0] = self.fg3e_open(ctx, column, focus=edit)
         except Exception:
-            self.logger.exception("fg3_price_modal failed, using the dialog")
+            self.fg3_log_error("fg3_price_modal failed, using the dialog")
             self.fg3e_close(sheet_ref[0])
             self.price_dialog(current, on_value)
 
@@ -3550,7 +3564,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             self.fg3e_primary(ctx, column, "Добавить", save)
             sheet_ref[0] = self.fg3e_open(ctx, column, focus=name_field)
         except Exception:
-            self.logger.exception("fg3_add_username_modal failed, using the dialog")
+            self.fg3_log_error("fg3_add_username_modal failed, using the dialog")
             self.fg3e_close(sheet_ref[0])
             self.add_username_dialog()
 
@@ -3603,7 +3617,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             self.fg3e_primary(ctx, column, "Сохранить", save)
             sheet_ref[0] = self.fg3e_open(ctx, column, focus=edit)
         except Exception:
-            self.logger.exception("fg3_number_modal failed, using the dialog")
+            self.fg3_log_error("fg3_number_modal failed, using the dialog")
             self.fg3e_close(sheet_ref[0])
             self.set_number_dialog()
 
@@ -3656,7 +3670,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             column.addView(row)
             sheet_ref[0] = self.fg3e_open(ctx, column)
         except Exception:
-            self.logger.exception("fg3_confirm failed, using the dialog")
+            self.fg3_log_error("fg3_confirm failed, using the dialog")
             self.fg3e_close(sheet_ref[0])
             ctx = self.get_activity()
             if ctx is None:
