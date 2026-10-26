@@ -11,7 +11,7 @@ __id__ = "local_nft_showcase"
 __name__ = "Local NFT Showcase"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "brokolyone"
-__version__ = "1.7.1"
+__version__ = "1.7.2"
 
 import json
 import random
@@ -86,6 +86,13 @@ class PremiumHook(MethodHook):
             param.setResult(True)
 
 
+def jlist(java_list) -> list:
+    """Java ArrayList -> Python list. In this app Java lists cannot be iterated with `for`."""
+    if java_list is None:
+        return []
+    return [java_list.get(i) for i in range(java_list.size())]
+
+
 def slug_base(title: str) -> str:
     """'Durov's Cap' -> 'DurovsCap', the part of the slug before the number."""
     return re.sub(r"[^0-9A-Za-z]", "", title or "")
@@ -93,7 +100,7 @@ def slug_base(title: str) -> str:
 
 def describe_unique(gift) -> str:
     names = {}
-    for attr in gift.attributes:
+    for attr in jlist(gift.attributes):
         if isinstance(attr, TL_stars.starGiftAttributeModel):
             names["model"] = attr.name
         elif isinstance(attr, TL_stars.starGiftAttributeBackdrop):
@@ -346,7 +353,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         req.hash = 0
 
         def on_response(response, error):
-            for gift in getattr(response, "gifts", None) or []:
+            for gift in jlist(getattr(response, "gifts", None)):
                 self.catalog[gift.id] = gift
             for gift_id in [k for k in self.announce if isinstance(k, int) and k in self.catalog]:
                 self.post_saved_card(self.announce.pop(gift_id), self.catalog[gift_id], unique=False)
@@ -596,7 +603,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         req.hash = 0
 
         def on_result(response):
-            gifts = list(getattr(response, "gifts", None) or [])
+            gifts = jlist(getattr(response, "gifts", None))
             self.logger.info(f"Gift catalog: {response.getClass().getSimpleName()}, {len(gifts)} gifts")
             resale = lambda gift: int(getattr(gift, "availability_resale", 0) or 0)
             collections = [
@@ -620,7 +627,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         req.limit = 50
 
         def on_result(response):
-            uniques = [gift for gift in response.gifts if gift.slug]
+            uniques = [gift for gift in jlist(response.gifts) if gift.slug]
             base = uniques[0].slug.rsplit("-", 1)[0] if uniques else slug_base(collection.title)
             items = ["🔢 Ввести номер"]
             if uniques:
@@ -756,7 +763,7 @@ class LocalNftShowcasePlugin(BasePlugin):
 
     def post_request_hook(self, request_name: str, account: int, response: Any, error: Any) -> HookResult:
         if isinstance(response, TLRPC.TL_payments_paymentFormStarGift):
-            self.form_prices[response.form_id] = sum(p.amount for p in response.invoice.prices)
+            self.form_prices[response.form_id] = sum(p.amount for p in jlist(response.invoice.prices))
             return HookResult()
         if "getSavedStarGifts" in request_name:
             queue = self.pending[account]
