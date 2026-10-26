@@ -11,18 +11,19 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.25.1"
+__version__ = "1.26.0"
 
 import json
 import random
 import re
 import threading
+import traceback
 import time
 from collections import defaultdict, deque
 from typing import Any, List
 
 from base_plugin import BasePlugin, HookFilter, HookResult, HookStrategy, MethodHook, hook_filters
-from android_utils import OnClickListener, R, run_on_ui_thread
+from android_utils import OnClickListener, R, copy_to_clipboard, run_on_ui_thread
 from hook_utils import get_private_field
 from client_utils import get_last_fragment, get_messages_controller, get_user_config, send_request
 from ui.alert import AlertDialogBuilder
@@ -235,6 +236,27 @@ class StarsNeededHook(MethodHook):
             param.setResult(None)
 
 
+def log_path() -> str:
+    from org.telegram.messenger import ApplicationLoader
+    return str(ApplicationLoader.applicationContext.getFilesDir().getAbsolutePath()) + "/winft_log.txt"
+
+
+def write_log(text: str):
+    """Synchronous append, so the line survives even if the app dies right after."""
+    try:
+        path = log_path()
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(time.strftime("%H:%M:%S ") + text + "\n")
+        import os
+        if os.path.getsize(path) > 96 * 1024:
+            with open(path, "r", encoding="utf-8") as f:
+                tail = f.read()[-48 * 1024:]
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(tail)
+    except Exception:
+        pass
+
+
 def layout_listener(fn):
     """View.OnLayoutChangeListener backed by a Python callable."""
     from java import dynamic_proxy
@@ -251,9 +273,10 @@ class MarketRedirectHook(MethodHook):
     """While the NFT constructor market is open, a tap on a gift in Telegram's market
     opens Telegram's own preview sheet (the constructor) instead of buying or resale."""
 
-    def __init__(self, plugin, extract):
+    def __init__(self, plugin, extract, name):
         self.plugin = plugin
         self.extract = extract
+        self.name = name
 
     def before_hooked_method(self, param):
         if not self.plugin.market_active():
@@ -261,13 +284,26 @@ class MarketRedirectHook(MethodHook):
         try:
             target = self.extract(param)
         except Exception:
-            self.plugin.logger.exception("Market redirect failed")
+            write_log(f"redirect {self.name} failed:\n{traceback.format_exc()}")
             return
+        write_log(f"redirect via {self.name}: {target}")
         if target is None:
             return
         param.setResult(None)
         gift_id, title = target
         run_on_ui_thread(lambda: self.plugin.open_constructor_for(gift_id, title))
+
+
+class MarketFillHook(MethodHook):
+    """GiftSheet.fillItems: before the market grid is (re)built, hide resale listings
+    in the very lists it reads, so only non-upgraded versions are shown."""
+
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def before_hooked_method(self, param):
+        if self.plugin.is_market_sheet(param.thisObject):
+            self.plugin.hide_resale_now()
 
 
 class SendRequestHook(MethodHook):
@@ -389,7 +425,65 @@ def parse_slugs(text: str) -> List[str]:
 
 
 class LocalNftShowcasePlugin(BasePlugin):
+    def install_crash_handler(self):
+        """Write Java crashes to the winft log before Telegram goes down."""
+        from java import dynamic_proxy
+        from java.lang import Thread
+        from android.util import Log
+        previous = Thread.getDefaultUncaughtExceptionHandler()
+
+        class Handler(dynamic_proxy(Thread.UncaughtExceptionHandler)):
+            def uncaughtException(self, thread, error):
+                try:
+                    write_log(f"CRASH in {thread.getName()}:\n{Log.getStackTraceString(error)}")
+                except Exception:
+                    pass
+                if previous is not None:
+                    previous.uncaughtException(thread, error)
+
+        self.crash_previous = previous
+        self.crash_handler = Handler()
+        Thread.setDefaultUncaughtExceptionHandler(self.crash_handler)
+
+    def on_plugin_unload(self):
+        try:
+            from java.lang import Thread
+            if getattr(self, "crash_handler", None) is not None:
+                Thread.setDefaultUncaughtExceptionHandler(self.crash_previous)
+        except Exception:
+            pass
+        self.restore_resale()
+
+    def show_log(self):
+        activity = self.get_activity()
+        if activity is None:
+            return
+        try:
+            with open(log_path(), "r", encoding="utf-8") as f:
+                text = f.read()
+        except Exception:
+            text = ""
+        text = text[-6000:] or "Лог пуст"
+        builder = AlertDialogBuilder(activity)
+        builder.set_title("Лог winft")
+        builder.set_message(text)
+        builder.set_positive_button("Скопировать", lambda bld, _: (copy_to_clipboard(text), bld.dismiss()))
+        builder.set_neutral_button("Очистить", lambda bld, _: (self.clear_log(), bld.dismiss()))
+        builder.set_negative_button("Закрыть", lambda bld, _: bld.dismiss())
+        builder.show()
+
+    def clear_log(self):
+        try:
+            open(log_path(), "w").close()
+        except Exception:
+            pass
+
     def on_plugin_load(self):
+        try:
+            self.install_crash_handler()
+        except Exception:
+            write_log(f"crash handler failed:\n{traceback.format_exc()}")
+        write_log(f"plugin loaded {__version__}")
         self.slugs = []
         self.gifts = {}
         self.custom = {}  # synthetic slug -> locally built TL_starGiftUnique
@@ -469,7 +563,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             method = find_method(send, "show", 0)
             if method is not None:
                 self.hook_method(method, MarketRedirectHook(
-                    self, lambda p: by_gift(get_private_field(p.thisObject, "starGift"))))
+                    self, lambda p: by_gift(get_private_field(p.thisObject, "starGift")), "SendGiftSheet.show"))
 
         resale = cls("org.telegram.ui.Gifts.ResaleGiftsFragment")
         fragment = cls("org.telegram.ui.ActionBar.BaseFragment")
@@ -479,20 +573,27 @@ class LocalNftShowcasePlugin(BasePlugin):
                 self.hook_method(method, MarketRedirectHook(
                     self, lambda p: (get_private_field(p.args[0], "gift_id"),
                                      get_private_field(p.args[0], "gift_name"))
-                    if p.args[0] is not None and resale.isInstance(p.args[0]) else None))
+                    if p.args[0] is not None and resale.isInstance(p.args[0]) else None, "showAsSheet"))
 
         intro = cls("org.telegram.ui.Stars.StarsIntroActivity")
         if intro is not None:
             method = find_method(intro, "showSoldOutGiftSheet", 4)
             if method is not None:
-                self.hook_method(method, MarketRedirectHook(self, lambda p: by_gift(p.args[2])))
+                self.hook_method(method, MarketRedirectHook(self, lambda p: by_gift(p.args[2]), "soldOut"))
 
         auction = cls("org.telegram.ui.Gifts.AuctionJoinSheet")
         if auction is not None:
             method = find_method(auction, "show", 6)
             if method is not None:
                 self.hook_method(method, MarketRedirectHook(
-                    self, lambda p: (int(p.args[4]), self.catalog_title(int(p.args[4])))))
+                    self, lambda p: (int(p.args[4]), self.catalog_title(int(p.args[4]))), "auction"))
+
+        gift_sheet = cls("org.telegram.ui.Gifts.GiftSheet")
+        if gift_sheet is not None:
+            method = find_method(gift_sheet, "fillItems", 2)
+            if method is not None:
+                self.hook_method(method, MarketFillHook(self))
+        write_log("market hooks installed")
 
     def create_settings(self) -> List[Any]:
         return [
@@ -608,6 +709,12 @@ class LocalNftShowcasePlugin(BasePlugin):
                 icon="msg_delete",
                 red=True,
                 on_click=lambda _: self.clear_statuses(),
+            ),
+            Text(
+                text="Лог winft",
+                subtext="Для отладки: что случилось при вылете",
+                icon="msg_log",
+                on_click=lambda _: self.show_log(),
             ),
             Divider(text="Премиум и статус тоже видны только тебе. Функции, которые "
                          "проверяет сервер (передача и продажа подарков, большие файлы и т.п.), "
@@ -1696,35 +1803,61 @@ class LocalNftShowcasePlugin(BasePlugin):
             account = UserConfig.selectedAccount
             uid = get_user_config(account).getClientUserId()
             self.restore_resale()
-            self.hide_resale(account)  # only non-upgraded versions, no resale listings
-            sheet = GiftSheet(activity, account, uid, None)
-            sheet.setOnDismissListener(R(self.restore_resale))
+            self.resale_account = account
+            self.market_opening = True  # fillItems runs inside the constructor already
+            write_log("opening market")
+            try:
+                sheet = GiftSheet(activity, account, uid, None)
+            finally:
+                self.market_opening = False
+            sheet.setOnDismissListener(R(self.on_market_closed))
             self.market_sheet = sheet
             sheet.show()
+            write_log("market shown")
         except Exception:
             self.logger.exception("Could not open the gift market")
             BulletinHelper.show_error("Не удалось открыть маркет")
 
-    def hide_resale(self, account):
-        self.resale_backup = {}
-        gifts = StarsController.getInstance(account).gifts
-        for i in range(gifts.size()):
-            gift = gifts.get(i)
-            if int(getattr(gift, "availability_resale", 0) or 0) > 0:
-                self.resale_backup[gift.id] = gift.availability_resale
-                gift.availability_resale = 0
-        self.resale_account = account
+    def is_market_sheet(self, sheet) -> bool:
+        if getattr(self, "market_opening", False):
+            return True
+        current = getattr(self, "market_sheet", None)
+        try:
+            return current is not None and current.equals(sheet)
+        except Exception:
+            return False
+
+    def hide_resale_now(self):
+        """Zero resale counts in the lists GiftSheet reads, remembering originals."""
+        if not hasattr(self, "resale_backup"):
+            self.resale_backup = []
+        controller = StarsController.getInstance(getattr(self, "resale_account", UserConfig.selectedAccount))
+        hidden = 0
+        for name in ("gifts", "sortedGifts", "birthdaySortedGifts"):
+            gifts = getattr(controller, name, None)
+            if gifts is None:
+                continue
+            for i in range(gifts.size()):
+                gift = gifts.get(i)
+                value = int(getattr(gift, "availability_resale", 0) or 0)
+                if value > 0:
+                    self.resale_backup.append((gift, value))
+                    gift.availability_resale = 0
+                    hidden += 1
+        if hidden:
+            write_log(f"hid resale on {hidden} gifts")
 
     def restore_resale(self):
-        backup = getattr(self, "resale_backup", None)
-        if not backup:
-            return
-        gifts = StarsController.getInstance(self.resale_account).gifts
-        for i in range(gifts.size()):
-            gift = gifts.get(i)
-            if gift.id in backup:
-                gift.availability_resale = backup[gift.id]
-        self.resale_backup = {}
+        for gift, value in getattr(self, "resale_backup", []) or []:
+            try:
+                gift.availability_resale = value
+            except Exception:
+                pass
+        self.resale_backup = []
+
+    def on_market_closed(self):
+        write_log("market closed")
+        self.restore_resale()
 
     def market_active(self) -> bool:
         sheet = getattr(self, "market_sheet", None)
@@ -1738,6 +1871,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         return gift.title if gift is not None else "NFT"
 
     def open_constructor_for(self, gift_id, title):
+        write_log(f"open constructor for {gift_id} {title}")
         req = TL_stars.getStarGiftUpgradePreview()
         req.gift_id = gift_id
 
@@ -1751,22 +1885,34 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.request_on_ui(req, on_result)
 
     def show_native_constructor(self, gift_id, title, attrs):
+        try:
+            self._show_native_constructor(gift_id, title, attrs)
+        except Exception:
+            write_log(f"constructor failed:\n{traceback.format_exc()}")
+            BulletinHelper.show_error("Конструктор не открылся. Лог: настройки → Лог winft")
+
+    def _show_native_constructor(self, gift_id, title, attrs):
         from org.telegram.ui.Stars import StarGiftPreviewSheet
         activity = self.get_activity()
         if activity is None:
             return
+        write_log(f"constructor: {title} id={gift_id} samples={attrs.size()}")
         sheet = StarGiftPreviewSheet(activity, None, UserConfig.selectedAccount, title, attrs, False)
+        write_log("constructor: sheet created")
         base = self.catalog.get(gift_id)
         total = int(getattr(base, "availability_total", 0) or 0) or 100000
         self.ctor = {"sheet": sheet, "gift_id": gift_id, "title": title, "total": total,
                      "num": random.randint(1, total), "value": None, "built": False}
         try:
             self.add_constructor_buttons(sheet)
+            write_log("constructor: buttons added")
         except Exception:
-            self.logger.exception("Could not add the # and ? buttons")
+            write_log(f"buttons failed:\n{traceback.format_exc()}")
         self.update_ctor_header()
         sheet.setOnDismissListener(R(lambda: run_on_ui_thread(self.confirm_build, 150)))
+        write_log("constructor: showing")
         sheet.show()
+        write_log("constructor: shown")
 
     def add_constructor_buttons(self, sheet):
         """Two round buttons beside the native glass tab bar. The glass comes from the sheet's
