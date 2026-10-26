@@ -11,7 +11,7 @@ __id__ = "local_nft_showcase"
 __name__ = "Local NFT Showcase"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "brokolyone"
-__version__ = "1.11.0"
+__version__ = "1.11.1"
 
 import json
 import random
@@ -56,6 +56,8 @@ FLAG_OWNER_ADDRESS = 4
 FLAG_STARGIFTS_COUNT = 1 << 18  # UserFull.flags2
 FLAG_RESELL_AMOUNT = 16  # StarGiftUnique.flags
 FLAG_MSG_ID = 8  # SavedStarGift.flags
+FLAG_SAVED_ID = 2048  # SavedStarGift.flags
+LOCAL_SAVED_ID_BASE = 3_000_000_000  # unique saved ids so pinned state survives a reload
 FLAG_USERNAMES = 1  # User.flags2
 LOCAL_MSG_ID_BASE = 2_000_000_000  # fake message ids that let us tell local gifts apart
 
@@ -1153,8 +1155,13 @@ class LocalNftShowcasePlugin(BasePlugin):
         saved.gift = gift
         saved.date = int(time.time())
         saved.pinned_to_top = self.get_setting("pinned", True)
+        # A unique saved_id: without it the app cannot tell our gifts apart and drops
+        # their pinned state when the profile is reopened.
+        index = self.slugs.index(gift.slug) if gift.slug in self.slugs else 0
+        saved.saved_id = LOCAL_SAVED_ID_BASE + index
+        saved.flags |= FLAG_SAVED_ID
         # The gift screen sends this id back when listing the gift for sale.
-        saved.msg_id = LOCAL_MSG_ID_BASE + self.slugs.index(gift.slug) if gift.slug in self.slugs else 0
+        saved.msg_id = LOCAL_MSG_ID_BASE + index if gift.slug in self.slugs else 0
         if saved.msg_id:
             saved.flags |= FLAG_MSG_ID
             self.local_msg_ids[saved.msg_id] = gift.slug
@@ -1167,5 +1174,6 @@ class LocalNftShowcasePlugin(BasePlugin):
         saved.gift = gift
         saved.from_id = me
         saved.date = int(time.time())
-        saved.saved_id = 10 ** 12 + index  # distinct ids so the list tells copies apart
+        saved.saved_id = LOCAL_SAVED_ID_BASE + 100000 + index  # distinct from NFT ids
+        saved.flags |= FLAG_SAVED_ID
         return saved
