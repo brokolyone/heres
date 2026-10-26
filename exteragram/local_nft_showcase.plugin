@@ -11,7 +11,7 @@ __id__ = "local_nft_showcase"
 __name__ = "Local NFT Showcase"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "brokolyone"
-__version__ = "1.5.1"
+__version__ = "1.6.0"
 
 import random
 import re
@@ -19,8 +19,9 @@ import time
 from collections import defaultdict, deque
 from typing import Any, List
 
-from base_plugin import BasePlugin, HookResult, HookStrategy, MethodHook
+from base_plugin import BasePlugin, HookFilter, HookResult, HookStrategy, MethodHook, hook_filters
 from android_utils import run_on_ui_thread
+from hook_utils import get_private_field
 from client_utils import get_last_fragment, get_messages_controller, get_user_config, send_request
 from ui.alert import AlertDialogBuilder
 from ui.bulletin import BulletinHelper
@@ -29,7 +30,7 @@ from ui.settings import Divider, Header, Input, Switch, Text
 from android.text import InputType
 from android.widget import EditText
 from org.telegram.messenger import NotificationCenter, UserConfig, Utilities
-from org.telegram.tgnet import SerializedData, TLRPC
+from org.telegram.tgnet import ConnectionsManager, SerializedData, TLRPC
 from org.telegram.tgnet.tl import TL_account, TL_stars
 from org.telegram.ui.Stars import StarsController
 
@@ -124,53 +125,32 @@ class BalanceHook(MethodHook):
             param.setResult(self.plugin.balance_amount(param.thisObject.ton))
 
 
-class PurchaseArgs:
-    """Picks purchase arguments by type, since their order and count differ between app versions."""
-
-    def __init__(self, args):
-        self.form = None
-        self.gift = None
-        self.dialog_id = None
-        self.flags = []
-        self.when_done = None
-        for arg in args:
-            if isinstance(arg, bool):
-                self.flags.append(arg)
-            elif isinstance(arg, int):
-                if self.dialog_id is None:
-                    self.dialog_id = arg
-            elif isinstance(arg, TLRPC.TL_payments_paymentFormStarGift):
-                self.form = arg
-            elif isinstance(arg, TL_stars.StarGift):
-                self.gift = arg
-            elif arg is not None and hasattr(arg, "run"):
-                self.when_done = arg
-
-    def done(self, success: bool):
-        if self.when_done is not None:
-            self.when_done.run(success, None)
-
-
-class BuyGiftHook(MethodHook):
-    """StarsController.buyStarGift(gift, anonymous, upgraded, dialogId, text, whenDone)."""
+class SendRequestHook(MethodHook):
+    """ConnectionsManager.sendRequest(...): every gift purchase ends with payments.sendStarsForm,
+    whichever screen started it, so local purchases are answered here without the server."""
 
     def __init__(self, plugin):
         self.plugin = plugin
 
+    # sendRequest runs for every network request, so only payment forms reach Python.
+    @hook_filters(HookFilter.ArgumentIsInstanceOf(0, TL_stars.TL_payments_sendStarsForm().getClass()))
     def before_hooked_method(self, param):
-        if self.plugin.buy_regular_locally(param.thisObject, PurchaseArgs(param.args)):
-            param.setResult(None)
-
-
-class BuyResaleHook(MethodHook):
-    """StarsController.buyResellingGift(form, gift, dialogId, message, hideMyName, whenDone)."""
-
-    def __init__(self, plugin):
-        self.plugin = plugin
-
-    def before_hooked_method(self, param):
-        if self.plugin.buy_locally(param.thisObject, PurchaseArgs(param.args)):
-            param.setResult(None)
+        args = list(param.args)
+        if not args or not isinstance(args[0], TL_stars.TL_payments_sendStarsForm):
+            return
+        delegate = next((a for a in args[1:] if a is not None and hasattr(a, "run")), None)
+        account = get_private_field(param.thisObject, "currentAccount") or 0
+        result = self.plugin.pay_locally(account, args[0])
+        if result is None:
+            return  # not ours: let the real request go
+        param.setResult(0)
+        if delegate is None:
+            return
+        response, error = result
+        try:
+            delegate.run(response, error)
+        except Exception:
+            delegate.run(response, error, 0)  # RequestDelegateTimestamp
 
 
 def parse_slugs(text: str) -> List[str]:
@@ -194,6 +174,8 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.add_hook("getSavedStarGifts", match_substring=True)
         self.add_hook("TL_users_getFullUser")
         self.add_hook("updateEmojiStatus", match_substring=True)
+        self.add_hook("getPaymentForm", match_substring=True)
+        self.form_prices = {}  # payment form id -> price (stars, or nanoTON)
         self.own_ids = set()
         self.statuses = {}
         self.catalog = {}  # gift id -> regular gift from the gift catalog
@@ -214,10 +196,10 @@ class LocalNftShowcasePlugin(BasePlugin):
             self.logger.error("StarsController.getBalance not found, local balance is off")
         else:
             self.hook_method(method, BalanceHook(self))
-        # Every overload: the argument lists change between app versions.
-        for name, hook in (("buyResellingGift", BuyResaleHook(self)), ("buyStarGift", BuyGiftHook(self))):
-            if not self.hook_all_methods(stars, name, hook):
-                self.logger.error(f"StarsController.{name} not found, local purchases are off")
+        connections = get_private_field(get_messages_controller(), "connectionsManager")
+        connections_class = (connections or ConnectionsManager.getInstance(0)).getClass()
+        if not self.hook_all_methods(connections_class, "sendRequest", SendRequestHook(self)):
+            self.logger.error("ConnectionsManager.sendRequest not found, local purchases are off")
 
     def create_settings(self) -> List[Any]:
         return [
@@ -330,86 +312,43 @@ class LocalNftShowcasePlugin(BasePlugin):
                 except Exception:
                     self.logger.exception("Could not refresh the balance on screen")
 
-    def buy_locally(self, controller, args: PurchaseArgs) -> bool:
-        """Returns True when the purchase was handled locally and the real one must be skipped."""
-        account = controller.currentAccount
-        gift = args.gift
-        if not self.get_setting("local_balance", True) or gift is None or not gift.slug or args.form is None:
-            return False
-        if args.dialog_id != get_user_config(account).getClientUserId():
-            return False  # gifts for other people are never faked
+    def pay_locally(self, account: int, request):
+        """Returns (response, error) for a purchase made locally, or None to send it for real."""
+        if not self.get_setting("local_balance", True):
+            return None
+        invoice = request.invoice
+        if isinstance(invoice, TLRPC.TL_inputInvoiceStarGiftResale):
+            buyer, ton = invoice.to_id, invoice.ton
+        elif isinstance(invoice, TLRPC.TL_inputInvoiceStarGift):
+            buyer, ton = invoice.peer, False
+        else:
+            return None
+        if not self.is_own_peer(account, buyer):
+            return None  # gifts for other people are never faked
 
-        price = sum(p.amount for p in args.form.invoice.prices)  # stars, or nanoTON for TON
-        if not self.spend(controller.ton, price):
-            args.done(False)
-            return True
+        price = self.form_prices.get(request.form_id, 0)
+        if not self.spend(ton, price):
+            error = TLRPC.TL_error()
+            error.code = 400
+            error.text = "LOCAL_BALANCE_TOO_LOW"
+            return None, error
 
-        self.add_slug(gift.slug)
-        args.done(True)
-        BulletinHelper.show_success(f"«{gift.title} #{gift.num}» куплен. Переоткрой профиль")
-        return True
+        if isinstance(invoice, TLRPC.TL_inputInvoiceStarGiftResale):
+            self.add_slug(invoice.slug)
+            BulletinHelper.show_success(f"NFT «{invoice.slug}» куплен. Переоткрой профиль")
+        else:
+            ids = self.regular_gift_ids()
+            ids.insert(0, invoice.gift_id)
+            self.set_setting("regular_gifts", ",".join(str(i) for i in ids))
+            if invoice.gift_id not in self.catalog:
+                self.load_catalog()
+            BulletinHelper.show_success("Подарок куплен. Переоткрой профиль")
 
-    def regular_gift_ids(self) -> List[int]:
-        text = self.get_setting("regular_gifts", "")
-        return [int(x) for x in text.split(",") if x.strip().isdigit()]
-
-    def load_catalog(self):
-        if not self.regular_gift_ids():
-            return
-        req = TL_stars.getStarGifts()
-        req.hash = 0
-
-        def on_response(response, error):
-            for gift in getattr(response, "gifts", None) or []:
-                self.catalog[gift.id] = gift
-
-        send_request(req, on_response)
-
-    def loaded_regular_gifts(self) -> List[Any]:
-        if not self.get_setting("enabled", True):
-            return []
-        return [self.catalog[gift_id] for gift_id in self.regular_gift_ids() if gift_id in self.catalog]
-
-    def clear_regular_gifts(self):
-        self.set_setting("regular_gifts", "")
-        BulletinHelper.show_success("Обычные подарки убраны. Переоткрой профиль")
-
-    def spend(self, ton: bool, price: int) -> bool:
-        """Takes price (stars, or nanoTON for TON) from the local balance. False if it is too low."""
-        if not self.get_setting("spend_balance", True):
-            return True
-        key, default, scale = ("ton_balance", "1000", NANO) if ton else ("stars_balance", "100000", 1)
-        balance = parse_amount(self.get_setting(key, default), 0) * scale
-        if balance < price:
-            BulletinHelper.show_error("Не хватает локального баланса. Пополни его в настройках плагина")
-            return False
-        left = balance - price
-        self.set_setting(key, f"{left / NANO:.2f}" if ton else str(int(left)))
-        self.notify_balance()
-        return True
-
-    def buy_regular_locally(self, controller, args: PurchaseArgs) -> bool:
-        """Returns True when the purchase was handled locally and the real one must be skipped."""
-        account = controller.currentAccount
-        gift = args.gift
-        if not self.get_setting("local_balance", True) or gift is None:
-            return False
-        if args.dialog_id != get_user_config(account).getClientUserId():
-            return False  # gifts for other people are never faked
-
-        upgraded = len(args.flags) > 1 and args.flags[1]  # (anonymous, upgraded)
-        price = gift.stars + (gift.upgrade_stars if upgraded else 0)
-        if not self.spend(False, price):
-            args.done(False)
-            return True
-
-        self.catalog[gift.id] = gift
-        ids = self.regular_gift_ids()
-        ids.insert(0, gift.id)
-        self.set_setting("regular_gifts", ",".join(str(i) for i in ids))
-        args.done(True)
-        BulletinHelper.show_success("Подарок куплен. Переоткрой профиль")
-        return True
+        updates = TLRPC.TL_updates()
+        updates.date = int(time.time())
+        response = TLRPC.TL_payments_paymentResult()
+        response.updates = updates
+        return response, None
 
     # Picker: collection -> NFT on resale, by number or a random one.
 
@@ -614,6 +553,9 @@ class LocalNftShowcasePlugin(BasePlugin):
         return HookResult(strategy=HookStrategy.CANCEL)
 
     def post_request_hook(self, request_name: str, account: int, response: Any, error: Any) -> HookResult:
+        if isinstance(response, TLRPC.TL_payments_paymentFormStarGift):
+            self.form_prices[response.form_id] = sum(p.amount for p in response.invoice.prices)
+            return HookResult()
         if "getSavedStarGifts" in request_name:
             queue = self.pending[account]
             request = queue.popleft() if queue else None
