@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.21.0"
+__version__ = "1.22.0"
 
 import json
 import random
@@ -79,9 +79,11 @@ FLAG_SAVED_ID = 2048  # SavedStarGift.flags
 FLAG_NAME_HIDDEN = 1  # SavedStarGift.flags
 FLAG_MESSAGE = 4  # SavedStarGift.flags
 FLAG_UNSAVED = 32  # SavedStarGift.flags
+FLAG_CAN_UPGRADE = 1024  # SavedStarGift.flags
 LOCAL_SAVED_ID_BASE = 3_000_000_000  # unique saved ids so pinned state survives a reload
 FLAG_USERNAMES = 1  # User.flags2
 LOCAL_MSG_ID_BASE = 2_000_000_000  # fake message ids that let us tell local gifts apart
+REGULAR_MSG_BASE = LOCAL_MSG_ID_BASE + 500000  # fake msg ids for local regular gifts
 
 
 def parse_slug(text: str) -> str:
@@ -245,6 +247,7 @@ class SendRequestHook(MethodHook):
         HookFilter.ArgumentIsInstanceOf(0, TL_fragment.TL_getCollectibleInfo().getClass()),
         HookFilter.ArgumentIsInstanceOf(0, TL_stars.saveStarGift().getClass()),
         HookFilter.ArgumentIsInstanceOf(0, TLRPC.TL_payments_getPaymentForm().getClass()),
+        HookFilter.ArgumentIsInstanceOf(0, TL_stars.upgradeStarGift().getClass()),
     ))
     def before_hooked_method(self, param):
         args = list(param.args)
@@ -262,6 +265,8 @@ class SendRequestHook(MethodHook):
             result = self.plugin.save_gift_locally(args[0])
         elif isinstance(args[0], TLRPC.TL_payments_getPaymentForm):
             result = self.plugin.drop_details_form(args[0])
+        elif isinstance(args[0], TL_stars.upgradeStarGift):
+            result = self.plugin.upgrade_gift_locally(args[0])
         else:
             return
         if result is None:
@@ -369,6 +374,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.rates_loading = False
         self.last_purchase = None  # (slug or gift id, time)
         self.local_msg_ids = {}  # fake SavedStarGift.msg_id -> slug
+        self.local_regular_msg = {}  # fake msg_id -> catalog gift id (for local upgrade)
         self.announce = {}  # slug or gift id -> account: post a card in Saved Messages once loaded
         self.own_ids = set()
         self.added_usernames = set()
@@ -597,6 +603,16 @@ class LocalNftShowcasePlugin(BasePlugin):
         # Removing a caption works for local gifts even when the local balance is off.
         if isinstance(invoice, TLRPC.TL_inputInvoiceStarGiftDropOriginalDetails):
             return self.drop_caption_locally(invoice)
+        if isinstance(invoice, TLRPC.TL_inputInvoiceStarGiftUpgrade):
+            gift_id = self.regular_gift_id_from_input(invoice.stargift)
+            if gift_id is None:
+                return None
+            self.do_local_upgrade(gift_id)
+            updates = TLRPC.TL_updates()
+            updates.date = int(time.time())
+            response = TLRPC.TL_payments_paymentResult()
+            response.updates = updates
+            return response, None
         if not self.get_setting("local_balance", True):
             return None
         if isinstance(invoice, TLRPC.TL_inputInvoiceStarGiftResale):
@@ -756,9 +772,13 @@ class LocalNftShowcasePlugin(BasePlugin):
         """getPaymentForm for removing a local gift caption: the server has no such gift,
         so hand back a free form and let the flow continue to sendStarsForm."""
         invoice = request.invoice
-        if not isinstance(invoice, TLRPC.TL_inputInvoiceStarGiftDropOriginalDetails):
-            return None
-        if self.input_to_slug(invoice.stargift) is None:
+        if isinstance(invoice, TLRPC.TL_inputInvoiceStarGiftDropOriginalDetails):
+            if self.input_to_slug(invoice.stargift) is None:
+                return None
+        elif isinstance(invoice, TLRPC.TL_inputInvoiceStarGiftUpgrade):
+            if self.regular_gift_id_from_input(invoice.stargift) is None:
+                return None
+        else:
             return None
         form = TLRPC.TL_payments_paymentFormStarGift()
         form.form_id = int(time.time() * 1000)
@@ -1903,18 +1923,11 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.active_sheet_dismiss()
         self.show_constructor()
 
-    def build_custom_gift(self):
-        c = self.ctor
-        if c is None:
-            return
-        model = c["models"][c["mi"]]
-        back = c["backs"][c["bi"]]
-        pat = c["pats"][c["pi"]] if c["pats"] else None
-
+    def assemble_unique(self, gift_id, title, model, back, pat):
         gift = TL_stars.TL_starGiftUnique()
         gift.id = random.getrandbits(62)
-        gift.gift_id = c["collection"].id
-        gift.title = c["collection"].title or "Custom"
+        gift.gift_id = gift_id
+        gift.title = title or "Custom"
         gift.num = random.randint(1, 99999)
         store = self.get_custom_store()
         gift.slug = f"winft-custom-{len(store)}-{gift.num}"
@@ -1926,18 +1939,73 @@ class LocalNftShowcasePlugin(BasePlugin):
             attrs.add(pat)
         attrs.add(back)
         gift.attributes = attrs
+        return gift
 
+    def store_custom(self, gift) -> bool:
+        store = self.get_custom_store()
         try:
             store.append(gift_to_hex(gift))
         except Exception:
             self.logger.exception("Could not serialize the built NFT")
-            BulletinHelper.show_error("Не удалось собрать NFT")
-            return
+            return False
         self.set_setting("custom_gifts", json.dumps(store))
         self.custom[gift.slug] = gift
+        return True
+
+    def build_custom_gift(self):
+        c = self.ctor
+        if c is None:
+            return
+        model = c["models"][c["mi"]]
+        back = c["backs"][c["bi"]]
+        pat = c["pats"][c["pi"]] if c["pats"] else None
+        gift = self.assemble_unique(c["collection"].id, c["collection"].title, model, back, pat)
+        if not self.store_custom(gift):
+            BulletinHelper.show_error("Не удалось собрать NFT")
+            return
         self.active_sheet_dismiss()
         self.ctor = None
         BulletinHelper.show_success(f"NFT «{gift.title} #{gift.num}» собран. Переоткрой профиль")
+
+    # ----- Local upgrade of a non-upgraded gift -----
+
+    def regular_gift_id_from_input(self, stargift):
+        if isinstance(stargift, TL_stars.TL_inputSavedStarGiftUser):
+            return self.local_regular_msg.get(stargift.msg_id)
+        return None
+
+    def do_local_upgrade(self, gift_id):
+        collection = self.catalog.get(gift_id)
+        title = collection.title if collection is not None else "Gift"
+        req = TL_stars.getStarGiftUpgradePreview()
+        req.gift_id = gift_id
+
+        def on_response(response, error):
+            attrs = jlist(getattr(response, "sample_attributes", None))
+            models = [a for a in attrs if isinstance(a, TL_stars.starGiftAttributeModel)]
+            backs = [a for a in attrs if isinstance(a, TL_stars.starGiftAttributeBackdrop)]
+            pats = [a for a in attrs if isinstance(a, TL_stars.starGiftAttributePattern)]
+            if not models or not backs:
+                run_on_ui_thread(lambda: BulletinHelper.show_error("Нет образцов для улучшения"))
+                return
+            gift = self.assemble_unique(gift_id, title, random.choice(models),
+                                        random.choice(backs), random.choice(pats) if pats else None)
+            if self.store_custom(gift):
+                ids = [i for i in self.regular_gift_ids() if i != gift_id]
+                self.set_setting("regular_gifts", ",".join(str(i) for i in ids))
+                run_on_ui_thread(lambda: BulletinHelper.show_success(
+                    f"Подарок улучшен в «{gift.title} #{gift.num}». Переоткрой профиль"))
+
+        send_request(req, on_response)
+
+    def upgrade_gift_locally(self, request):
+        gift_id = self.regular_gift_id_from_input(request.stargift)
+        if gift_id is None:
+            return None
+        self.do_local_upgrade(gift_id)
+        updates = TLRPC.TL_updates()
+        updates.date = int(time.time())
+        return updates, None
 
     def remove_custom_gift(self, slug: str):
         store = self.get_custom_store()
@@ -2276,4 +2344,10 @@ class LocalNftShowcasePlugin(BasePlugin):
         saved.date = int(time.time())
         saved.saved_id = LOCAL_SAVED_ID_BASE + 100000 + index  # distinct from NFT ids
         saved.flags |= FLAG_SAVED_ID
+        # Show the "Улучшить" button and let the upgrade be answered locally.
+        saved.can_upgrade = True
+        saved.flags |= FLAG_CAN_UPGRADE
+        saved.msg_id = REGULAR_MSG_BASE + index
+        saved.flags |= FLAG_MSG_ID
+        self.local_regular_msg[saved.msg_id] = gift.id
         return saved
