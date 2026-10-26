@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.34.0"
+__version__ = "1.35.0"
 
 import json
 import random
@@ -618,6 +618,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.local_regular_msg = {}  # fake msg_id -> catalog gift id (for local upgrade)
         self.local_saved_ids = {}  # fake SavedStarGift.saved_id -> local key (slug or "r:<gift id>")
         self.previews = {}  # gift id -> (models, backdrops, patterns) for an instant local upgrade
+        self.upgraded = {}  # "msg:saved:gift" -> (slug of the NFT it became, "" while building; time)
         self.fake_updates = []  # updates objects kept away from MessagesController
         self.error_depth = 0  # > 0 while Telegram builds an error bulletin
         self.muted_bulletins = []  # error bulletins built but not shown yet
@@ -939,7 +940,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             if gift_id is None:
                 return None
             response = TLRPC.TL_payments_paymentResult()
-            response.updates = self.local_upgrade_result(account, gift_id)
+            response.updates = self.local_upgrade_result(account, gift_id, invoice.stargift)
             return response, None
         if not self.get_setting("local_balance", True):
             return None
@@ -4759,20 +4760,39 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.fake_updates.append(updates)
         return updates
 
-    def local_upgrade_result(self, account, gift_id):
+    def local_upgrade_result(self, account, gift_id, stargift=None):
         """Updates for a local upgrade: with the new gift when samples are ready, else empty
-        (the screen closes and the gift is built in the background as before)."""
+        (the screen closes and the gift is built in the background as before).
+        One gift is upgraded once: the app may send the same upgrade again (a retry, a
+        second tap), and that must return the same NFT instead of building another one."""
+        key = self.upgrade_key(stargift, gift_id)
+        done, at = self.upgraded.get(key, (None, 0))
+        if done is not None and time.time() - at < 30:
+            gift = self.custom.get(done) if done else None
+            write_log(f"upgrade: repeated for {key}, reusing {done or 'pending'}")
+            if gift is not None:
+                return self.upgrade_updates(account, gift)
+            updates = TLRPC.TL_updates()
+            updates.date = int(time.time())
+            return updates
+        self.upgraded[key] = ("", time.time())  # in progress
         gift = self.upgrade_now(gift_id)
         if gift is not None:
+            self.upgraded[key] = (gift.slug, time.time())
             write_log(f"upgrade: instant {gift.slug}")
             return self.upgrade_updates(account, gift)
         write_log("upgrade: samples not ready, building in background")
-        self.do_local_upgrade(gift_id)
+        self.do_local_upgrade(gift_id, key)
         updates = TLRPC.TL_updates()
         updates.date = int(time.time())
         return updates
 
-    def do_local_upgrade(self, gift_id):
+    def upgrade_key(self, stargift, gift_id):
+        msg_id = getattr(stargift, "msg_id", 0) or 0
+        saved_id = getattr(stargift, "saved_id", 0) or 0
+        return f"{msg_id}:{saved_id}:{gift_id}"
+
+    def do_local_upgrade(self, gift_id, key=None):
         collection = self.catalog.get(gift_id)
         title = collection.title if collection is not None else "Gift"
         req = TL_stars.getStarGiftUpgradePreview()
@@ -4790,6 +4810,8 @@ class LocalNftShowcasePlugin(BasePlugin):
                                         random.choice(backs), random.choice(pats) if pats else None)
             if self.store_custom(gift):
                 self.finish_regular_upgrade(gift_id, gift)
+                if key is not None:
+                    self.upgraded[key] = (gift.slug, time.time())
                 run_on_ui_thread(lambda: BulletinHelper.show_success(
                     f"Подарок улучшен в «{gift.title} #{gift.num}». Переоткрой профиль"))
 
@@ -4799,7 +4821,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         gift_id = self.regular_gift_id_from_input(request.stargift)
         if gift_id is None:
             return None
-        return self.local_upgrade_result(account, gift_id), None
+        return self.local_upgrade_result(account, gift_id, request.stargift), None
 
     def remove_custom_gift(self, slug: str):
         store = self.get_custom_store()
@@ -4875,7 +4897,8 @@ class LocalNftShowcasePlugin(BasePlugin):
         send_request(req, on_response)
 
     def all_slugs(self) -> List[str]:
-        return self.slugs + list(self.custom.keys())
+        # Built and upgraded NFTs newest first, like gifts in a Telegram profile.
+        return list(reversed(list(self.custom.keys()))) + self.slugs
 
     def gift_lookup(self, slug: str):
         return self.gifts.get(slug) or self.custom.get(slug)
