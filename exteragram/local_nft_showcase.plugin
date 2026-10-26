@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.24.0"
+__version__ = "1.25.0"
 
 import json
 import random
@@ -22,7 +22,7 @@ from collections import defaultdict, deque
 from typing import Any, List
 
 from base_plugin import BasePlugin, HookFilter, HookResult, HookStrategy, MethodHook, hook_filters
-from android_utils import OnClickListener, run_on_ui_thread
+from android_utils import OnClickListener, R, run_on_ui_thread
 from hook_utils import get_private_field
 from client_utils import get_last_fragment, get_messages_controller, get_user_config, send_request
 from ui.alert import AlertDialogBuilder
@@ -80,6 +80,8 @@ FLAG_NAME_HIDDEN = 1  # SavedStarGift.flags
 FLAG_MESSAGE = 4  # SavedStarGift.flags
 FLAG_UNSAVED = 32  # SavedStarGift.flags
 FLAG_CAN_UPGRADE = 1024  # SavedStarGift.flags
+FLAG_VALUE = 256  # StarGiftUnique.flags: value_amount / value_currency
+CURRENCIES = [("EUR", "€", "евро"), ("USD", "$", "доллары"), ("RUB", "₽", "рубли")]
 LOCAL_SAVED_ID_BASE = 3_000_000_000  # unique saved ids so pinned state survives a reload
 FLAG_USERNAMES = 1  # User.flags2
 LOCAL_MSG_ID_BASE = 2_000_000_000  # fake message ids that let us tell local gifts apart
@@ -231,6 +233,29 @@ class StarsNeededHook(MethodHook):
     def before_hooked_method(self, param):
         if self.plugin.get_setting("local_balance", True):
             param.setResult(None)
+
+
+class MarketRedirectHook(MethodHook):
+    """While the NFT constructor market is open, a tap on a gift in Telegram's market
+    opens Telegram's own preview sheet (the constructor) instead of buying or resale."""
+
+    def __init__(self, plugin, extract):
+        self.plugin = plugin
+        self.extract = extract
+
+    def before_hooked_method(self, param):
+        if not self.plugin.market_active():
+            return
+        try:
+            target = self.extract(param)
+        except Exception:
+            self.plugin.logger.exception("Market redirect failed")
+            return
+        if target is None:
+            return
+        param.setResult(None)
+        gift_id, title = target
+        run_on_ui_thread(lambda: self.plugin.open_constructor_for(gift_id, title))
 
 
 class SendRequestHook(MethodHook):
@@ -407,10 +432,55 @@ class LocalNftShowcasePlugin(BasePlugin):
             self.hook_method(find_method(sheet, "show", 0), StarsNeededHook(self))
         except Exception:
             self.logger.exception("StarsNeededSheet not found, purchases may repeat")
+        try:
+            self.install_market_hooks(stars.getClassLoader())
+        except Exception:
+            self.logger.exception("NFT constructor market hooks failed")
         connections = get_private_field(get_messages_controller(), "connectionsManager")
         connections_class = (connections or ConnectionsManager.getInstance(0)).getClass()
         if not self.hook_all_methods(connections_class, "sendRequest", SendRequestHook(self)):
             self.logger.error("ConnectionsManager.sendRequest not found, local purchases are off")
+
+    def install_market_hooks(self, loader):
+        def cls(name):
+            try:
+                return loader.loadClass(name)
+            except Exception:
+                self.logger.error(f"{name} not found")
+                return None
+
+        def by_gift(gift):
+            return (gift.id, gift.title) if gift is not None and getattr(gift, "title", None) else None
+
+        send = cls("org.telegram.ui.Gifts.SendGiftSheet")
+        if send is not None:
+            method = find_method(send, "show", 0)
+            if method is not None:
+                self.hook_method(method, MarketRedirectHook(
+                    self, lambda p: by_gift(get_private_field(p.thisObject, "starGift"))))
+
+        resale = cls("org.telegram.ui.Gifts.ResaleGiftsFragment")
+        fragment = cls("org.telegram.ui.ActionBar.BaseFragment")
+        if resale is not None and fragment is not None:
+            method = find_method(fragment, "showAsSheet", 2)
+            if method is not None:
+                self.hook_method(method, MarketRedirectHook(
+                    self, lambda p: (get_private_field(p.args[0], "gift_id"),
+                                     get_private_field(p.args[0], "gift_name"))
+                    if p.args[0] is not None and resale.isInstance(p.args[0]) else None))
+
+        intro = cls("org.telegram.ui.Stars.StarsIntroActivity")
+        if intro is not None:
+            method = find_method(intro, "showSoldOutGiftSheet", 4)
+            if method is not None:
+                self.hook_method(method, MarketRedirectHook(self, lambda p: by_gift(p.args[2])))
+
+        auction = cls("org.telegram.ui.Gifts.AuctionJoinSheet")
+        if auction is not None:
+            method = find_method(auction, "show", 6)
+            if method is not None:
+                self.hook_method(method, MarketRedirectHook(
+                    self, lambda p: (int(p.args[4]), self.catalog_title(int(p.args[4])))))
 
     def create_settings(self) -> List[Any]:
         return [
@@ -423,10 +493,10 @@ class LocalNftShowcasePlugin(BasePlugin):
             ),
             Text(
                 text="NFT конструктор",
-                subtext="Список неулучшенных → родной экран с моделями/фонами/узорами",
+                subtext="Маркет Telegram → тап по подарку открывает конструктор",
                 icon="msg_colors",
                 accent=True,
-                on_click=lambda _: self.open_nft_preview_list(),
+                on_click=lambda _: self.open_nft_market(),
             ),
             Text(
                 text="Убрать NFT",
@@ -1603,40 +1673,241 @@ class LocalNftShowcasePlugin(BasePlugin):
         builder.set_negative_button("Отмена", lambda bld, _: bld.dismiss())
         builder.show()
 
-    def open_nft_preview_list(self):
-        """List non-upgraded gifts; tapping one opens Telegram's own attribute-preview screen."""
-        req = TL_stars.getStarGifts()
-        req.hash = 0
+    # ----- NFT constructor: Telegram's own market and preview sheet, driven by hooks -----
 
-        def on_result(response):
-            gifts = [g for g in jlist(getattr(response, "gifts", None)) if getattr(g, "title", None)]
-            gifts.sort(key=lambda g: g.title.lower())
-            if not gifts:
-                BulletinHelper.show_error("Подарки не найдены")
-                return
-            self.show_items("Выбери подарок", [g.title for g in gifts],
-                            lambda i: self.open_preview_sheet(gifts[i]))
+    def open_nft_market(self):
+        activity = self.get_activity()
+        if activity is None:
+            return
+        try:
+            from org.telegram.ui.Gifts import GiftSheet
+            account = UserConfig.selectedAccount
+            uid = get_user_config(account).getClientUserId()
+            sheet = GiftSheet(activity, account, uid, None)
+            try:
+                sheet.setBrowseCollectibles()  # open on the collectibles tab
+            except Exception:
+                pass
+            self.market_sheet = sheet
+            sheet.show()
+        except Exception:
+            self.logger.exception("Could not open the gift market")
+            BulletinHelper.show_error("Не удалось открыть маркет")
 
-        self.request_on_ui(req, on_result)
+    def market_active(self) -> bool:
+        sheet = getattr(self, "market_sheet", None)
+        try:
+            return sheet is not None and sheet.isShowing()
+        except Exception:
+            return False
 
-    def open_preview_sheet(self, gift):
+    def catalog_title(self, gift_id):
+        gift = self.catalog.get(gift_id)
+        return gift.title if gift is not None else "NFT"
+
+    def open_constructor_for(self, gift_id, title):
         req = TL_stars.getStarGiftUpgradePreview()
-        req.gift_id = gift.id
+        req.gift_id = gift_id
 
         def on_result(response):
             attrs = getattr(response, "sample_attributes", None)
             if attrs is None or attrs.size() == 0:
                 BulletinHelper.show_error("Нет образцов для этой коллекции")
                 return
-            try:
-                from org.telegram.ui.Stars import StarGiftPreviewSheet
-                account = UserConfig.selectedAccount
-                StarGiftPreviewSheet(self.get_activity(), None, account, gift.title, attrs, True).show()
-            except Exception:
-                self.logger.exception("Could not open the native preview sheet")
-                BulletinHelper.show_error("Не удалось открыть родной экран")
+            self.show_native_constructor(gift_id, title or "NFT", attrs)
 
         self.request_on_ui(req, on_result)
+
+    def show_native_constructor(self, gift_id, title, attrs):
+        from org.telegram.ui.Stars import StarGiftPreviewSheet
+        activity = self.get_activity()
+        if activity is None:
+            return
+        sheet = StarGiftPreviewSheet(activity, None, UserConfig.selectedAccount, title, attrs, False)
+        base = self.catalog.get(gift_id)
+        total = int(getattr(base, "availability_total", 0) or 0) or 100000
+        self.ctor = {"sheet": sheet, "gift_id": gift_id, "title": title, "total": total,
+                     "num": random.randint(1, total), "value": None, "built": False}
+        try:
+            self.add_constructor_buttons(sheet)
+        except Exception:
+            self.logger.exception("Could not add the # and ? buttons")
+        self.update_ctor_header()
+        sheet.setOnDismissListener(R(lambda: run_on_ui_thread(self.confirm_build, 150)))
+        sheet.show()
+
+    def add_constructor_buttons(self, sheet):
+        """Two round buttons beside the native glass tabs, using the sheet's own glass factory."""
+        from android.widget import FrameLayout
+        from org.telegram.ui.ActionBar import Theme
+        from org.telegram.ui.Components.blur3.drawable.color import BlurredBackgroundColorProviderThemed
+        container = get_private_field(sheet, "containerView")
+        factory = get_private_field(sheet, "glassFactory")
+        activity = self.get_activity()
+        side = (AndroidUtilities.displaySize.x - self.dp(268)) // 2
+        size = max(self.dp(36), min(self.dp(56), side - self.dp(12)))
+        for text, sign, action in (("#", -1, self.ask_ctor_number), ("?", 1, self.ask_ctor_value)):
+            view = TextView(activity)
+            view.setText(text)
+            view.setGravity(Gravity.CENTER)
+            view.setTypeface(Typeface.DEFAULT_BOLD)
+            view.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 22.0)
+            view.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText))
+            if factory is not None:
+                drawable = factory.create(view)
+                drawable.setPadding(self.dp(4))
+                drawable.setRadius(float(size // 2 - self.dp(4)))
+                drawable.setColorProvider(BlurredBackgroundColorProviderThemed(None, Theme.key_windowBackgroundWhite))
+                view.setBackground(drawable)
+            params = FrameLayout.LayoutParams(size, size, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL)
+            params.bottomMargin = self.dp(5) + (self.dp(64) - size) // 2
+            container.addView(view, params)
+            view.setTranslationX(float(sign * (self.dp(134) + side // 2)))
+            view.setOnClickListener(OnClickListener(lambda v, a=action: a()))
+
+    def ctor_value_label(self):
+        value = self.ctor.get("value") if self.ctor else None
+        if not value:
+            return None
+        amount, code = value
+        symbol = next((sym for c, sym, _ in CURRENCIES if c == code), code)
+        return f"Ценность ~{amount:g} {symbol}"
+
+    def update_ctor_header(self):
+        c = self.ctor
+        if c is None:
+            return
+        try:
+            get_private_field(c["sheet"], "giftNameTextView").setText(f"{c['title']} #{c['num']}")
+            label = self.ctor_value_label()
+            if label:
+                get_private_field(c["sheet"], "giftStatusTextView").setText(label)
+        except Exception:
+            self.logger.exception("Could not update the constructor header")
+
+    def ask_ctor_number(self):
+        c = self.ctor
+        activity = self.get_activity()
+        if c is None or activity is None:
+            return
+        field = EditText(activity)
+        field.setInputType(InputType.TYPE_CLASS_NUMBER)
+        field.setText(str(c["num"]))
+        builder = AlertDialogBuilder(activity)
+        builder.set_title("Номер подарка")
+        builder.set_view(field)
+
+        def on_ok(bld, _):
+            bld.dismiss()
+            text = str(field.getText()).strip()
+            if text.isdigit() and int(text) > 0:
+                c["num"] = int(text)
+                self.update_ctor_header()
+
+        builder.set_positive_button("Готово", on_ok)
+        builder.set_negative_button("Отмена", lambda bld, _: bld.dismiss())
+        builder.show()
+
+    def ask_ctor_value(self):
+        activity = self.get_activity()
+        if self.ctor is None or activity is None:
+            return
+        builder = AlertDialogBuilder(activity)
+        builder.set_title("Ценность в")
+
+        def on_pick(bld, which):
+            bld.dismiss()
+            self.ask_ctor_amount(CURRENCIES[which][0])
+
+        builder.set_items([f"{sym}  {name}" for _, sym, name in CURRENCIES], on_pick)
+        builder.set_negative_button("Отмена", lambda bld, _: bld.dismiss())
+        builder.show()
+
+    def ask_ctor_amount(self, code):
+        c = self.ctor
+        activity = self.get_activity()
+        if c is None or activity is None:
+            return
+        field = EditText(activity)
+        field.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL)
+        field.setHint("Например 32")
+        builder = AlertDialogBuilder(activity)
+        builder.set_title("Ценность")
+        builder.set_view(field)
+
+        def on_ok(bld, _):
+            bld.dismiss()
+            amount = parse_amount(str(field.getText()), 0)
+            c["value"] = (amount, code) if amount > 0 else None
+            self.update_ctor_header()
+
+        builder.set_positive_button("Готово", on_ok)
+        builder.set_negative_button("Отмена", lambda bld, _: bld.dismiss())
+        builder.show()
+
+    def ctor_selection(self, sheet):
+        mode = get_private_field(sheet, "mode")
+        if mode is not None and mode.name() == "SELECTED":
+            selected = get_private_field(sheet, "selectedAttributes")
+            if selected is not None:
+                return selected.model, selected.backdrop, selected.pattern
+        top = get_private_field(sheet, "topView")
+        return (top.getUpgradeImageViewAttribute(), top.getUpgradeBackdropAttribute(),
+                top.getUpgradePatternAttribute())
+
+    def confirm_build(self):
+        c = self.ctor
+        activity = self.get_activity()
+        if c is None or c["built"] or activity is None:
+            return
+        try:
+            model, back, pat = self.ctor_selection(c["sheet"])
+        except Exception:
+            self.logger.exception("Could not read the constructor selection")
+            return
+        if model is None or back is None:
+            return
+        lines = [f"{c['title']} #{c['num']}", f"Модель: {attr_name(model)}",
+                 f"Фон: {attr_name(back)}", f"Узор: {attr_name(pat)}"]
+        label = self.ctor_value_label()
+        if label:
+            lines.append(label)
+        builder = AlertDialogBuilder(activity)
+        builder.set_title("Собрать NFT?")
+        builder.set_message("\n".join(lines))
+
+        def on_build(bld, _):
+            bld.dismiss()
+            self.build_from_ctor(model, back, pat)
+
+        builder.set_positive_button("Собрать", on_build)
+        builder.set_negative_button("Отмена", lambda bld, _: bld.dismiss())
+        builder.show()
+
+    def to_usd(self, amount, code):
+        if code == "USD":
+            return amount
+        return amount * self.ton_rate("USD") / max(self.ton_rate(code), 1e-9)
+
+    def build_from_ctor(self, model, back, pat):
+        c = self.ctor
+        if c is None:
+            return
+        gift = self.assemble_unique(c["gift_id"], c["title"], model, back, pat)
+        gift.num = c["num"]
+        gift.availability_issued = max(gift.num, min(c["total"], gift.num + 1000))
+        gift.availability_total = max(c["total"], gift.availability_issued)
+        if c["value"]:
+            amount, code = c["value"]
+            gift.value_amount = int(round(amount * 100))
+            gift.value_currency = code
+            gift.value_usd_amount = int(round(self.to_usd(amount, code) * 100))
+            gift.flags |= FLAG_VALUE
+        if not self.store_custom(gift):
+            BulletinHelper.show_error("Не удалось собрать NFT")
+            return
+        c["built"] = True
+        BulletinHelper.show_success(f"NFT «{gift.title} #{gift.num}» собран. Переоткрой профиль")
 
     def request_on_ui(self, req, on_result):
         """Sends a request with a loading spinner and calls on_result(response) on the UI thread."""
