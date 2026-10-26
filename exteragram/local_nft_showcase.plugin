@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvoices"
-__version__ = "1.17.0"
+__version__ = "1.18.0"
 
 import json
 import random
@@ -924,7 +924,19 @@ class LocalNftShowcasePlugin(BasePlugin):
             self.logger.exception("Fragment number sheet failed, using dialogs")
         self.manage_number_dialog()
 
-    # ----- Fragment-styled screens (custom views) -----
+    # ----- Fragment-styled screens (custom views) — VARIANT A -----
+
+    # ===== Fragment-styled screens — VARIANT A (marketplace cards) =====
+    #
+    # Drop-in replacements for the plugin's view-layer methods. Logic/data methods
+    # (get_usernames, price_of, username_actions, ...) are reused, never redefined.
+
+    # extra palette (signed 32-bit ints)
+    FGA_TABLE = _argb(0xFF212A33)
+    FGA_GREEN = _argb(0xFF5AEC8C)
+    FGA_GREEN_BG = _argb(0x1A5AEC8C)      # ~10% green
+    FGA_ACCENT_BG = _argb(0x1A4DB2FF)     # ~10% accent
+    FGA_SUB2 = _argb(0xFF8C9AA9)
 
     def dp(self, value):
         return AndroidUtilities.dp(value)
@@ -945,7 +957,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         view = LinearLayout(activity)
         view.setOrientation(LinearLayout.VERTICAL)
         view.setBackground(bg)
-        view.setPadding(self.dp(16), self.dp(14), self.dp(16), self.dp(14))
+        view.setPadding(self.dp(14), self.dp(13), self.dp(14), self.dp(13))
         return view
 
     def fg_root(self, activity, title, subtitle=None):
@@ -953,16 +965,16 @@ class LocalNftShowcasePlugin(BasePlugin):
         scroll.setBackgroundColor(FG_BG)
         column = LinearLayout(activity)
         column.setOrientation(LinearLayout.VERTICAL)
-        column.setPadding(self.dp(18), self.dp(22), self.dp(18), self.dp(22))
+        column.setPadding(self.dp(16), self.dp(22), self.dp(16), self.dp(22))
         scroll.addView(column)
-        diamond = self.fg_text(activity, "\u2756", 40, FG_ACCENT, bold=True)
-        diamond.setGravity(Gravity.CENTER)
-        column.addView(diamond)
+        gem = self.fg_text(activity, "❖", 40, FG_ACCENT, bold=True)
+        gem.setGravity(Gravity.CENTER)
+        column.addView(gem)
         head = self.fg_text(activity, title, 23, FG_TEXT, bold=True)
         head.setGravity(Gravity.CENTER)
         head.setPadding(0, self.dp(10), 0, 0)
         column.addView(head)
-        sub = self.fg_text(activity, subtitle or "fragment.com", 13, FG_SUBTEXT)
+        sub = self.fg_text(activity, subtitle or "fragment.com", 13, self.FGA_SUB2)
         sub.setGravity(Gravity.CENTER)
         sub.setPadding(0, self.dp(3), 0, self.dp(18))
         column.addView(sub)
@@ -991,66 +1003,156 @@ class LocalNftShowcasePlugin(BasePlugin):
         button.setOnClickListener(OnClickListener(lambda v: on_click()))
         return button
 
+    # ----- Variant A helpers -----
+
+    def fgA_section(self, activity, column, text):
+        label = self.fg_text(activity, text, 13, self.FGA_SUB2, bold=True)
+        label.setAllCaps(True)
+        label.setPadding(self.dp(4), self.dp(18), self.dp(4), self.dp(9))
+        column.addView(label)
+
+    def fgA_avatar(self, activity, letter):
+        bg = GradientDrawable()
+        bg.setShape(GradientDrawable.OVAL)
+        bg.setColor(self.FGA_ACCENT_BG)
+        view = self.fg_text(activity, (letter or "?")[:1].upper(), 18, FG_ACCENT, bold=True)
+        view.setGravity(Gravity.CENTER)
+        view.setBackground(bg)
+        size = self.dp(42)
+        params = LinearLayout.LayoutParams(size, size)
+        params.rightMargin = self.dp(13)
+        view.setLayoutParams(params)
+        return view
+
+    def fgA_chip(self, activity, text, color, bg_color):
+        bg = GradientDrawable()
+        bg.setColor(bg_color)
+        bg.setCornerRadius(float(self.dp(8)))
+        chip = self.fg_text(activity, text, 11, color, bold=True)
+        chip.setBackground(bg)
+        chip.setPadding(self.dp(8), self.dp(3), self.dp(8), self.dp(3))
+        return chip
+
+    def fgA_price_cell(self, activity, gram):
+        box = LinearLayout(activity)
+        box.setOrientation(LinearLayout.VERTICAL)
+        box.setGravity(Gravity.END)
+        top = self.fg_text(activity, "♦ " + str(int(gram)), 16, FG_ACCENT, bold=True)
+        top.setGravity(Gravity.END)
+        box.addView(top)
+        label = self.price_label(gram)
+        fiat = label.split("(~", 1)[1].rstrip(")") if "(~" in label else ""
+        if fiat:
+            sub = self.fg_text(activity, "≈ " + fiat, 12, self.FGA_SUB2)
+            sub.setGravity(Gravity.END)
+            sub.setPadding(0, self.dp(2), 0, 0)
+            box.addView(sub)
+        return box
+
+    def fgA_card_row(self, activity, column, letter, title, chip, gram, on_click):
+        card = self.fg_card(activity)
+        card.setOrientation(LinearLayout.HORIZONTAL)
+        card.setGravity(Gravity.CENTER_VERTICAL)
+        card.addView(self.fgA_avatar(activity, letter))
+
+        middle = LinearLayout(activity)
+        middle.setOrientation(LinearLayout.VERTICAL)
+        title_row = LinearLayout(activity)
+        title_row.setOrientation(LinearLayout.HORIZONTAL)
+        title_row.setGravity(Gravity.CENTER_VERTICAL)
+        title_row.addView(self.fg_text(activity, title, 17, FG_TEXT, bold=True))
+        if chip is not None:
+            params = LinearLayout.LayoutParams(-2, -2)
+            params.leftMargin = self.dp(8)
+            chip.setLayoutParams(params)
+            title_row.addView(chip)
+        middle.addView(title_row)
+        middle.addView(self.fgA_chip_hint(activity))
+        middle_params = LinearLayout.LayoutParams(0, -2, 1.0)
+        middle.setLayoutParams(middle_params)
+        card.addView(middle)
+
+        if gram is not None:
+            card.addView(self.fgA_price_cell(activity, gram))
+
+        if on_click is not None:
+            card.setOnClickListener(OnClickListener(lambda v: on_click()))
+        params = LinearLayout.LayoutParams(-1, -2)
+        params.bottomMargin = self.dp(10)
+        column.addView(card, params)
+
+    def fgA_chip_hint(self, activity):
+        hint = self.fg_text(activity, "нажми, чтобы изменить", 12, self.FGA_SUB2)
+        hint.setPadding(0, self.dp(2), 0, 0)
+        return hint
+
+    # ----- Username sheet -----
+
     def fragment_usernames_sheet(self):
         activity = self.get_activity()
         if activity is None:
             return
-        scroll, column = self.fg_root(activity, "Мои юзернеймы")
+        scroll, column = self.fg_root(activity, "Мои юзернеймы", "коллекционные юзернеймы")
         items = self.get_usernames()
         primary = (self.get_setting("primary_username", "") or "").lower()
 
         if not items:
-            empty = self.fg_text(activity, "Пока пусто. Добавь свой первый юзернейм.", 15, FG_SUBTEXT)
+            empty = self.fg_text(activity, "Пока пусто. Добавь свой первый юзернейм.", 15, self.FGA_SUB2)
             empty.setGravity(Gravity.CENTER)
-            empty.setPadding(0, self.dp(10), 0, self.dp(18))
+            empty.setPadding(0, self.dp(8), 0, self.dp(16))
             column.addView(empty)
-
-        for d in items:
-            card = self.fg_card(activity)
-            is_primary = d["name"].lower() == primary
-            name_row = LinearLayout(activity)
-            name_row.setOrientation(LinearLayout.HORIZONTAL)
-            name_row.setGravity(Gravity.CENTER_VERTICAL)
-            name_view = self.fg_text(activity, "@" + d["name"], 18, FG_TEXT, bold=True)
-            name_row.addView(name_view)
-            if is_primary:
-                badge = self.fg_text(activity, "  \u2b50 основной", 13, FG_ACCENT)
-                name_row.addView(badge)
-            card.addView(name_row)
-            price = float(d.get("price") or DEFAULT_PRICE)
-            price_view = self.fg_text(activity, "\u2666 " + self.price_label(price), 14, FG_SUBTEXT)
-            price_view.setPadding(0, self.dp(4), 0, 0)
-            card.addView(price_view)
-            card.setOnClickListener(OnClickListener(lambda v, n=d["name"]: (self.active_sheet_dismiss(), self.username_actions(n))))
-            params = LinearLayout.LayoutParams(-1, -2)
-            params.bottomMargin = self.dp(10)
-            column.addView(card, params)
+        else:
+            self.fgA_section(activity, column, str(len(items)) + " в коллекции")
+            for d in items:
+                name = d["name"]
+                gram = float(d.get("price") or DEFAULT_PRICE)
+                is_primary = name.lower() == primary
+                chip = self.fgA_chip(activity, "основной", FG_ACCENT, self.FGA_ACCENT_BG) if is_primary else None
+                self.fgA_card_row(
+                    activity, column, name, "@" + name, chip, gram,
+                    lambda n=name: (self.active_sheet_dismiss(), self.username_actions(n)),
+                )
 
         add = self.fg_button(activity, "+  Добавить юзернейм",
                              lambda: (self.active_sheet_dismiss(), self.add_username_dialog()))
-        add_params = LinearLayout.LayoutParams(-1, -2)
-        add_params.topMargin = self.dp(6)
-        column.addView(add, add_params)
+        params = LinearLayout.LayoutParams(-1, -2)
+        params.topMargin = self.dp(8)
+        column.addView(add, params)
 
-        hint = self.fg_text(activity, "Видно только тебе. Нажми на юзернейм, чтобы изменить цену, "
-                                      "сделать основным или удалить.", 12, FG_SUBTEXT)
-        hint.setPadding(self.dp(4), self.dp(16), self.dp(4), 0)
-        column.addView(hint)
+        note = self.fg_text(activity, "Видно только тебе. Цена и её курс — как на Fragment.",
+                            12, self.FGA_SUB2)
+        note.setGravity(Gravity.CENTER)
+        note.setPadding(self.dp(4), self.dp(16), self.dp(4), 0)
+        column.addView(note)
+
         self.active_sheet = self.fg_show(activity, scroll)
+
+    # ----- Number sheet -----
 
     def fragment_number_sheet(self):
         activity = self.get_activity()
         if activity is None:
             return
-        scroll, column = self.fg_root(activity, "Анонимный номер +888")
+        scroll, column = self.fg_root(activity, "Анонимный номер", "+888")
         number = parse_phone(self.get_setting("anon_number", ""))
 
         if number:
+            self.fgA_section(activity, column, "твой номер")
             card = self.fg_card(activity)
-            card.addView(self.fg_text(activity, format_phone(number), 20, FG_TEXT, bold=True))
-            price_view = self.fg_text(activity, "\u2666 " + self.price_label(self.number_price()), 14, FG_SUBTEXT)
-            price_view.setPadding(0, self.dp(4), 0, 0)
-            card.addView(price_view)
+            card.setOrientation(LinearLayout.HORIZONTAL)
+            card.setGravity(Gravity.CENTER_VERTICAL)
+            card.addView(self.fgA_avatar(activity, "8"))
+            middle = LinearLayout(activity)
+            middle.setOrientation(LinearLayout.VERTICAL)
+            middle.addView(self.fg_text(activity, format_phone(number), 17, FG_TEXT, bold=True))
+            status = self.fgA_chip(activity, "активен", self.FGA_GREEN, self.FGA_GREEN_BG)
+            status_params = LinearLayout.LayoutParams(-2, -2)
+            status_params.topMargin = self.dp(5)
+            status.setLayoutParams(status_params)
+            middle.addView(status)
+            middle.setLayoutParams(LinearLayout.LayoutParams(0, -2, 1.0))
+            card.addView(middle)
+            card.addView(self.fgA_price_cell(activity, self.number_price()))
             card_params = LinearLayout.LayoutParams(-1, -2)
             card_params.bottomMargin = self.dp(12)
             column.addView(card, card_params)
@@ -1068,9 +1170,9 @@ class LocalNftShowcasePlugin(BasePlugin):
                                     lambda: (self.active_sheet_dismiss(), self.remove_number()), color=FG_DANGER)
             column.addView(remove, LinearLayout.LayoutParams(-1, -2))
         else:
-            empty = self.fg_text(activity, "Номер не задан.", 15, FG_SUBTEXT)
+            empty = self.fg_text(activity, "Номер +888 не задан.", 15, self.FGA_SUB2)
             empty.setGravity(Gravity.CENTER)
-            empty.setPadding(0, self.dp(10), 0, self.dp(16))
+            empty.setPadding(0, self.dp(8), 0, self.dp(16))
             column.addView(empty)
             add = self.fg_button(activity, "Задать номер +888",
                                  lambda: (self.active_sheet_dismiss(), self.set_number_dialog()))
