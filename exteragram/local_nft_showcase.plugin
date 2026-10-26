@@ -11,7 +11,7 @@ __id__ = "local_nft_showcase"
 __name__ = "Local NFT Showcase"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "brokolyone"
-__version__ = "1.6.0"
+__version__ = "1.6.1"
 
 import random
 import re
@@ -311,6 +311,45 @@ class LocalNftShowcasePlugin(BasePlugin):
                     NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.starBalanceUpdated)
                 except Exception:
                     self.logger.exception("Could not refresh the balance on screen")
+
+    def regular_gift_ids(self) -> List[int]:
+        text = self.get_setting("regular_gifts", "")
+        return [int(x) for x in text.split(",") if x.strip().isdigit()]
+
+    def load_catalog(self):
+        if not self.regular_gift_ids():
+            return
+        req = TL_stars.getStarGifts()
+        req.hash = 0
+
+        def on_response(response, error):
+            for gift in getattr(response, "gifts", None) or []:
+                self.catalog[gift.id] = gift
+
+        send_request(req, on_response)
+
+    def loaded_regular_gifts(self) -> List[Any]:
+        if not self.get_setting("enabled", True):
+            return []
+        return [self.catalog[gift_id] for gift_id in self.regular_gift_ids() if gift_id in self.catalog]
+
+    def clear_regular_gifts(self):
+        self.set_setting("regular_gifts", "")
+        BulletinHelper.show_success("Обычные подарки убраны. Переоткрой профиль")
+
+    def spend(self, ton: bool, price: int) -> bool:
+        """Takes price (stars, or nanoTON for TON) from the local balance. False if it is too low."""
+        if not self.get_setting("spend_balance", True):
+            return True
+        key, default, scale = ("ton_balance", "1000", NANO) if ton else ("stars_balance", "100000", 1)
+        balance = parse_amount(self.get_setting(key, default), 0) * scale
+        if balance < price:
+            BulletinHelper.show_error("Не хватает локального баланса. Пополни его в настройках плагина")
+            return False
+        left = balance - price
+        self.set_setting(key, f"{left / NANO:.2f}" if ton else str(int(left)))
+        self.notify_balance()
+        return True
 
     def pay_locally(self, account: int, request):
         """Returns (response, error) for a purchase made locally, or None to send it for real."""
