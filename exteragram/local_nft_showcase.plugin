@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.20.0"
+__version__ = "1.21.0"
 
 import json
 import random
@@ -129,6 +129,19 @@ def attr_name(attr) -> str:
 def backdrop_argb(backdrop) -> int:
     color = int(getattr(backdrop, "center_color", 0) or 0)
     return (0xFF000000 | (color & 0xFFFFFF)) - 0x100000000
+
+
+def backdrop_edge_argb(backdrop) -> int:
+    color = int(getattr(backdrop, "edge_color", 0) or getattr(backdrop, "center_color", 0) or 0)
+    return (0xFF000000 | (color & 0xFFFFFF)) - 0x100000000
+
+
+def attr_permille(attr) -> str:
+    try:
+        p = int(attr.getRarityPermille())
+    except Exception:
+        return ""
+    return f"{p / 10:.1f}%" if p else ""
 
 
 class PatchUserHook(MethodHook):
@@ -1752,6 +1765,68 @@ class LocalNftShowcasePlugin(BasePlugin):
 
         self.request_on_ui(req, on_result)
 
+    def fgC_preview(self, activity, model, back, pat):
+        """Real upgrade-preview look: the model sticker over the backdrop gradient + chips."""
+        center = backdrop_argb(back)
+        edge = backdrop_edge_argb(back)
+        bg = GradientDrawable()
+        bg.setShape(GradientDrawable.RECTANGLE)
+        bg.setCornerRadius(float(self.dp(16)))
+        try:
+            bg.setColors([center, edge])
+            bg.setGradientType(GradientDrawable.RADIAL_GRADIENT)
+            bg.setGradientRadius(float(self.dp(230)))
+        except Exception:
+            bg.setColor(center)
+
+        box = LinearLayout(activity)
+        box.setOrientation(LinearLayout.VERTICAL)
+        box.setGravity(Gravity.CENTER)
+        box.setBackground(bg)
+        box.setPadding(self.dp(16), self.dp(22), self.dp(16), self.dp(18))
+
+        try:
+            from org.telegram.ui.Components import BackupImageView
+            from org.telegram.ui.Stars import StarsIntroActivity
+            sticker = BackupImageView(activity)
+            StarsIntroActivity.setGiftImage(sticker.getImageReceiver(), model.document, 160)
+            sp = LinearLayout.LayoutParams(self.dp(130), self.dp(130))
+            box.addView(sticker, sp)
+        except Exception:
+            self.logger.exception("Could not render the model sticker")
+
+        name = self.fg_text(activity, attr_name(model), 20, FG_TEXT, bold=True)
+        name.setGravity(Gravity.CENTER)
+        name.setPadding(0, self.dp(8), 0, 0)
+        box.addView(name)
+        sub = self.fg_text(activity, "Случайные характеристики", 13, _argb(0xCCFFFFFF))
+        sub.setGravity(Gravity.CENTER)
+        sub.setPadding(0, self.dp(3), 0, self.dp(14))
+        box.addView(sub)
+
+        chips = LinearLayout(activity)
+        chips.setOrientation(LinearLayout.HORIZONTAL)
+        for attr, label in ((model, "модель"), (back, "фон"), (pat, "узор")):
+            if attr is None:
+                continue
+            chip_bg = GradientDrawable()
+            chip_bg.setColor(_argb(0x33000000))
+            chip_bg.setCornerRadius(float(self.dp(9)))
+            chip = LinearLayout(activity)
+            chip.setOrientation(LinearLayout.VERTICAL)
+            chip.setBackground(chip_bg)
+            chip.setPadding(self.dp(10), self.dp(7), self.dp(10), self.dp(7))
+            pct = attr_permille(attr)
+            top = self.fg_text(activity, attr_name(attr) + (f"  {pct}" if pct else ""), 13, FG_TEXT, bold=True)
+            chip.addView(top)
+            chip.addView(self.fg_text(activity, label, 11, _argb(0xB3FFFFFF)))
+            cp = LinearLayout.LayoutParams(0, -2, 1.0)
+            cp.leftMargin = self.dp(3)
+            cp.rightMargin = self.dp(3)
+            chips.addView(chip, cp)
+        box.addView(chips, LinearLayout.LayoutParams(-1, -2))
+        return box
+
     def show_constructor(self):
         activity = self.get_activity()
         c = self.ctor
@@ -1763,23 +1838,8 @@ class LocalNftShowcasePlugin(BasePlugin):
         back = c["backs"][c["bi"]]
         pat = c["pats"][c["pi"]] if c["pats"] else None
 
-        # Preview box filled with the backdrop colour.
-        preview_bg = GradientDrawable()
-        preview_bg.setColor(backdrop_argb(back))
-        preview_bg.setCornerRadius(float(self.dp(14)))
-        preview = LinearLayout(activity)
-        preview.setOrientation(LinearLayout.VERTICAL)
-        preview.setGravity(Gravity.CENTER)
-        preview.setBackground(preview_bg)
-        preview.setPadding(self.dp(16), self.dp(28), self.dp(16), self.dp(28))
-        name = self.fg_text(activity, attr_name(model), 20, FG_TEXT, bold=True)
-        name.setGravity(Gravity.CENTER)
-        preview.addView(name)
-        sub = self.fg_text(activity, f"{c['collection'].title} #{c['mi'] + 1}", 13, FG_TEXT)
-        sub.setGravity(Gravity.CENTER)
-        sub.setPadding(0, self.dp(4), 0, 0)
-        preview.addView(sub)
-        pp = LinearLayout.LayoutParams(-1, self.dp(150))
+        preview = self.fgC_preview(activity, model, back, pat)
+        pp = LinearLayout.LayoutParams(-1, -2)
         pp.bottomMargin = self.dp(16)
         column.addView(preview, pp)
 
