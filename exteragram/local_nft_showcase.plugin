@@ -11,7 +11,7 @@ __id__ = "local_nft_showcase"
 __name__ = "Local NFT Showcase"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "brokolyone"
-__version__ = "1.10.0"
+__version__ = "1.11.0"
 
 import json
 import random
@@ -286,6 +286,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.announce = {}  # slug or gift id -> account: post a card in Saved Messages once loaded
         self.own_ids = set()
         self.added_usernames = set()
+        self.real_username = {}  # user id -> real main username, to restore it later
         self.real_phones = {}  # user id -> real phone, to restore when the +888 number is cleared
         self.statuses = {}
         self.catalog = {}  # gift id -> regular gift from the gift catalog
@@ -398,6 +399,14 @@ class LocalNftShowcasePlugin(BasePlugin):
                 default="",
                 subtext="Через запятую: @durov, @telegram",
                 icon="msg_mention",
+                on_change=lambda _: self.refresh_own_users(),
+            ),
+            Input(
+                key="primary_username",
+                text="Основной юзернейм",
+                default="",
+                subtext="Какой показывать под именем. Пусто — настоящий",
+                icon="msg_openprofile",
                 on_change=lambda _: self.refresh_own_users(),
             ),
             Input(
@@ -1062,9 +1071,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             if not entry.editable and entry.username in self.added_usernames:
                 user.usernames.remove(jint(i))  # by index, not by value
         self.added_usernames = set(names)
-        if not names:
-            return
-        if user.usernames.size() == 0 and user.username:
+        if names and user.usernames.size() == 0 and user.username:
             own = TLRPC.TL_username()
             own.editable = True
             own.active = True
@@ -1078,7 +1085,22 @@ class LocalNftShowcasePlugin(BasePlugin):
             entry.active = True
             entry.username = name
             user.usernames.add(entry)
-        user.flags2 |= FLAG_USERNAMES
+        if names:
+            user.flags2 |= FLAG_USERNAMES
+
+        # Choose which username shows under the name (user.username). The rest fall under "also".
+        primary = parse_usernames(self.get_setting("primary_username", ""))
+        if primary:
+            choice = primary[0]
+            if self.real_username.get(user.id) is None:
+                self.real_username[user.id] = user.username or ""
+            user.username = choice
+            # The chosen one should not also repeat in the "also" list.
+            for i in reversed(range(user.usernames.size())):
+                if user.usernames.get(i).username.lower() == choice.lower():
+                    user.usernames.remove(jint(i))
+        elif user.id in self.real_username:
+            user.username = self.real_username[user.id]
 
     def patch_phone(self, user):
         fake = parse_phone(self.get_setting("anon_number", ""))
