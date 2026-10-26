@@ -11,7 +11,7 @@ __id__ = "local_nft_showcase"
 __name__ = "Local NFT Showcase"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "brokolyone"
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 
 import re
 import time
@@ -19,8 +19,7 @@ from collections import defaultdict, deque
 from typing import Any, List
 
 from base_plugin import BasePlugin, HookResult, HookStrategy, MethodHook
-from client_utils import get_user_config, send_request
-from hook_utils import find_class
+from client_utils import get_messages_controller, get_user_config, send_request
 from ui.bulletin import BulletinHelper
 from ui.settings import Divider, Header, Input, Switch, Text
 
@@ -100,8 +99,9 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.load_gifts(self.get_setting("slug", ""))
 
     def install_java_hooks(self):
-        user_config = find_class("org.telegram.messenger.UserConfig")
-        controller = find_class("org.telegram.messenger.MessagesController")
+        # Take java.lang.Class from live objects: find_class may return a Python proxy.
+        user_config = get_user_config().getClass()
+        controller = get_messages_controller().getClass()
         self.hook_method(user_config.getDeclaredMethod("isPremium"), PremiumHook(self))
         self.hook_all_methods(user_config, "setCurrentUser", PatchUserHook(self, 0))
         self.hook_all_methods(controller, "putUser", PatchUserHook(self, 0))
