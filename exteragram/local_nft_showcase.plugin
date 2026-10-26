@@ -11,8 +11,9 @@ __id__ = "local_nft_showcase"
 __name__ = "Local NFT Showcase"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "brokolyone"
-__version__ = "1.6.1"
+__version__ = "1.7.0"
 
+import json
 import random
 import re
 import time
@@ -29,7 +30,8 @@ from ui.settings import Divider, Header, Input, Switch, Text
 
 from android.text import InputType
 from android.widget import EditText
-from org.telegram.messenger import NotificationCenter, UserConfig, Utilities
+from java.util import ArrayList
+from org.telegram.messenger import MessageObject, MessagesStorage, NotificationCenter, UserConfig, Utilities
 from org.telegram.tgnet import ConnectionsManager, SerializedData, TLRPC
 from org.telegram.tgnet.tl import TL_account, TL_stars
 from org.telegram.ui.Stars import StarsController
@@ -40,6 +42,9 @@ FLAG_OWNER_ID = 1
 FLAG_OWNER_NAME = 2
 FLAG_OWNER_ADDRESS = 4
 FLAG_STARGIFTS_COUNT = 1 << 18  # UserFull.flags2
+FLAG_RESELL_AMOUNT = 16  # StarGiftUnique.flags
+FLAG_MSG_ID = 8  # SavedStarGift.flags
+LOCAL_MSG_ID_BASE = 2_000_000_000  # fake message ids that let us tell local gifts apart
 
 
 def parse_slug(text: str) -> str:
@@ -132,15 +137,23 @@ class SendRequestHook(MethodHook):
     def __init__(self, plugin):
         self.plugin = plugin
 
-    # sendRequest runs for every network request, so only payment forms reach Python.
-    @hook_filters(HookFilter.ArgumentIsInstanceOf(0, TL_stars.TL_payments_sendStarsForm().getClass()))
+    # sendRequest runs for every network request, so only these requests reach Python.
+    @hook_filters(HookFilter.Or(
+        HookFilter.ArgumentIsInstanceOf(0, TL_stars.TL_payments_sendStarsForm().getClass()),
+        HookFilter.ArgumentIsInstanceOf(0, TL_stars.updateStarGiftPrice().getClass()),
+    ))
     def before_hooked_method(self, param):
         args = list(param.args)
-        if not args or not isinstance(args[0], TL_stars.TL_payments_sendStarsForm):
+        if not args:
             return
         delegate = next((a for a in args[1:] if a is not None and hasattr(a, "run")), None)
         account = get_private_field(param.thisObject, "currentAccount") or 0
-        result = self.plugin.pay_locally(account, args[0])
+        if isinstance(args[0], TL_stars.TL_payments_sendStarsForm):
+            result = self.plugin.pay_locally(account, args[0])
+        elif isinstance(args[0], TL_stars.updateStarGiftPrice):
+            result = self.plugin.set_price_locally(args[0])
+        else:
+            return
         if result is None:
             return  # not ours: let the real request go
         param.setResult(0)
@@ -176,6 +189,9 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.add_hook("updateEmojiStatus", match_substring=True)
         self.add_hook("getPaymentForm", match_substring=True)
         self.form_prices = {}  # payment form id -> price (stars, or nanoTON)
+        self.balance_cache = {}
+        self.local_msg_ids = {}  # fake SavedStarGift.msg_id -> slug
+        self.announce = {}  # slug or gift id -> account: post a card in Saved Messages once loaded
         self.own_ids = set()
         self.statuses = {}
         self.catalog = {}  # gift id -> regular gift from the gift catalog
@@ -298,11 +314,18 @@ class LocalNftShowcasePlugin(BasePlugin):
     # Local balance and local purchases on the gift marketplace.
 
     def balance_amount(self, ton: bool):
+        # Balance views compare the object they got last time, and a new object on every
+        # read replays the star effect each frame. Hand out the same object until it changes.
         if ton:
-            amount = TL_stars.TL_starsTonAmount()
-            amount.amount = int(parse_amount(self.get_setting("ton_balance", "1000"), 0) * NANO)
-            return amount
-        return TL_stars.StarsAmount.ofStars(int(parse_amount(self.get_setting("stars_balance", "100000"), 0)))
+            value = int(parse_amount(self.get_setting("ton_balance", "1000"), 0) * NANO)
+        else:
+            value = int(parse_amount(self.get_setting("stars_balance", "100000"), 0))
+        cached = self.balance_cache.get(ton)
+        if cached is None or cached.amount != value:
+            cached = TL_stars.TL_starsTonAmount() if ton else TL_stars.StarsAmount.ofStars(0)
+            cached.amount = value
+            self.balance_cache[ton] = cached
+        return cached
 
     def notify_balance(self):
         for account in range(UserConfig.MAX_ACCOUNT_COUNT):
@@ -325,6 +348,8 @@ class LocalNftShowcasePlugin(BasePlugin):
         def on_response(response, error):
             for gift in getattr(response, "gifts", None) or []:
                 self.catalog[gift.id] = gift
+            for gift_id in [k for k in self.announce if isinstance(k, int) and k in self.catalog]:
+                self.post_saved_card(self.announce.pop(gift_id), self.catalog[gift_id], unique=False)
 
         send_request(req, on_response)
 
@@ -373,13 +398,18 @@ class LocalNftShowcasePlugin(BasePlugin):
             return None, error
 
         if isinstance(invoice, TLRPC.TL_inputInvoiceStarGiftResale):
+            self.forget_listing(invoice.slug)
+            self.announce[invoice.slug] = account
             self.add_slug(invoice.slug)
             BulletinHelper.show_success(f"NFT «{invoice.slug}» куплен. Переоткрой профиль")
         else:
             ids = self.regular_gift_ids()
             ids.insert(0, invoice.gift_id)
             self.set_setting("regular_gifts", ",".join(str(i) for i in ids))
-            if invoice.gift_id not in self.catalog:
+            if invoice.gift_id in self.catalog:
+                self.post_saved_card(account, self.catalog[invoice.gift_id], unique=False)
+            else:
+                self.announce[invoice.gift_id] = account
                 self.load_catalog()
             BulletinHelper.show_success("Подарок куплен. Переоткрой профиль")
 
@@ -388,6 +418,105 @@ class LocalNftShowcasePlugin(BasePlugin):
         response = TLRPC.TL_payments_paymentResult()
         response.updates = updates
         return response, None
+
+    # Local listings on the marketplace: prices are kept per slug in the "listings" setting.
+
+    def listings(self) -> dict:
+        try:
+            return json.loads(self.get_setting("listings", "") or "{}")
+        except ValueError:
+            return {}
+
+    def forget_listing(self, slug: str):
+        listings = self.listings()
+        if listings.pop(slug, None) is not None:
+            self.set_setting("listings", json.dumps(listings))
+
+    def apply_listing(self, gift):
+        """A bought gift arrives with the seller's price: show only our own local listing."""
+        listing = self.listings().get(gift.slug)
+        gift.resell_amount = ArrayList()
+        if not listing:
+            gift.flags &= ~FLAG_RESELL_AMOUNT
+            gift.resale_ton_only = False
+            return
+        stars = TL_stars.StarsAmount.ofStars(int(listing["stars"]))
+        ton = TL_stars.TL_starsTonAmount()
+        ton.amount = int(listing["ton"])
+        gift.resell_amount.add(stars)
+        gift.resell_amount.add(ton)
+        gift.resale_ton_only = bool(listing["ton_only"])
+        gift.flags |= FLAG_RESELL_AMOUNT
+
+    def local_gift_for(self, stargift):
+        """The local gift an InputSavedStarGift points to, or None."""
+        if isinstance(stargift, TL_stars.TL_inputSavedStarGiftSlug):
+            return next((g for g in self.gifts.values() if g.slug == stargift.slug), None)
+        if isinstance(stargift, TL_stars.TL_inputSavedStarGiftUser):
+            slug = self.local_msg_ids.get(stargift.msg_id)
+            return self.gifts.get(slug) if slug else None
+        return None
+
+    def set_price_locally(self, request):
+        gift = self.local_gift_for(request.stargift)
+        if gift is None:
+            return None  # a real gift: let the server handle it
+        listings = self.listings()
+        amount = request.resell_amount
+        if amount is None or (amount.amount == 0 and amount.nanos == 0):
+            listings.pop(gift.slug, None)
+            BulletinHelper.show_success("Снято с продажи (локально)")
+        else:
+            is_ton = isinstance(amount, TL_stars.TL_starsTonAmount)
+            # The app shows both prices; keep the other currency at the same value as Telegram does.
+            stars = amount.amount if not is_ton else 0
+            ton = amount.amount if is_ton else 0
+            listings[gift.slug] = {"stars": stars, "ton": ton, "ton_only": is_ton}
+            BulletinHelper.show_success("Выставлено на продажу (локально)")
+        self.set_setting("listings", json.dumps(listings))
+        updates = TLRPC.TL_updates()
+        updates.date = int(time.time())
+        return updates, None
+
+    # Cards in Saved Messages for local purchases. They are only in this app's database.
+
+    def post_saved_card(self, account: int, gift, unique: bool):
+        try:
+            user_id = get_user_config(account).getClientUserId()
+            me = TLRPC.TL_peerUser()
+            me.user_id = user_id
+
+            if unique:
+                action = TLRPC.TL_messageActionStarGiftUnique()
+                action.saved = True
+                action.flags |= 4
+            else:
+                action = TLRPC.TL_messageActionStarGift()
+                action.saved = True
+                action.flags |= 4
+            action.gift = gift
+
+            message = TLRPC.TL_messageService()
+            message.id = get_user_config(account).getNewMessageId()
+            message.from_id = me
+            message.peer_id = me
+            message.dialog_id = user_id
+            message.date = int(time.time())
+            message.out = True
+            message.flags |= 2 | 256
+            message.action = action
+
+            messages = ArrayList()
+            messages.add(message)
+            try:
+                MessagesStorage.getInstance(account).putMessages(messages, False, True, False, 0, 0, 0)
+            except Exception:
+                self.logger.exception("Could not save the purchase card, it will vanish after restart")
+            objects = ArrayList()
+            objects.add(MessageObject(account, message, True, True))
+            run_on_ui_thread(lambda: get_messages_controller(account).updateInterfaceWithMessages(user_id, objects, 0))
+        except Exception:
+            self.logger.exception("Could not post the purchase card to Saved Messages")
 
     # Picker: collection -> NFT on resale, by number or a random one.
 
@@ -544,7 +673,10 @@ class LocalNftShowcasePlugin(BasePlugin):
                 BulletinHelper.show_error(f"NFT «{slug}» не найден: {text}")
                 return
             gift = response.gift
+            self.apply_listing(gift)
             self.gifts[slug] = gift
+            if slug in self.announce:
+                self.post_saved_card(self.announce.pop(slug), gift, unique=True)
             BulletinHelper.show_success(
                 f"NFT «{gift.title} #{gift.num}» загружен ({len(self.gifts)}/{len(self.slugs)})"
             )
@@ -688,6 +820,11 @@ class LocalNftShowcasePlugin(BasePlugin):
         saved.gift = gift
         saved.date = int(time.time())
         saved.pinned_to_top = self.get_setting("pinned", True)
+        # The gift screen sends this id back when listing the gift for sale.
+        saved.msg_id = LOCAL_MSG_ID_BASE + self.slugs.index(gift.slug) if gift.slug in self.slugs else 0
+        if saved.msg_id:
+            saved.flags |= FLAG_MSG_ID
+            self.local_msg_ids[saved.msg_id] = gift.slug
         return saved
 
     def make_saved_regular_gift(self, account: int, gift, index: int):
