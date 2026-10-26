@@ -11,7 +11,7 @@ __id__ = "local_nft_showcase"
 __name__ = "Local NFT Showcase"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "brokolyone"
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 import random
 import re
@@ -28,9 +28,12 @@ from ui.settings import Divider, Header, Input, Switch, Text
 
 from android.text import InputType
 from android.widget import EditText
-from org.telegram.messenger import UserConfig, Utilities
+from org.telegram.messenger import NotificationCenter, UserConfig, Utilities
 from org.telegram.tgnet import SerializedData, TLRPC
 from org.telegram.tgnet.tl import TL_account, TL_stars
+from org.telegram.ui.Stars import StarsController
+
+NANO = 1_000_000_000
 
 FLAG_OWNER_ID = 1
 FLAG_OWNER_NAME = 2
@@ -95,6 +98,43 @@ def describe_unique(gift) -> str:
     return f"#{gift.num} · " + " · ".join(parts)
 
 
+def parse_amount(text, default: float) -> float:
+    try:
+        return max(0.0, float(str(text).replace(",", ".").replace(" ", "")))
+    except ValueError:
+        return default
+
+
+def find_method(clazz, name: str, param_count: int):
+    for method in clazz.getDeclaredMethods():
+        if method.getName() == name and method.getParameterCount() == param_count:
+            method.setAccessible(True)
+            return method
+    return None
+
+
+class BalanceHook(MethodHook):
+    """StarsController.getBalance(boolean, Runnable, boolean): every balance read goes through it."""
+
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def after_hooked_method(self, param):
+        if self.plugin.get_setting("local_balance", True):
+            param.setResult(self.plugin.balance_amount(param.thisObject.ton))
+
+
+class BuyResaleHook(MethodHook):
+    """StarsController.buyResellingGift(form, gift, dialogId, message, hideMyName, whenDone)."""
+
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def before_hooked_method(self, param):
+        if self.plugin.buy_locally(param.thisObject, *param.args):
+            param.setResult(None)
+
+
 def parse_slugs(text: str) -> List[str]:
     """Several links separated by commas, spaces or new lines, without duplicates."""
     slugs = []
@@ -128,6 +168,16 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.hook_method(user_config.getDeclaredMethod("isPremium"), PremiumHook(self))
         self.hook_all_methods(user_config, "setCurrentUser", PatchUserHook(self, 0))
         self.hook_all_methods(controller, "putUser", PatchUserHook(self, 0))
+        stars = StarsController.getInstance(0).getClass()
+        for name, count, hook in (
+            ("getBalance", 3, BalanceHook(self)),
+            ("buyResellingGift", 6, BuyResaleHook(self)),
+        ):
+            method = find_method(stars, name, count)
+            if method is None:
+                self.logger.error(f"StarsController.{name} not found, this feature is off")
+            else:
+                self.hook_method(method, hook)
 
     def create_settings(self) -> List[Any]:
         return [
@@ -166,6 +216,38 @@ class LocalNftShowcasePlugin(BasePlugin):
             Divider(text="Подарки видны только тебе. В Telegram ничего не меняется, "
                          "другие люди в твоём профиле их не увидят. После смены "
                          "настроек переоткрой профиль."),
+            Header(text="Локальный баланс"),
+            Switch(
+                key="local_balance",
+                text="Локальный баланс",
+                default=True,
+                subtext="Свой баланс звёзд и TON, покупка NFT на маркете себе",
+                icon="msg_stars",
+            ),
+            Input(
+                key="stars_balance",
+                text="Звёзды",
+                default="100000",
+                icon="msg_stars",
+                on_change=lambda _: self.notify_balance(),
+            ),
+            Input(
+                key="ton_balance",
+                text="TON",
+                default="1000",
+                icon="msg_ton",
+                on_change=lambda _: self.notify_balance(),
+            ),
+            Switch(
+                key="spend_balance",
+                text="Списывать при покупке",
+                default=True,
+                subtext="Выключи, чтобы баланс не уменьшался",
+                icon="msg_payment_card",
+            ),
+            Divider(text="Купленный на маркете себе NFT добавляется в твой локальный "
+                         "список. Купить в подарок другому человеку локально нельзя: "
+                         "такая покупка идёт как обычно, с настоящими звёздами."),
             Header(text="Локальный премиум"),
             Switch(
                 key="local_premium",
@@ -185,6 +267,50 @@ class LocalNftShowcasePlugin(BasePlugin):
                          "проверяет сервер (передача и продажа подарков, большие файлы и т.п.), "
                          "работать не будут. Для применения иногда нужен перезапуск."),
         ]
+
+    # Local balance and local purchases on the gift marketplace.
+
+    def balance_amount(self, ton: bool):
+        if ton:
+            amount = TL_stars.TL_starsTonAmount()
+            amount.amount = int(parse_amount(self.get_setting("ton_balance", "1000"), 0) * NANO)
+            return amount
+        return TL_stars.StarsAmount.ofStars(int(parse_amount(self.get_setting("stars_balance", "100000"), 0)))
+
+    def notify_balance(self):
+        for account in range(UserConfig.MAX_ACCOUNT_COUNT):
+            if get_user_config(account).isClientActivated():
+                try:
+                    NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.starBalanceUpdated)
+                except Exception:
+                    self.logger.exception("Could not refresh the balance on screen")
+
+    def buy_locally(self, controller, form, gift, dialog_id, message, hide_my_name, when_done) -> bool:
+        """Returns True when the purchase was handled locally and the real one must be skipped."""
+        account = controller.currentAccount
+        if not self.get_setting("local_balance", True) or gift is None or not gift.slug:
+            return False
+        if dialog_id != get_user_config(account).getClientUserId():
+            return False  # gifts for other people are never faked
+
+        price = sum(p.amount for p in form.invoice.prices)  # stars, or nanoTON for TON
+        if self.get_setting("spend_balance", True):
+            key, default, scale = ("ton_balance", "1000", NANO) if controller.ton else ("stars_balance", "100000", 1)
+            balance = parse_amount(self.get_setting(key, default), 0) * scale
+            if balance < price:
+                BulletinHelper.show_error("Не хватает локального баланса. Пополни его в настройках плагина")
+                if when_done is not None:
+                    when_done.run(False, None)
+                return True
+            left = balance - price
+            self.set_setting(key, f"{left / NANO:.2f}" if controller.ton else str(int(left)))
+            self.notify_balance()
+
+        self.add_slug(gift.slug)
+        if when_done is not None:
+            when_done.run(True, None)
+        BulletinHelper.show_success(f"«{gift.title} #{gift.num}» куплен. Переоткрой профиль")
+        return True
 
     # Picker: collection -> NFT on resale, by number or a random one.
 
