@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.22.0"
+__version__ = "1.23.0"
 
 import json
 import random
@@ -422,11 +422,11 @@ class LocalNftShowcasePlugin(BasePlugin):
                 icon="msg_gift_premium",
             ),
             Text(
-                text="NFT конструктор",
-                subtext="Собрать свой или добавить неулучшенный",
-                icon="msg_colors",
+                text="Добавить подарок (каталог)",
+                subtext="Родной каталог Telegram — покупка идёт локально",
+                icon="msg_gift_premium",
                 accent=True,
-                on_click=lambda _: self.open_nft_constructor(),
+                on_click=lambda _: self.open_gift_catalog(),
             ),
             Text(
                 text="Убрать NFT",
@@ -1603,6 +1603,20 @@ class LocalNftShowcasePlugin(BasePlugin):
         builder.set_negative_button("Отмена", lambda bld, _: bld.dismiss())
         builder.show()
 
+    def open_gift_catalog(self):
+        """Open Telegram's own gift catalog for yourself; buying there is intercepted locally."""
+        activity = self.get_activity()
+        if activity is None:
+            return
+        try:
+            from org.telegram.ui.Gifts import GiftSheet
+            account = UserConfig.selectedAccount
+            uid = get_user_config(account).getClientUserId()
+            GiftSheet(activity, account, uid, None).show()
+        except Exception:
+            self.logger.exception("Could not open the native gift catalog")
+            BulletinHelper.show_error("Не удалось открыть каталог. Открой подарки в профиле вручную")
+
     def request_on_ui(self, req, on_result):
         """Sends a request with a loading spinner and calls on_result(response) on the UI thread."""
         loading = self.show_loading()
@@ -1716,213 +1730,6 @@ class LocalNftShowcasePlugin(BasePlugin):
         builder.set_negative_button("Отмена", lambda bld, _: bld.dismiss())
         builder.show()
 
-    # ----- NFT constructor hub: build your own, or add a non-upgraded gift -----
-
-    def open_nft_constructor(self):
-        self.show_items("NFT конструктор", [
-            "🔨 Собрать свой NFT",
-            "➕ Добавить неулучшенный подарок",
-        ], lambda i: self.open_constructor() if i == 0 else self.add_regular_picker())
-
-    def add_regular_picker(self):
-        req = TL_stars.getStarGifts()
-        req.hash = 0
-
-        def on_result(response):
-            gifts = jlist(getattr(response, "gifts", None))
-            gifts = [g for g in gifts if getattr(g, "title", None)]
-            gifts.sort(key=lambda g: int(getattr(g, "stars", 0) or 0))
-            if not gifts:
-                BulletinHelper.show_error("Подарки не найдены")
-                return
-            items = [f"{g.title} · {int(getattr(g, 'stars', 0) or 0)} ⭐" for g in gifts]
-            self.show_items("Неулучшенный подарок", items,
-                            lambda i: self.add_regular_gift(gifts[i]))
-
-        self.request_on_ui(req, on_result)
-
-    def add_regular_gift(self, gift):
-        self.catalog[gift.id] = gift
-        ids = self.regular_gift_ids()
-        ids.insert(0, gift.id)
-        self.set_setting("regular_gifts", ",".join(str(i) for i in ids))
-        BulletinHelper.show_success(f"«{gift.title}» добавлен. Переоткрой профиль")
-
-    # ----- NFT constructor: pick a collection, choose model/backdrop/pattern, build it -----
-
-    def open_constructor(self):
-        req = TL_stars.getStarGifts()
-        req.hash = 0
-
-        def on_result(response):
-            gifts = jlist(getattr(response, "gifts", None))
-            gifts = [g for g in gifts if getattr(g, "title", None)]
-            gifts.sort(key=lambda g: g.title.lower())
-            if not gifts:
-                BulletinHelper.show_error("Коллекции не найдены")
-                return
-            items = [g.title for g in gifts]
-            self.show_items("Коллекция для сборки", items,
-                            lambda i: self.load_constructor_preview(gifts[i]))
-
-        self.request_on_ui(req, on_result)
-
-    def load_constructor_preview(self, collection):
-        req = TL_stars.getStarGiftUpgradePreview()
-        req.gift_id = collection.id
-
-        def on_result(response):
-            attrs = jlist(getattr(response, "sample_attributes", None))
-            models = [a for a in attrs if isinstance(a, TL_stars.starGiftAttributeModel)]
-            backs = [a for a in attrs if isinstance(a, TL_stars.starGiftAttributeBackdrop)]
-            pats = [a for a in attrs if isinstance(a, TL_stars.starGiftAttributePattern)]
-            if not models or not backs:
-                BulletinHelper.show_error("Для этой коллекции нет образцов")
-                return
-            self.ctor = {"collection": collection, "models": models, "backs": backs,
-                         "pats": pats, "mi": 0, "bi": 0, "pi": 0}
-            self.show_constructor()
-
-        self.request_on_ui(req, on_result)
-
-    def fgC_preview(self, activity, model, back, pat):
-        """Real upgrade-preview look: the model sticker over the backdrop gradient + chips."""
-        center = backdrop_argb(back)
-        edge = backdrop_edge_argb(back)
-        bg = GradientDrawable()
-        bg.setShape(GradientDrawable.RECTANGLE)
-        bg.setCornerRadius(float(self.dp(16)))
-        try:
-            bg.setColors([center, edge])
-            bg.setGradientType(GradientDrawable.RADIAL_GRADIENT)
-            bg.setGradientRadius(float(self.dp(230)))
-        except Exception:
-            bg.setColor(center)
-
-        box = LinearLayout(activity)
-        box.setOrientation(LinearLayout.VERTICAL)
-        box.setGravity(Gravity.CENTER)
-        box.setBackground(bg)
-        box.setPadding(self.dp(16), self.dp(22), self.dp(16), self.dp(18))
-
-        try:
-            from org.telegram.ui.Components import BackupImageView
-            from org.telegram.ui.Stars import StarsIntroActivity
-            sticker = BackupImageView(activity)
-            StarsIntroActivity.setGiftImage(sticker.getImageReceiver(), model.document, 160)
-            sp = LinearLayout.LayoutParams(self.dp(130), self.dp(130))
-            box.addView(sticker, sp)
-        except Exception:
-            self.logger.exception("Could not render the model sticker")
-
-        name = self.fg_text(activity, attr_name(model), 20, FG_TEXT, bold=True)
-        name.setGravity(Gravity.CENTER)
-        name.setPadding(0, self.dp(8), 0, 0)
-        box.addView(name)
-        sub = self.fg_text(activity, "Случайные характеристики", 13, _argb(0xCCFFFFFF))
-        sub.setGravity(Gravity.CENTER)
-        sub.setPadding(0, self.dp(3), 0, self.dp(14))
-        box.addView(sub)
-
-        chips = LinearLayout(activity)
-        chips.setOrientation(LinearLayout.HORIZONTAL)
-        for attr, label in ((model, "модель"), (back, "фон"), (pat, "узор")):
-            if attr is None:
-                continue
-            chip_bg = GradientDrawable()
-            chip_bg.setColor(_argb(0x33000000))
-            chip_bg.setCornerRadius(float(self.dp(9)))
-            chip = LinearLayout(activity)
-            chip.setOrientation(LinearLayout.VERTICAL)
-            chip.setBackground(chip_bg)
-            chip.setPadding(self.dp(10), self.dp(7), self.dp(10), self.dp(7))
-            pct = attr_permille(attr)
-            top = self.fg_text(activity, attr_name(attr) + (f"  {pct}" if pct else ""), 13, FG_TEXT, bold=True)
-            chip.addView(top)
-            chip.addView(self.fg_text(activity, label, 11, _argb(0xB3FFFFFF)))
-            cp = LinearLayout.LayoutParams(0, -2, 1.0)
-            cp.leftMargin = self.dp(3)
-            cp.rightMargin = self.dp(3)
-            chips.addView(chip, cp)
-        box.addView(chips, LinearLayout.LayoutParams(-1, -2))
-        return box
-
-    def show_constructor(self):
-        activity = self.get_activity()
-        c = self.ctor
-        if activity is None or c is None:
-            return
-        scroll, column = self.fg_root(activity, "Конструктор NFT", c["collection"].title)
-
-        model = c["models"][c["mi"]]
-        back = c["backs"][c["bi"]]
-        pat = c["pats"][c["pi"]] if c["pats"] else None
-
-        preview = self.fgC_preview(activity, model, back, pat)
-        pp = LinearLayout.LayoutParams(-1, -2)
-        pp.bottomMargin = self.dp(16)
-        column.addView(preview, pp)
-
-        def selector(label, value, options, key):
-            row = self.fg_card(activity)
-            row.setOrientation(LinearLayout.HORIZONTAL)
-            row.setGravity(Gravity.CENTER_VERTICAL)
-            left = LinearLayout(activity)
-            left.setOrientation(LinearLayout.VERTICAL)
-            left.addView(self.fg_text(activity, label, 13, self.FGA_SUB2))
-            v = self.fg_text(activity, value, 16, FG_TEXT, bold=True)
-            v.setPadding(0, self.dp(2), 0, 0)
-            left.addView(v)
-            left.setLayoutParams(LinearLayout.LayoutParams(0, -2, 1.0))
-            row.addView(left)
-            row.addView(self.fg_text(activity, "изменить  ›", 13, FG_ACCENT))
-            row.setOnClickListener(OnClickListener(
-                lambda vw, opts=options, k=key: self.pick_attr(label, opts, k)))
-            rp = LinearLayout.LayoutParams(-1, -2)
-            rp.bottomMargin = self.dp(8)
-            column.addView(row, rp)
-
-        selector("Модель", attr_name(model), c["models"], "mi")
-        selector("Фон", attr_name(back), c["backs"], "bi")
-        if c["pats"]:
-            selector("Узор", attr_name(pat), c["pats"], "pi")
-
-        dice = self.fg_button(activity, "🎲  Случайно",
-                              lambda: self.randomize_constructor(), color=FG_CARD)
-        dp2 = LinearLayout.LayoutParams(-1, -2)
-        dp2.topMargin = self.dp(6)
-        dp2.bottomMargin = self.dp(8)
-        column.addView(dice, dp2)
-        build = self.fg_button(activity, "Собрать NFT", lambda: self.build_custom_gift())
-        column.addView(build, LinearLayout.LayoutParams(-1, -2))
-
-        note = self.fg_text(activity, "Собранный NFT добавится в твой профиль. Виден только тебе.",
-                            12, self.FGA_SUB2)
-        note.setGravity(Gravity.CENTER)
-        note.setPadding(self.dp(4), self.dp(16), self.dp(4), 0)
-        column.addView(note)
-
-        self.active_sheet = self.fg_show(activity, scroll)
-
-    def pick_attr(self, label, options, key):
-        self.active_sheet_dismiss()
-        items = [attr_name(a) for a in options]
-
-        def on_pick(i):
-            self.ctor[key] = i
-            self.show_constructor()
-
-        self.show_items(label, items, on_pick)
-
-    def randomize_constructor(self):
-        c = self.ctor
-        c["mi"] = random.randrange(len(c["models"]))
-        c["bi"] = random.randrange(len(c["backs"]))
-        if c["pats"]:
-            c["pi"] = random.randrange(len(c["pats"]))
-        self.active_sheet_dismiss()
-        self.show_constructor()
-
     def assemble_unique(self, gift_id, title, model, back, pat):
         gift = TL_stars.TL_starGiftUnique()
         gift.id = random.getrandbits(62)
@@ -1951,21 +1758,6 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.set_setting("custom_gifts", json.dumps(store))
         self.custom[gift.slug] = gift
         return True
-
-    def build_custom_gift(self):
-        c = self.ctor
-        if c is None:
-            return
-        model = c["models"][c["mi"]]
-        back = c["backs"][c["bi"]]
-        pat = c["pats"][c["pi"]] if c["pats"] else None
-        gift = self.assemble_unique(c["collection"].id, c["collection"].title, model, back, pat)
-        if not self.store_custom(gift):
-            BulletinHelper.show_error("Не удалось собрать NFT")
-            return
-        self.active_sheet_dismiss()
-        self.ctor = None
-        BulletinHelper.show_success(f"NFT «{gift.title} #{gift.num}» собран. Переоткрой профиль")
 
     # ----- Local upgrade of a non-upgraded gift -----
 
