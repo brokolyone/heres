@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.29.0"
+__version__ = "1.30.0"
 
 import json
 import random
@@ -40,7 +40,7 @@ from android.widget import EditText, LinearLayout, ScrollView, TextView
 from java import jint
 from java.lang import Integer
 from java.util import ArrayList
-from org.telegram.messenger import AndroidUtilities, MessageObject, MessagesStorage, NotificationCenter, UserConfig, Utilities
+from org.telegram.messenger import AndroidUtilities, MessageObject, MessagesController, MessagesStorage, NotificationCenter, UserConfig, Utilities
 from org.telegram.tgnet import ConnectionsManager, SerializedData, TLRPC
 from java.io import BufferedReader, InputStreamReader
 from java.net import URL
@@ -160,6 +160,52 @@ class PatchUserHook(MethodHook):
 
     def before_hooked_method(self, param):
         self.plugin.patch_user(param.args[self.arg_index])
+
+
+class ErrorGateHook(MethodHook):
+    """BulletinFactory.showForError / makeForError: while one runs, the error bulletin it
+    builds is marked, and BulletinShowHook keeps it off the screen."""
+
+    def __init__(self, plugin, remember_result):
+        self.plugin = plugin
+        self.remember_result = remember_result
+
+    def before_hooked_method(self, param):
+        self.plugin.error_depth += 1
+
+    def after_hooked_method(self, param):
+        self.plugin.error_depth = max(0, self.plugin.error_depth - 1)
+        if self.remember_result and param.getResult() is not None:
+            self.plugin.muted_bulletins = (self.plugin.muted_bulletins + [param.getResult()])[-20:]
+
+
+class BulletinShowHook(MethodHook):
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def before_hooked_method(self, param):
+        if not self.plugin.get_setting("hide_errors", True):
+            return
+        bulletin = param.thisObject
+        muted = self.plugin.error_depth > 0
+        for i, b in enumerate(self.plugin.muted_bulletins):
+            if b.equals(bulletin):
+                del self.plugin.muted_bulletins[i]
+                muted = True
+                break
+        if muted:
+            param.setResult(bulletin)
+
+
+class ProcessErrorHook(MethodHook):
+    """AlertsCreator.processError: the error alerts and toasts for failed requests."""
+
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def before_hooked_method(self, param):
+        if self.plugin.get_setting("hide_errors", True):
+            param.setResult(None)
 
 
 class PremiumHook(MethodHook):
@@ -569,6 +615,8 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.local_saved_ids = {}  # fake SavedStarGift.saved_id -> local key (slug or "r:<gift id>")
         self.previews = {}  # gift id -> (models, backdrops, patterns) for an instant local upgrade
         self.fake_updates = []  # updates objects kept away from MessagesController
+        self.error_depth = 0  # > 0 while Telegram builds an error bulletin
+        self.muted_bulletins = []  # error bulletins built but not shown yet
         self.pending_create = deque()  # local keys for collections being created
         self.collection_pending = defaultdict(deque)  # own-profile flags for collection requests
         self.announce = {}  # slug or gift id -> account: post a card in Saved Messages once loaded
@@ -604,6 +652,10 @@ class LocalNftShowcasePlugin(BasePlugin):
         except Exception:
             self.logger.exception("StarsNeededSheet not found, purchases may repeat")
         try:
+            self.install_error_hooks(stars.getClassLoader())
+        except Exception:
+            self.logger.exception("Error hiding hooks failed")
+        try:
             self.install_market_hooks(stars.getClassLoader())
         except Exception:
             self.logger.exception("NFT constructor market hooks failed")
@@ -616,6 +668,15 @@ class LocalNftShowcasePlugin(BasePlugin):
         connections_class = (connections or ConnectionsManager.getInstance(0)).getClass()
         if not self.hook_all_methods(connections_class, "sendRequest", SendRequestHook(self)):
             self.logger.error("ConnectionsManager.sendRequest not found, local purchases are off")
+
+    def install_error_hooks(self, loader):
+        factory = loader.loadClass("org.telegram.ui.Components.BulletinFactory")
+        self.hook_all_methods(factory, "showForError", ErrorGateHook(self, False))
+        self.hook_all_methods(factory, "makeForError", ErrorGateHook(self, True))
+        self.hook_all_methods(loader.loadClass("org.telegram.ui.Components.Bulletin"), "show",
+                              BulletinShowHook(self))
+        self.hook_all_methods(loader.loadClass("org.telegram.ui.Components.AlertsCreator"), "processError",
+                              ProcessErrorHook(self))
 
     def install_market_hooks(self, loader):
         def cls(name):
@@ -779,6 +840,13 @@ class LocalNftShowcasePlugin(BasePlugin):
                 icon="msg_delete",
                 red=True,
                 on_click=lambda _: self.clear_statuses(),
+            ),
+            Switch(
+                key="hide_errors",
+                text="Скрывать ошибки",
+                default=True,
+                subtext="Не показывать всплывающие ошибки Telegram",
+                icon="msg_block",
             ),
             Text(
                 text="Лог winft",
@@ -2701,6 +2769,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             if self.gift_meta(slug).get("drop_details"):
                 self.strip_original_details(gift)
             self.gifts[slug] = gift
+            run_on_ui_thread(self.refresh_own_users)  # a worn status may wait for this gift
             if slug in self.announce:
                 self.post_saved_card(self.announce.pop(slug), gift, unique=True)
             BulletinHelper.show_success(
@@ -2845,14 +2914,43 @@ class LocalNftShowcasePlugin(BasePlugin):
         if user_id not in self.statuses:
             text = self.get_setting(f"status_{user_id}", "")
             try:
-                self.statuses[user_id] = status_from_hex(text) if text else None
+                status = status_from_hex(text) if text else None
             except Exception:
                 self.logger.exception("Could not restore the worn status")
-                self.statuses[user_id] = None
+                status = None
+            rebuilt = self.rebuild_collectible(status)
+            if rebuilt is not None:
+                status = rebuilt
+                self.save_status(user_id, status)
+            elif isinstance(status, TLRPC.TL_emojiStatusCollectible) and not status.slug:
+                return status  # an older save: rebuilt once the worn NFT has loaded
+            self.statuses[user_id] = status
         return self.statuses[user_id]
+
+    def rebuild_collectible(self, status):
+        """A worn local NFT's status, rebuilt from the gift. Older saves lost the colors and
+        the background pattern: the app leaves slug empty and it was written out of place."""
+        if not isinstance(status, TLRPC.TL_emojiStatusCollectible):
+            return None
+        gift = next((g for g in self.loaded_gifts() if g.id == status.collectible_id), None)
+        if gift is None:
+            return None
+        rebuilt = MessagesController.emojiStatusCollectibleFromGift(gift)
+        rebuilt.slug = gift.slug or ""
+        if status.flags & 1:
+            rebuilt.flags |= 1
+            rebuilt.until = status.until
+        return rebuilt
 
     def save_status(self, user_id: int, status):
         empty = status is None or isinstance(status, TLRPC.TL_emojiStatusEmpty)
+        if isinstance(status, TLRPC.TL_emojiStatusCollectible):
+            # The app leaves these empty; an empty string still serializes, null does not.
+            if status.slug is None:
+                gift = next((g for g in self.loaded_gifts() if g.id == status.collectible_id), None)
+                status.slug = gift.slug if gift is not None and gift.slug else ""
+            if status.title is None:
+                status.title = ""
         self.statuses[user_id] = None if empty else status
         self.set_setting(f"status_{user_id}", "" if empty else status_to_hex(status))
 
