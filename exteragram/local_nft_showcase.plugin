@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.41.0"
+__version__ = "1.42.0"
 
 import json
 import random
@@ -241,7 +241,7 @@ class BulletinShowHook(MethodHook):
             self.plugin.lift_profile_bulletins(param.thisObject)
             return
         bulletin = param.thisObject
-        muted = self.plugin.error_depth > 0
+        muted = self.plugin.error_depth > 0 or self.plugin.is_error_bulletin(bulletin)
         for i, b in enumerate(self.plugin.muted_bulletins):
             if b.equals(bulletin):
                 del self.plugin.muted_bulletins[i]
@@ -739,6 +739,28 @@ class LocalNftShowcasePlugin(BasePlugin):
         if not self.hook_all_methods(connections_class, "sendRequest", SendRequestHook(self)):
             self.logger.error("ConnectionsManager.sendRequest not found, local purchases are off")
 
+    ERROR_WORDS = ("ошибк", "error", "not_found", "invalid", "_failed")
+
+    def is_error_bulletin(self, bulletin) -> bool:
+        """Any bulletin whose text reads as an error ("Неизвестная ошибка: …", "…_NOT_FOUND"),
+        whichever Telegram helper built it."""
+        try:
+            from android.view import ViewGroup
+            from android.widget import TextView as JTextView
+            texts = []
+            stack = [bulletin.getLayout()]
+            while stack:
+                view = stack.pop()
+                if isinstance(view, JTextView):
+                    texts.append(str(view.getText() or ""))
+                elif isinstance(view, ViewGroup):
+                    for i in range(view.getChildCount()):
+                        stack.append(view.getChildAt(i))
+            text = " ".join(texts).lower()
+            return any(word in text for word in self.ERROR_WORDS)
+        except Exception:
+            return False
+
     def lift_profile_bulletins(self, bulletin):
         """exteraGram's floating tab bar covers bulletins shown on its main tabs ("Скопировано
         в буфер обмена" on the profile tab sits behind Чаты/Контакты). Those bulletins belong to
@@ -772,6 +794,9 @@ class LocalNftShowcasePlugin(BasePlugin):
         factory = loader.loadClass("org.telegram.ui.Components.BulletinFactory")
         self.hook_all_methods(factory, "showForError", ErrorGateHook(self, False))
         self.hook_all_methods(factory, "makeForError", ErrorGateHook(self, True))
+        self.hook_all_methods(factory, "showError", ErrorGateHook(self, False))
+        self.hook_all_methods(factory, "createErrorBulletin", ErrorGateHook(self, True))
+        self.hook_all_methods(factory, "createErrorBulletinSubtitle", ErrorGateHook(self, True))
         self.hook_all_methods(loader.loadClass("org.telegram.ui.Components.Bulletin"), "show",
                               BulletinShowHook(self))
         self.hook_all_methods(loader.loadClass("org.telegram.ui.Components.AlertsCreator"), "processError",
