@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.69.2"
+__version__ = "1.69.3"
 
 import json
 import random
@@ -4832,7 +4832,8 @@ class LocalNftShowcasePlugin(BasePlugin):
         write_log("number tap: opening the Fragment sheet")
         from org.telegram.ui import FragmentUsernameBottomSheet
         user = get_messages_controller(account).getUser(user_id)
-        FragmentUsernameBottomSheet.open(profile.getContext(), FragmentUsernameBottomSheet.TYPE_PHONE,
+        phone_type = getattr(FragmentUsernameBottomSheet, "TYPE_PHONE", 1)  # 0 username, 1 phone
+        FragmentUsernameBottomSheet.open(profile.getContext(), phone_type,
                                          phone, user, result[0], profile.getResourceProvider())
         return True
 
