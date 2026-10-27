@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.55.0"
+__version__ = "1.56.0"
 
 import json
 import random
@@ -414,6 +414,19 @@ def write_log(text: str):
                 f.write(tail)
     except Exception:
         pass
+
+
+def long_click_listener(fn):
+    """View.OnLongClickListener backed by a Python callable (consumes the long press)."""
+    from java import dynamic_proxy
+    from android.view import View
+
+    class _Listener(dynamic_proxy(View.OnLongClickListener)):
+        def onLongClick(self, v):
+            fn()
+            return True
+
+    return _Listener()
 
 
 def layout_listener(fn):
@@ -5111,14 +5124,24 @@ class LocalNftShowcasePlugin(BasePlugin):
         title.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20.0)
         title.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText))
         title.setGravity(Gravity.CENTER)
-        title.setPadding(0, dp(16), 0, dp(12))
+        title.setPadding(0, dp(16), 0, dp(4))
         column.addView(title)
+        hint = TextView(ctx)
+        hint.setText("Нажми, чтобы изменить. Зажми: подпись или удалить")
+        hint.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14.0)
+        hint.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText))
+        hint.setGravity(Gravity.CENTER)
+        hint.setPadding(0, 0, 0, dp(12))
+        column.addView(hint)
         state = {"sheet": None}
 
-        def on_pick(slug):
+        def on_pick(slug, menu=False):
             if state["sheet"] is not None:
                 state["sheet"].dismiss()
-            run_on_ui_thread(lambda: self.gift_editor_actions(slug), 200)
+            if menu:
+                run_on_ui_thread(lambda: self.gift_editor_actions(slug), 200)
+            else:
+                run_on_ui_thread(lambda: self.edit_gift_attributes(slug), 200)
 
         row = None
         for i, gift in enumerate(gifts):
@@ -5129,6 +5152,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             cell = GiftCell(ctx, account, None)
             cell.setStarsGift(self.make_saved_gift(account, gift), True, False)
             cell.setOnClickListener(OnClickListener(lambda v, slug=gift.slug: on_pick(slug)))
+            cell.setOnLongClickListener(long_click_listener(lambda slug=gift.slug: on_pick(slug, menu=True)))
             params = LinearLayout.LayoutParams(0, -2, 1.0)
             params.setMargins(dp(3), dp(3), dp(3), dp(3))
             row.addView(cell, params)
@@ -5145,8 +5169,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         if gift is None or activity is None:
             return
         has_caption = bool(self.gift_meta(slug).get("text"))
-        actions = [("Модель, фон, узор и номер", lambda: self.edit_gift_attributes(slug)),
-                   ("Изменить подпись" if has_caption else "Добавить подпись", lambda: self.edit_gift_caption(slug))]
+        actions = [("Изменить подпись" if has_caption else "Добавить подпись", lambda: self.edit_gift_caption(slug))]
         if has_caption:
             actions.append(("Удалить подпись", lambda: self.remove_gift_caption(slug)))
         actions.append(("Удалить подарок", lambda: self.confirm_delete_gift(slug)))
