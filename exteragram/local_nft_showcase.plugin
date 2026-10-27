@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.47.0"
+__version__ = "1.48.0"
 
 import json
 import random
@@ -37,7 +37,7 @@ from android.util import TypedValue
 from android.view import Gravity
 from android.widget import EditText, LinearLayout, ScrollView, TextView
 from java import jint
-from java.lang import Integer
+from java.lang import Integer, Long
 from java.util import ArrayList
 from org.telegram.messenger import AndroidUtilities, MessageObject, MessagesController, MessagesStorage, NotificationCenter, UserConfig, Utilities
 from org.telegram.tgnet import ConnectionsManager, SerializedData, TLRPC
@@ -989,6 +989,32 @@ class LocalNftShowcasePlugin(BasePlugin):
                          "эквивалент по текущему курсу GRAM. "
                          "Входить и звонить всё так же по настоящему номеру. "
                          "После смены переоткрой профиль."),
+            Header(text="Уровень Stars"),
+            Switch(
+                key="local_rating",
+                text="Свой уровень",
+                default=False,
+                subtext="Уровень рейтинга Stars рядом с именем в профиле",
+                icon="msg_stars",
+                on_change=lambda _: self.refresh_rating(),
+            ),
+            Input(
+                key="rating_level",
+                text="Уровень",
+                default="10",
+                subtext="От 0 до 99",
+                icon="msg_premium_prolfilestar",
+                on_change=lambda _: self.refresh_rating(),
+            ),
+            Input(
+                key="rating_progress",
+                text="Прогресс до следующего, %",
+                default="50",
+                icon="msg_stats",
+                on_change=lambda _: self.refresh_rating(),
+            ),
+            Divider(text="Уровень видишь только ты. Нажми на него в профиле, чтобы увидеть шкалу "
+                         "до следующего уровня. После смены переоткрой профиль."),
             Header(text="Локальный премиум"),
             Switch(
                 key="local_premium",
@@ -5171,14 +5197,63 @@ class LocalNftShowcasePlugin(BasePlugin):
                     response.flags |= 8
                     return HookResult(strategy=HookStrategy.MODIFY, response=response)
         elif request_name == "TL_users_getFullUser":
-            added = len(self.loaded_gifts()) + len(self.loaded_regular_gifts())
-            if not error and response is not None and added:
-                full = response.full_user
-                if full is not None and full.id == get_user_config(account).getClientUserId():
+            full = response.full_user if not error and response is not None else None
+            if full is not None and full.id == get_user_config(account).getClientUserId():
+                added = len(self.loaded_gifts()) + len(self.loaded_regular_gifts())
+                if added:
                     full.stargifts_count += added
                     full.flags2 |= FLAG_STARGIFTS_COUNT
+                changed = self.apply_rating(full)
+                if added or changed:
                     return HookResult(strategy=HookStrategy.MODIFY, response=response)
         return HookResult()
+
+    # ----- Local Stars rating (the level shown next to the profile name) -----
+
+    def rating_thresholds(self, level: int):
+        """Stars needed to reach a level and the next one (a smooth curve; the server's own
+        table is not public). Level 0 starts at 0."""
+        def need(n):
+            return 0 if n <= 0 else int(25 * n * (n + 3))
+        return need(level), need(level + 1)
+
+    def local_rating(self):
+        if not self.get_setting("local_rating", False):
+            return None
+        level = max(0, min(99, int(parse_amount(self.get_setting("rating_level", "10"), 10))))
+        progress = max(0.0, min(100.0, parse_amount(self.get_setting("rating_progress", "50"), 50))) / 100.0
+        current, nxt = self.rating_thresholds(level)
+        rating = TL_stars.Tl_starsRating()
+        rating.level = level
+        rating.current_level_stars = current
+        rating.next_level_stars = nxt
+        rating.flags |= 1  # next_level_stars present
+        rating.stars = current + int((nxt - current) * progress)
+        return rating
+
+    def apply_rating(self, full) -> bool:
+        rating = self.local_rating()
+        if rating is None:
+            return False
+        full.stars_rating = rating
+        full.stars_my_pending_rating = None  # no "pending" change under the bar
+        full.stars_my_pending_rating_date = 0
+        return True
+
+    def refresh_rating(self):
+        """Puts the rating on the profile info already in memory, so it shows without waiting
+        for the next profile reload."""
+        try:
+            for account in range(UserConfig.MAX_ACCOUNT_COUNT):
+                config = get_user_config(account)
+                if not config.isClientActivated():
+                    continue
+                full = get_messages_controller(account).getUserFull(config.getClientUserId())
+                if full is not None and self.apply_rating(full):
+                    NotificationCenter.getInstance(account).postNotificationName(
+                        NotificationCenter.userInfoDidLoad, Long(config.getClientUserId()), full)
+        except Exception:
+            self.logger.exception("Could not refresh the Stars rating")
 
     def get_own_ids(self):
         if not self.own_ids:
