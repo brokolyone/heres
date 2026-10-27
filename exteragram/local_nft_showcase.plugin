@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.45.0"
+__version__ = "1.46.0"
 
 import json
 import random
@@ -279,7 +279,7 @@ class UndoLiftHook(MethodHook):
         try:
             last = get_last_fragment()
             on_tabs = last is not None and last.getClass().getSimpleName() == "MainTabsActivity"
-            param.thisObject.setAdditionalTranslationY(float(AndroidUtilities.dp(84)) if on_tabs else 0.0)
+            param.thisObject.setAdditionalTranslationY(float(AndroidUtilities.dp(168)) if on_tabs else 0.0)
         except Exception:
             pass
 
