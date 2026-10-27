@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.69.4"
+__version__ = "1.69.5"
 
 import json
 import random
@@ -3545,7 +3545,8 @@ class LocalNftShowcasePlugin(BasePlugin):
         # .tm-section-header: pad 18/17, h2 22/28 bold centered + status pill (margin 5 6 1)
         row = LinearLayout(ctx)
         row.setOrientation(LinearLayout.HORIZONTAL)
-        row.setGravity(Gravity.CENTER_HORIZONTAL | Gravity.TOP)
+        row.setGravity(Gravity.CENTER)
+        row.setClipChildren(False)
         row.setPadding(self.fg3_dp(6), self.fg3_dp(18), self.fg3_dp(6), self.fg3_dp(17))
         title = self.fg3c_ellipsize(self.fg3_text(ctx, name + ".t.me", 22, self.FG3C_WHITE, bold=True, line_height=28))
         try:
@@ -3555,7 +3556,9 @@ class LocalNftShowcasePlugin(BasePlugin):
             pass
         row.addView(title, LinearLayout.LayoutParams(-2, -2))
         pill = self.fg3_pill(ctx, "Sold", "red")
-        row.addView(pill, self.fg3c_lp(-2, -2, left=6, top=5, right=6, bottom=1))
+        # Centered on the title line and never clipped by the row (it used to sit low and
+        # lose its bottom).
+        row.addView(pill, self.fg3c_lp(-2, self.fg3_dp(22), left=6, right=6))
         return row
 
     def fg3c_bid_info(self, ctx, gram, date):
@@ -3736,12 +3739,13 @@ class LocalNftShowcasePlugin(BasePlugin):
     def fg3d_title(self, ctx, shown):
         """h2: number Bold 22/28 centered + red 'Sold' pill; header padding 18 0 17."""
         row = self.fg3d_row(ctx)
-        row.setGravity(Gravity.CENTER_HORIZONTAL | Gravity.TOP)
+        row.setGravity(Gravity.CENTER)
+        row.setClipChildren(False)
         self.fg3d_pad(row, 6, 18, 6, 17)
         title = self.fg3d_line(ctx, shown, 22, self.FG3D_WHITE, 28, bold=True)
         row.addView(title, self.fg3d_lp(-2, -2))
         pill = self.fg3_pill(ctx, "Sold", "red")
-        row.addView(pill, self.fg3d_lp(-2, -2, left=6, top=5, right=6, bottom=1))
+        row.addView(pill, self.fg3d_lp(-2, self.fg3_dp(22), left=6, right=6))
         return row
 
     def fg3d_price_box(self, ctx, price, bought):
