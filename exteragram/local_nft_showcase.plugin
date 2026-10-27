@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.62.1"
+__version__ = "1.62.2"
 
 import json
 import random
@@ -591,11 +591,23 @@ class SendRequestHook(MethodHook):
         param.setResult(0)
         if delegate is None:
             return
+        if len(result) == 3:  # (response, error, should_answer): answered a moment later
+            response, error, still_wanted = result
+
+            def answer_later():
+                if still_wanted():
+                    deliver(delegate, response, error)
+            run_on_ui_thread(answer_later, 350)
+            return
         response, error = result
-        try:
-            delegate.run(response, error)
-        except Exception:
-            delegate.run(response, error, 0)  # RequestDelegateTimestamp
+        deliver(delegate, response, error)
+
+
+def deliver(delegate, response, error):
+    try:
+        delegate.run(response, error)
+    except Exception:
+        delegate.run(response, error, 0)  # RequestDelegateTimestamp
 
 
 def parse_usernames(text: str) -> List[str]:
@@ -4162,17 +4174,18 @@ class LocalNftShowcasePlugin(BasePlugin):
         else:
             return None
 
-        # A username in the "also" line can fire its link twice for one tap; the app's own
-        # guard only holds while a real request is in flight, and ours answers at once.
-        # A repeat within a second gets an error (hidden), so the Fragment sheet opens once.
+        # One tap on a username in the "also" line also counts as a tap on the whole username
+        # row, which asks for the main username too. The main one is answered a moment later
+        # and dropped if another username was asked for meanwhile, so one sheet opens.
         now = time.time()
         last = getattr(self, "last_collectible", None)
         self.last_collectible = (key, now)
-        if last is not None and last[0] == key and now - last[1] < 1.0:
-            error = TLRPC.TL_error()
-            error.code = 400
-            error.text = "LOCAL_REPEATED_REQUEST"
-            return None, error
+        if last is not None and now - last[1] < 1.0:
+            if last[0] == key or self.is_main_username(key):
+                error = TLRPC.TL_error()
+                error.code = 400
+                error.text = "LOCAL_REPEATED_REQUEST"
+                return None, error
 
         fiat = FIAT[self.get_setting("fiat_currency", 0)]
         date_key = f"bought_at_{key}"
@@ -4188,7 +4201,14 @@ class LocalNftShowcasePlugin(BasePlugin):
         info.currency = fiat
         info.amount = int(round(price * self.ton_rate(fiat) * 100))  # cents / kopecks
         info.url = url
+        if self.is_main_username(key):
+            asked_at = now
+            return info, None, lambda: self.last_collectible == (key, asked_at)
         return info, None
+
+    def is_main_username(self, key) -> bool:
+        primary = (self.get_setting("primary_username", "") or "").lower()
+        return bool(primary) and key == primary
 
     def open_saved_messages(self, account: int, text: str):
         try:
