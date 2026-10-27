@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.53.0"
+__version__ = "1.54.0"
 
 import json
 import random
@@ -923,6 +923,12 @@ class LocalNftShowcasePlugin(BasePlugin):
                 icon="msg_colors",
                 accent=True,
                 on_click=lambda _: self.open_nft_market(),
+            ),
+            Text(
+                text="Редактор подарков",
+                subtext="Модель, фон, узор, номер, подпись или удалить",
+                icon="msg_edit",
+                on_click=lambda _: self.open_gift_editor(),
             ),
             Text(
                 text="Убрать NFT",
@@ -4410,14 +4416,14 @@ class LocalNftShowcasePlugin(BasePlugin):
 
         send_request(req, on_response)
 
-    def show_native_constructor(self, gift_id, title, attrs):
+    def show_native_constructor(self, gift_id, title, attrs, edit=None):
         try:
-            self._show_native_constructor(gift_id, title, attrs)
+            self._show_native_constructor(gift_id, title, attrs, edit)
         except Exception:
             write_log(f"constructor failed:\n{traceback.format_exc()}")
             BulletinHelper.show_error("Конструктор не открылся. Лог: настройки → Лог winft")
 
-    def _show_native_constructor(self, gift_id, title, attrs):
+    def _show_native_constructor(self, gift_id, title, attrs, edit=None):
         from org.telegram.ui.Stars import StarGiftPreviewSheet
         activity = self.get_activity()
         if activity is None:
@@ -4428,7 +4434,16 @@ class LocalNftShowcasePlugin(BasePlugin):
         base = self.catalog.get(gift_id)
         total = int(getattr(base, "availability_total", 0) or 0) or 100000
         self.ctor = {"sheet": sheet, "gift_id": gift_id, "title": title, "total": total,
-                     "num": random.randint(1, total), "value": None, "built": False}
+                     "num": random.randint(1, total), "value": None, "built": False, "edit": None}
+        if edit is not None:
+            self.ctor["edit"] = edit.slug
+            self.ctor["num"] = int(edit.num or 1)
+            if edit.flags & FLAG_VALUE and edit.value_currency:
+                self.ctor["value"] = (edit.value_amount / 100.0, edit.value_currency)
+            try:
+                self.preselect_attributes(sheet, attrs, edit)
+            except Exception:
+                write_log(f"preselect failed:\n{traceback.format_exc()}")
         try:
             self.add_constructor_buttons(sheet)
             write_log("constructor: buttons added")
@@ -4625,6 +4640,10 @@ class LocalNftShowcasePlugin(BasePlugin):
     def build_from_ctor(self, model, back, pat):
         c = self.ctor
         if c is None:
+            return
+        if c.get("edit"):
+            if self.save_edited(c["edit"], model, back, pat, c["num"], c["value"]):
+                c["built"] = True
             return
         gift = self.assemble_unique(c["gift_id"], c["title"], model, back, pat)
         gift.num = c["num"]
@@ -5042,6 +5061,227 @@ class LocalNftShowcasePlugin(BasePlugin):
         if gift_id is None:
             return None
         return self.local_upgrade_result(account, gift_id, request.stargift), None
+
+    # ----- Editor of existing NFTs: attributes and number in the constructor, caption, delete -----
+
+    def editable_gifts(self):
+        return [g for g in self.loaded_gifts() if g is not None and g.slug]
+
+    def open_gift_editor(self):
+        gifts = self.editable_gifts()
+        if not gifts:
+            return
+        try:
+            self.show_my_gifts_grid(gifts)
+        except Exception:
+            write_log(f"gift grid failed:\n{traceback.format_exc()}")
+            labels = [("🔨 " if g.slug in self.custom else "") + f"{g.title} #{g.num}" for g in gifts]
+            self.show_items("Редактор подарков", labels, lambda i: self.gift_editor_actions(gifts[i].slug))
+
+    def show_my_gifts_grid(self, gifts):
+        """Your NFTs in Telegram's own gift cells, three to a row like the gift market:
+        model, backdrop, pattern and number as in the profile. Tap one to edit it."""
+        from java import jclass
+        from android.widget import FrameLayout
+        from org.telegram.ui.ActionBar import Theme
+        GiftCell = jclass("org.telegram.ui.Gifts.GiftSheet$GiftCell")
+        ctx = self.get_activity()
+        if ctx is None:
+            return
+        account = UserConfig.selectedAccount
+        dp = AndroidUtilities.dp
+        scroll = ScrollView(ctx)
+        column = LinearLayout(ctx)
+        column.setOrientation(LinearLayout.VERTICAL)
+        column.setPadding(dp(10), dp(6), dp(10), dp(16))
+        scroll.addView(column)
+        title = TextView(ctx)
+        title.setText("Мои подарки")
+        title.setTypeface(AndroidUtilities.bold())
+        title.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20.0)
+        title.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText))
+        title.setGravity(Gravity.CENTER)
+        title.setPadding(0, dp(16), 0, dp(12))
+        column.addView(title)
+        state = {"sheet": None}
+
+        def on_pick(slug):
+            if state["sheet"] is not None:
+                state["sheet"].dismiss()
+            run_on_ui_thread(lambda: self.gift_editor_actions(slug), 200)
+
+        row = None
+        for i, gift in enumerate(gifts):
+            if i % 3 == 0:
+                row = LinearLayout(ctx)
+                row.setOrientation(LinearLayout.HORIZONTAL)
+                column.addView(row, LinearLayout.LayoutParams(-1, -2))
+            cell = GiftCell(ctx, account, None)
+            cell.setStarsGift(self.make_saved_gift(account, gift), True, False)
+            cell.setOnClickListener(OnClickListener(lambda v, slug=gift.slug: on_pick(slug)))
+            params = LinearLayout.LayoutParams(0, -2, 1.0)
+            params.setMargins(dp(3), dp(3), dp(3), dp(3))
+            row.addView(cell, params)
+        if row is not None:
+            for _ in range(row.getChildCount(), 3):  # keep the last row's cells the same width
+                row.addView(FrameLayout(ctx), LinearLayout.LayoutParams(0, 1, 1.0))
+        builder = BottomSheet.Builder(ctx, False)
+        builder.setCustomView(scroll)
+        state["sheet"] = builder.show()
+
+    def gift_editor_actions(self, slug: str):
+        gift = self.gift_lookup(slug)
+        activity = self.get_activity()
+        if gift is None or activity is None:
+            return
+        has_caption = bool(self.gift_meta(slug).get("text"))
+        actions = [("Модель, фон, узор и номер", lambda: self.edit_gift_attributes(slug)),
+                   ("Изменить подпись" if has_caption else "Добавить подпись", lambda: self.edit_gift_caption(slug))]
+        if has_caption:
+            actions.append(("Удалить подпись", lambda: self.remove_gift_caption(slug)))
+        actions.append(("Удалить подарок", lambda: self.confirm_delete_gift(slug)))
+        self.show_items(f"{gift.title} #{gift.num}", [a[0] for a in actions], lambda i: actions[i][1]())
+
+    def edit_gift_attributes(self, slug: str):
+        gift = self.gift_lookup(slug)
+        if gift is None:
+            return
+        gift_id = int(getattr(gift, "gift_id", 0) or 0)
+        if not gift_id:
+            return
+        self.load_all_attributes(
+            gift_id, lambda attrs: self.show_native_constructor(gift_id, gift.title or "NFT", attrs, edit=gift))
+
+    def preselect_attributes(self, sheet, attrs, gift):
+        """Opens the constructor on the gift's own model, backdrop and pattern."""
+        from java.lang import Class as JClass
+        current = jlist(gift.attributes)
+
+        def pick(kind):
+            mine = next((a for a in current if isinstance(a, kind)), None)
+            if mine is None:
+                return None
+            same = next((a for a in jlist(attrs) if isinstance(a, kind) and a.name == mine.name), None)
+            return same or mine
+
+        model = pick(TL_stars.starGiftAttributeModel)
+        back = pick(TL_stars.starGiftAttributeBackdrop)
+        pat = pick(TL_stars.starGiftAttributePattern)
+        if model is None or back is None:
+            return
+        loader = sheet.getClass().getClassLoader()
+        attributes_cls = JClass.forName("org.telegram.ui.Stars.StarGiftPreviewSheet$Attributes", True, loader)
+        selected = attributes_cls.getConstructors()[0].newInstance(back, pat, model)
+        field = sheet.getClass().getDeclaredField("selectedAttributes")
+        field.setAccessible(True)
+        field.set(sheet, selected)
+        mode_cls = JClass.forName("org.telegram.ui.Stars.StarGiftPreviewSheet$Mode", True, loader)
+        selected_mode = next(m for m in mode_cls.getEnumConstants() if m.name() == "SELECTED")
+        set_mode = sheet.getClass().getDeclaredMethod("setMode", mode_cls)
+        set_mode.setAccessible(True)
+        set_mode.invoke(sheet, selected_mode)
+        get_private_field(sheet, "topView").setPreviewAttributes(selected)
+        for name in ("updateSelectedForVisibleViews",):
+            try:
+                method = sheet.getClass().getDeclaredMethod(name)
+                method.setAccessible(True)
+                method.invoke(sheet)
+            except Exception:
+                pass
+
+    def save_edited(self, slug, model, back, pat, num, value) -> bool:
+        """Applies the constructor's choice to an existing NFT, keeping its slug (so pins,
+        captions and collections stay). A gift added by link becomes a local copy."""
+        old = self.gift_lookup(slug)
+        if old is None:
+            return False
+        try:
+            gift = gift_from_hex(gift_to_hex(old))  # a copy
+        except Exception:
+            self.logger.exception("Could not copy the NFT")
+            return False
+        attrs = ArrayList()
+        for a in jlist(gift.attributes):
+            if not isinstance(a, (TL_stars.starGiftAttributeModel, TL_stars.starGiftAttributeBackdrop,
+                                  TL_stars.starGiftAttributePattern)):
+                attrs.add(a)
+        attrs.add(model)
+        if pat is not None:
+            attrs.add(pat)
+        attrs.add(back)
+        gift.attributes = attrs
+        gift.num = int(num)
+        if value:
+            amount, code = value
+            gift.value_amount = int(round(amount * 100))
+            gift.value_currency = code
+            gift.value_usd_amount = int(round(self.to_usd(amount, code) * 100))
+            gift.flags |= FLAG_VALUE
+        if slug in self.custom:
+            store = self.get_custom_store()
+            try:
+                store = [gift_to_hex(gift) if gift_from_hex_slug(hx) == slug else hx for hx in store]
+            except Exception:
+                self.logger.exception("Could not save the edited NFT")
+                return False
+            self.set_setting("custom_gifts", json.dumps(store))
+            self.custom[slug] = gift
+        else:
+            if not self.store_custom(gift):
+                return False
+            self.gifts.pop(slug, None)
+            self.save_slugs([x for x in parse_slugs(self.get_setting("slug", "")) if x != slug])
+        self.statuses = {}  # a worn status is rebuilt from the edited gift
+        self.refresh_own_users()
+        write_log(f"editor: saved {slug} #{gift.num}")
+        return True
+
+    def edit_gift_caption(self, slug: str):
+        activity = self.get_activity()
+        if activity is None:
+            return
+        field = EditText(activity)
+        field.setText(self.gift_meta(slug).get("text", ""))
+        field.setHint("Текст подписи")
+        builder = AlertDialogBuilder(activity)
+        builder.set_title("Подпись к подарку")
+        builder.set_view(field)
+
+        def on_ok(bld, _):
+            bld.dismiss()
+            text = str(field.getText()).strip()
+            self.update_meta(slug, text=text, drop_details=False if text else self.gift_meta(slug).get("drop_details", False))
+
+        builder.set_positive_button("Готово", on_ok)
+        builder.set_negative_button("Отмена", lambda bld, _: bld.dismiss())
+        builder.show()
+
+    def remove_gift_caption(self, slug: str):
+        self.update_meta(slug, text="", name_hidden=False, drop_details=True)
+        gift = self.gift_lookup(slug)
+        if gift is not None:
+            self.strip_original_details(gift)
+
+    def confirm_delete_gift(self, slug: str):
+        gift = self.gift_lookup(slug)
+        activity = self.get_activity()
+        if gift is None or activity is None:
+            return
+        builder = AlertDialogBuilder(activity)
+        builder.set_title("Удалить подарок?")
+        builder.set_message(f"{gift.title} #{gift.num} пропадёт из твоего профиля.")
+
+        def on_ok(bld, _):
+            bld.dismiss()
+            if slug in self.custom:
+                self.remove_custom_gift(slug)
+            else:
+                self.gifts.pop(slug, None)
+                self.save_slugs([x for x in parse_slugs(self.get_setting("slug", "")) if x != slug])
+
+        builder.set_positive_button("Удалить", on_ok)
+        builder.set_negative_button("Отмена", lambda bld, _: bld.dismiss())
+        builder.show()
 
     def remove_custom_gift(self, slug: str):
         store = self.get_custom_store()
