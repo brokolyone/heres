@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.59.0"
+__version__ = "1.60.0"
 
 import json
 import random
@@ -4481,6 +4481,9 @@ class LocalNftShowcasePlugin(BasePlugin):
         write_log("constructor: showing")
         sheet.show()
         write_log("constructor: shown")
+        selected = self.ctor.get("preselect") if self.ctor else None
+        if selected is not None:
+            run_on_ui_thread(lambda: self.apply_preselect_view(sheet, selected), 50)
 
     def add_constructor_buttons(self, sheet):
         """Two round buttons beside the native glass tab bar. The glass comes from the sheet's
@@ -5210,7 +5213,6 @@ class LocalNftShowcasePlugin(BasePlugin):
         set_mode = sheet.getClass().getDeclaredMethod("setMode", mode_cls)
         set_mode.setAccessible(True)
         set_mode.invoke(sheet, selected_mode)
-        get_private_field(sheet, "topView").setPreviewAttributes(selected)
         for name in ("updateSelectedForVisibleViews",):
             try:
                 method = sheet.getClass().getDeclaredMethod(name)
@@ -5218,6 +5220,28 @@ class LocalNftShowcasePlugin(BasePlugin):
                 method.invoke(sheet)
             except Exception:
                 pass
+        # The preview ignores this until it is on screen, and meanwhile keeps rolling
+        # random backdrops: apply it right after the sheet is shown.
+        if self.ctor is not None:
+            self.ctor["preselect"] = selected
+
+    def apply_preselect_view(self, sheet, selected, tries=10):
+        """Shows the gift's own attributes in the preview at once and stops the rolling."""
+        try:
+            top = get_private_field(sheet, "topView")
+            if top is None:
+                return
+            if not top.isAttachedToWindow():
+                if tries > 0:
+                    run_on_ui_thread(lambda: self.apply_preselect_view(sheet, selected, tries - 1), 50)
+                return
+            top.setPreviewAttributes(selected)
+            animator = get_private_field(top, "rotationAnimator")
+            if animator is not None:
+                animator.end()  # jump to the gift, no switching animation
+            write_log("editor: preview set to the gift")
+        except Exception:
+            write_log(f"preselect view failed:\n{traceback.format_exc()}")
 
     def save_edited(self, slug, model, back, pat, num, value) -> bool:
         """Applies the constructor's choice to an existing NFT, keeping its slug (so pins,
