@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.68.1"
+__version__ = "1.69.0"
 
 import json
 import random
@@ -319,6 +319,27 @@ class ReactionsMergeHook(MethodHook):
             pass
 
 
+class OwnNumberEditRowHook(MethodHook):
+    """ProfileActivity.editRow(view, position): on your own profile exteraGram sends a tap
+    on the number here and shows Копировать / Изменить номер. A tap opens the Fragment sheet;
+    a long press (seen on the call stack) keeps the menu."""
+
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def before_hooked_method(self, param):
+        try:
+            from java.lang import Thread
+            if any("LongClick" in str(frame.getMethodName()) or "LongPress" in str(frame.getMethodName())
+                   or "LongClick" in str(frame.getClassName())
+                   for frame in Thread.currentThread().getStackTrace()):
+                return
+            if self.plugin.open_own_number_sheet(param.thisObject, int(param.args[1])):
+                param.setResult(True)
+        except Exception:
+            pass
+
+
 class OwnNumberClickHook(MethodHook):
     """ProfileActivity.processOnClickOrPress: on your own profile a tap on the +888 number
     only opened the edit menu. Open the Fragment sheet instead, like on other profiles; a
@@ -618,6 +639,7 @@ class SendRequestHook(MethodHook):
         HookFilter.ArgumentIsInstanceOf(0, TL_account.updateColor().getClass()),
         HookFilter.ArgumentIsInstanceOf(0, TLRPC.TL_messages_toggleDialogPin().getClass()),
         HookFilter.ArgumentIsInstanceOf(0, TLRPC.TL_messages_sendReaction().getClass()),
+        HookFilter.ArgumentIsInstanceOf(0, TL_stars.TL_payments_getStarsTransactions().getClass()),
     ))
     def before_hooked_method(self, param):
         args = list(param.args)
@@ -635,6 +657,9 @@ class SendRequestHook(MethodHook):
                 break
         delegate = next((a for a in args[1:] if a is not None and hasattr(a, "run")), None)
         account = get_private_field(param.thisObject, "currentAccount") or 0
+        if isinstance(args[0], TL_stars.TL_payments_getStarsTransactions):
+            self.plugin.wrap_transactions(param, args, delegate, account)
+            return
         if isinstance(args[0], TL_stars.TL_payments_sendStarsForm):
             result = self.plugin.pay_locally(account, args[0])
         elif isinstance(args[0], TL_stars.updateStarGiftPrice):
@@ -680,6 +705,28 @@ class SendRequestHook(MethodHook):
             return
         response, error = result
         deliver(delegate, response, error)
+
+
+def transactions_delegate(original, on_response):
+    """A RequestDelegate(Timestamp) that lets on_response edit the response first, so local
+    transactions go into the very list that was asked for (all / incoming / outgoing)."""
+    from java import dynamic_proxy, jclass
+    for name in ("org.telegram.tgnet.RequestDelegateTimestamp", "org.telegram.tgnet.RequestDelegate"):
+        iface = jclass(name)
+        if isinstance(original, iface):
+            break
+    else:
+        return None
+
+    class _Delegate(dynamic_proxy(iface)):
+        def run(self, response, error, *rest):
+            try:
+                on_response(response, error)
+            except Exception:
+                pass
+            original.run(response, error, *rest)
+
+    return _Delegate()
 
 
 def deliver(delegate, response, error):
@@ -1092,6 +1139,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.load_custom_gifts()
         self.migrate_fragment_settings()
         self.load_catalog()
+        self.remember_balances()
         try:
             self.install_pin_keeper()
         except Exception:
@@ -1214,6 +1262,8 @@ class LocalNftShowcasePlugin(BasePlugin):
         try:
             self.hook_all_methods(loader.loadClass("org.telegram.ui.ProfileActivity"), "processOnClickOrPress",
                                   OwnNumberClickHook(self))
+            self.hook_all_methods(loader.loadClass("org.telegram.ui.ProfileActivity"), "editRow",
+                                  OwnNumberEditRowHook(self))
         except Exception:
             self.logger.exception("ProfileActivity.processOnClickOrPress not found")
         try:
@@ -1334,14 +1384,14 @@ class LocalNftShowcasePlugin(BasePlugin):
                 text="Звёзды",
                 default="100000",
                 icon="msg_stars",
-                on_change=lambda _: self.notify_balance(),
+                on_change=lambda value: self.on_balance_change(False, value),
             ),
             Input(
                 key="ton_balance",
                 text="TON",
                 default="1000",
                 icon="msg_ton",
-                on_change=lambda _: self.notify_balance(),
+                on_change=lambda value: self.on_balance_change(True, value),
             ),
             Switch(
                 key="spend_balance",
@@ -1490,6 +1540,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             return False
         left = balance - price
         self.set_setting(key, f"{left / NANO:.2f}" if ton else str(int(left)))
+        self.remember_balances()  # spending is not a top-up
         self.notify_balance()
         return True
 
@@ -1584,6 +1635,16 @@ class LocalNftShowcasePlugin(BasePlugin):
         t = TL_stars.TL_starsTransaction()
         t.id = rec["id"]
         t.date = int(rec["date"])
+        if rec.get("kind") == "topup":
+            if rec.get("ton"):
+                amount = TL_stars.TL_starsTonAmount()
+                amount.amount = int(rec["price"])
+                t.peer = TL_stars.TL_starsTransactionPeerFragment()
+            else:
+                amount = TL_stars.StarsAmount.ofStars(int(rec["price"]))
+                t.peer = TL_stars.TL_starsTransactionPeerPlayMarket()
+            t.amount = amount
+            return t
         if rec.get("ton"):
             amount = TL_stars.TL_starsTonAmount()
             amount.amount = -int(rec["price"])
@@ -1609,10 +1670,59 @@ class LocalNftShowcasePlugin(BasePlugin):
         return t
 
     def transactions_for(self, ton: bool, inbound: bool, outbound: bool, account: int) -> list:
-        if inbound:
-            return []  # our local transactions are all outgoing (purchases)
+        """Top-ups are incoming, purchases outgoing; the plain list shows both."""
         recs = [r for r in self.get_transactions() if bool(r.get("ton")) == ton]
+        if inbound:
+            recs = [r for r in recs if r.get("kind") == "topup"]
+        elif outbound:
+            recs = [r for r in recs if r.get("kind") != "topup"]
         return [self.build_transaction(r, account) for r in recs]
+
+    def wrap_transactions(self, param, args, delegate, account):
+        request = args[0]
+        if delegate is None or not self.get_setting("local_balance", True):
+            return
+        if not self.is_own_peer(account, getattr(request, "peer", None)) or getattr(request, "offset", ""):
+            return
+        ton, inbound, outbound = bool(request.ton), bool(request.inbound), bool(request.outbound)
+
+        def on_response(response, error):
+            if error is not None or response is None or not hasattr(response, "history"):
+                return
+            txs = self.transactions_for(ton, inbound, outbound, account)
+            for t in reversed(txs):
+                response.history.add(0, t)
+
+        wrapped = transactions_delegate(delegate, on_response)
+        if wrapped is None:
+            return
+        for i in range(1, len(args)):
+            if args[i] is not None and args[i].equals(delegate):
+                param.args[i] = wrapped
+                break
+
+    def record_topup(self, amount: int, ton: bool):
+        """An incoming transaction for a balance raised in the settings (new - old)."""
+        txs = self.get_transactions()
+        txs.insert(0, {"id": f"topup{int(time.time() * 1000)}", "kind": "topup", "price": int(amount),
+                       "ton": bool(ton), "date": int(time.time())})
+        self.set_setting("transactions_json", json.dumps(txs[:100]))
+
+    def on_balance_change(self, ton: bool, value):
+        seen = getattr(self, "balance_seen", None)
+        if seen is None:
+            seen = self.balance_seen = {}
+        key = "ton" if ton else "stars"
+        new = parse_amount(value, 0)
+        old = seen.get(key)
+        if old is not None and new > old:
+            self.record_topup(int(round((new - old) * NANO)) if ton else int(new - old), ton)
+        seen[key] = new
+        self.notify_balance()
+
+    def remember_balances(self):
+        self.balance_seen = {"stars": parse_amount(self.get_setting("stars_balance", "100000"), 0),
+                             "ton": parse_amount(self.get_setting("ton_balance", "1000"), 0)}
 
     # Per-gift extras (caption, hidden-from-profile): local, server never sees them.
 
@@ -6101,8 +6211,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             meta = self.tx_pending[account].popleft() if self.tx_pending[account] else None
             # Inject only into the paged transaction list, never the balance status,
             # so a purchase never shows up under "Зачисления".
-            if meta and meta["self"] and meta["first"] and "getStarsTransactions" in request_name \
-                    and not error and response is not None and self.get_setting("local_balance", True):
+            if False and meta:  # transactions are added by wrap_transactions, bound to their request
                 txs = self.transactions_for(meta["ton"], meta["inbound"], meta["outbound"], account)
                 if txs:
                     for t in reversed(txs):
@@ -6401,6 +6510,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.load_catalog()
         self.refresh_own_users()
         self.refresh_rating()
+        self.remember_balances()
         self.notify_balance()
 
     def get_own_ids(self):
