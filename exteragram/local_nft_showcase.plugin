@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.57.0"
+__version__ = "1.58.0"
 
 import json
 import random
@@ -5151,7 +5151,9 @@ class LocalNftShowcasePlugin(BasePlugin):
                 column.addView(row, LinearLayout.LayoutParams(-1, -2))
             cell = GiftCell(ctx, account, None)
             saved = self.make_saved_gift(account, gift)
-            saved.pinned_to_top = False  # no pin badges in the picker
+            saved.pinned_to_top = False  # no pin or "hidden" badges in the picker
+            saved.unsaved = False
+            saved.flags &= ~FLAG_UNSAVED
             cell.setStarsGift(saved, True, False)
             cell.setOnClickListener(OnClickListener(lambda v, slug=gift.slug: on_pick(slug)))
             cell.setOnLongClickListener(long_click_listener(lambda slug=gift.slug: on_pick(slug, menu=True)))
