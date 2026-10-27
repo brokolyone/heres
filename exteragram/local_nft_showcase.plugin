@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.58.0"
+__version__ = "1.59.0"
 
 import json
 import random
@@ -5124,15 +5124,8 @@ class LocalNftShowcasePlugin(BasePlugin):
         title.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20.0)
         title.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText))
         title.setGravity(Gravity.CENTER)
-        title.setPadding(0, dp(16), 0, dp(4))
+        title.setPadding(0, dp(16), 0, dp(12))
         column.addView(title)
-        hint = TextView(ctx)
-        hint.setText("Нажми, чтобы изменить. Зажми: подпись или удалить")
-        hint.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14.0)
-        hint.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText))
-        hint.setGravity(Gravity.CENTER)
-        hint.setPadding(0, 0, 0, dp(12))
-        column.addView(hint)
         state = {"sheet": None}
 
         def on_pick(slug, menu=False):
