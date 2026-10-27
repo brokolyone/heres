@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.65.1"
+__version__ = "1.66.0"
 
 import json
 import random
@@ -587,6 +587,7 @@ class SendRequestHook(MethodHook):
         HookFilter.ArgumentIsInstanceOf(0, TL_stars.deleteStarGiftCollection().getClass()),
         HookFilter.ArgumentIsInstanceOf(0, TL_account.reorderUsernames().getClass()),
         HookFilter.ArgumentIsInstanceOf(0, TL_account.toggleUsername().getClass()),
+        HookFilter.ArgumentIsInstanceOf(0, TL_account.updateColor().getClass()),
     ))
     def before_hooked_method(self, param):
         args = list(param.args)
@@ -623,6 +624,8 @@ class SendRequestHook(MethodHook):
             result = self.plugin.reorder_usernames_locally(account, args[0])
         elif isinstance(args[0], TL_account.toggleUsername):
             result = self.plugin.toggle_username_locally(args[0])
+        elif isinstance(args[0], TL_account.updateColor):
+            result = self.plugin.save_colors_locally(account, args[0])
         else:
             return
         self.plugin.trace_request(args[0], result)
@@ -6172,6 +6175,45 @@ class LocalNftShowcasePlugin(BasePlugin):
             user.emoji_status = status
         self.patch_usernames(user)
         self.patch_phone(user)
+        if self.get_setting("local_premium", True):
+            self.patch_colors(user)
+
+    def patch_colors(self, user):
+        """Name color, profile color and background emoji set with local Premium."""
+        for key, field, flag in (("peer_color", "color", 256), ("profile_peer_color", "profile_color", 512)):
+            text = self.get_setting(f"{key}_{user.id}", "")
+            if not text:
+                continue
+            try:
+                data = SerializedData(Utilities.hexToBytes(text))
+                color = TLRPC.PeerColor.TLdeserialize(data, data.readInt32(False), False)
+            except Exception:
+                continue
+            if color is not None:
+                setattr(user, field, color)
+                user.flags2 |= flag
+
+    def save_colors_locally(self, account, request):
+        """account.updateColor: the app has already put the new colors on our user, and a
+        non-Premium account is refused by the server, so keep them here instead."""
+        if not self.get_setting("local_premium", True):
+            return None
+        user = get_user_config(account).getCurrentUser()
+        if user is None:
+            return None
+        field, key = ("profile_color", "profile_peer_color") if request.for_profile else ("color", "peer_color")
+        color = getattr(user, field, None)
+        if color is None:
+            self.set_setting(f"{key}_{user.id}", "")
+        else:
+            try:
+                data = SerializedData(color.getObjectSize())
+                color.serializeToStream(data)
+                self.set_setting(f"{key}_{user.id}", Utilities.bytesToHex(data.toByteArray()))
+            except Exception:
+                self.logger.exception("Could not save the color")
+                return None
+        return TLRPC.TL_boolTrue(), None
 
     def patch_usernames(self, user):
         names = self.username_names()
@@ -6332,8 +6374,34 @@ class LocalNftShowcasePlugin(BasePlugin):
             self.local_msg_ids[saved.msg_id] = gift.slug
         self.local_saved_ids[saved.saved_id] = gift.slug
         self.apply_collections(saved, gift.slug)
+        self.ensure_peer_color(gift)
         self.apply_meta(saved, gift.slug)
         return saved
+
+    def ensure_peer_color(self, gift):
+        """A name style for a locally built NFT (the server sends one with real NFTs): its
+        model, pattern and backdrop colors, so it can be picked under Цвет имени."""
+        if getattr(gift, "peer_color", None) is not None:
+            return
+        try:
+            attrs = jlist(gift.attributes)
+            model = next((a for a in attrs if isinstance(a, TL_stars.starGiftAttributeModel)), None)
+            pattern = next((a for a in attrs if isinstance(a, TL_stars.starGiftAttributePattern)), None)
+            backdrop = next((a for a in attrs if isinstance(a, TL_stars.starGiftAttributeBackdrop)), None)
+            if model is None or backdrop is None:
+                return
+            color = TLRPC.TL_peerColorCollectible()
+            color.collectible_id = gift.id
+            color.gift_emoji_id = model.document.id
+            color.background_emoji_id = pattern.document.id if pattern is not None else 0
+            color.accent_color = backdrop.center_color
+            colors = ArrayList()
+            colors.add(Integer(backdrop.center_color))
+            colors.add(Integer(backdrop.edge_color))
+            color.colors = colors
+            gift.peer_color = color
+        except Exception:
+            self.logger.exception("Could not build a name style for the NFT")
 
     def make_saved_regular_gift(self, account: int, gift, index: int):
         me = TLRPC.TL_peerUser()
