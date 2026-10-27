@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.64.0"
+__version__ = "1.64.1"
 
 import json
 import random
@@ -3861,7 +3861,21 @@ class LocalNftShowcasePlugin(BasePlugin):
             help_line = self.fg3e_help(ctx)
             group.addView(help_line)
             form.addView(group)
+            price_group, price_field = self.fg3e_group(
+                ctx, "Purchase Price", "Auto", "",
+                InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL, gem=True)
+            price_help = self.fg3e_help(ctx)
+            price_group.addView(price_help)
+            form.addView(price_group)
             column.addView(form)
+
+            def on_price(text):
+                if not text.strip():
+                    self.fg3e_set_help(price_help, "Empty: the price it sold for on Fragment, or an estimate")
+                    return
+                self.fg3e_set_help(price_help, self.fg3e_fiat_line(parse_amount(text, DEFAULT_PRICE)))
+            on_price("")
+            self.fg3e_watch(price_field, on_price)
 
             def preview(text):
                 phone = parse_phone(text)
@@ -3881,10 +3895,20 @@ class LocalNftShowcasePlugin(BasePlugin):
                 if not phone:
                     self.fg3e_set_help(help_line, "This is not a +888 number", error=True)
                     return
-                self.fg3e_set_help(help_line, "Looking up the price…")
-                self.store_new_number(phone, before=lambda: self.fg3e_close(sheet_ref[0], edit))
+                raw = str(price_field.getText()).strip()
+                price = None
+                if raw:
+                    try:
+                        price = float(raw.replace(",", "."))
+                    except ValueError:
+                        self.fg3e_set_help(price_help, "Enter a number", error=True)
+                        return
+                else:
+                    self.fg3e_set_help(price_help, "Looking up the price…")
+                self.store_new_number(phone, before=lambda: self.fg3e_close(sheet_ref[0], price_field),
+                                      price=price)
 
-            self.fg3e_on_done(edit, save)
+            self.fg3e_on_done(price_field, save)
             self.fg3e_primary(ctx, column, "Save", save)
             sheet_ref[0] = self.fg3e_open(ctx, column, focus=edit)
         except Exception:
@@ -4128,13 +4152,15 @@ class LocalNftShowcasePlugin(BasePlugin):
 
         send_request(req, on_response)
 
-    def store_new_number(self, phone: str, before=None):
+    def store_new_number(self, phone: str, before=None, price=None):
         """Sets the +888 number and gives it a price: the real one, or an estimate. The
         lookup is made before the number is set, so it reaches Fragment, not the plugin."""
         if phone == parse_phone(self.get_setting("anon_number", "")):
             if before is not None:
                 before()
-            self.manage_number()  # the same number: keep its price and date
+            if price is not None:
+                self.set_setting("number_price", str(price))  # a price typed by hand
+            self.manage_number()  # the same number keeps its date
             return
 
         def done(price, date):
@@ -4147,7 +4173,10 @@ class LocalNftShowcasePlugin(BasePlugin):
             self.refresh_own_users()
             self.manage_number()
 
-        self.resolve_number_price(phone, done)
+        if price is not None:
+            done(price, None)  # typed by hand: no lookup
+        else:
+            self.resolve_number_price(phone, done)
 
     def store_new_username(self, name: str, price: float, date=None):
         items = [d for d in self.get_usernames() if d["name"].lower() != name.lower()]
