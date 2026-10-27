@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.52.0"
+__version__ = "1.53.0"
 
 import json
 import random
@@ -265,6 +265,20 @@ class BulletinShowHook(MethodHook):
             param.setResult(bulletin)
             return
         self.plugin.lift_profile_bulletins(bulletin)
+
+
+class PinnedBadgeHook(MethodHook):
+    """GiftSheet.GiftCell.setStarsGift: the app hides the pin badge on a pinned NFT whose
+    sender name is visible, so pinned NFTs looked unpinned in the profile grid. Show it on
+    every pinned gift."""
+
+    def after_hooked_method(self, param):
+        try:
+            gift = param.args[0]
+            if gift is not None and gift.pinned_to_top and not gift.unsaved:
+                param.thisObject.setPinned(True, False)
+        except Exception:
+            pass
 
 
 class UndoLiftHook(MethodHook):
@@ -840,6 +854,11 @@ class LocalNftShowcasePlugin(BasePlugin):
                               ProcessErrorHook(self))
         self.hook_all_methods(loader.loadClass("org.telegram.ui.Components.UndoView"), "showWithAction",
                               UndoLiftHook(self))
+        try:
+            self.hook_all_methods(loader.loadClass("org.telegram.ui.Gifts.GiftSheet$GiftCell"), "setStarsGift",
+                                  PinnedBadgeHook())
+        except Exception:
+            self.logger.exception("GiftCell not found, no pin badge on pinned NFTs")
 
     def install_market_hooks(self, loader):
         def cls(name):
