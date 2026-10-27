@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.54.0"
+__version__ = "1.55.0"
 
 import json
 import random
@@ -276,7 +276,17 @@ class PinnedBadgeHook(MethodHook):
         try:
             gift = param.args[0]
             if gift is not None and gift.pinned_to_top and not gift.unsaved:
-                param.thisObject.setPinned(True, False)
+                cell = param.thisObject
+                # On a rebind the app animates the badge away (its end action hides it):
+                # stop that animation first, or it removes the badge right after us.
+                badge = get_private_field(cell, "pinnedView")
+                if badge is not None:
+                    badge.animate().cancel()
+                    badge.setVisibility(0)  # View.VISIBLE
+                    badge.setAlpha(1.0)
+                    badge.setScaleX(1.0)
+                    badge.setScaleY(1.0)
+                cell.setPinned(True, False)
         except Exception:
             pass
 
