@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.61.1"
+__version__ = "1.61.2"
 
 import json
 import random
@@ -953,11 +953,6 @@ class LocalNftShowcasePlugin(BasePlugin):
                 icon="msg_edit",
                 on_click=lambda _: self.open_gift_editor(),
             ),
-            Text(
-                text="Убрать NFT",
-                icon="msg_delete",
-                on_click=lambda _: self.pick_to_remove(),
-            ),
             Input(
                 key="slug",
                 text="Ссылки на NFT",
@@ -965,6 +960,12 @@ class LocalNftShowcasePlugin(BasePlugin):
                 subtext="Через запятую: t.me/nft/PlushPepe-1, t.me/nft/DurovsCap-1",
                 icon="msg_link",
                 on_change=self.load_gifts,
+            ),
+            Text(
+                text="Убрать NFT",
+                icon="msg_delete",
+                red=True,
+                on_click=lambda _: self.pick_to_remove(),
             ),
             Divider(text="Подарки видны только тебе. В Telegram ничего не меняется, "
                          "другие люди в твоём профиле их не увидят. После смены "
@@ -1001,6 +1002,7 @@ class LocalNftShowcasePlugin(BasePlugin):
             Text(
                 text="Убрать купленные обычные подарки",
                 icon="msg_delete",
+                red=True,
                 on_click=lambda _: self.clear_regular_gifts(),
             ),
             Divider(text="Купленные себе подарки (обычные и NFT с маркета) добавляются "
