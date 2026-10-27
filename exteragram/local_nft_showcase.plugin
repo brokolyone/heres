@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.69.1"
+__version__ = "1.69.2"
 
 import json
 import random
@@ -334,10 +334,11 @@ class OwnNumberEditRowHook(MethodHook):
                    or "LongClick" in str(frame.getClassName())
                    for frame in Thread.currentThread().getStackTrace()):
                 return
+            write_log("editRow called")
             if self.plugin.open_own_number_sheet(param.thisObject, int(param.args[1])):
                 param.setResult(True)
         except Exception:
-            pass
+            write_log(f"editRow hook failed:\n{traceback.format_exc()}")
 
 
 class OwnNumberClickHook(MethodHook):
@@ -350,10 +351,11 @@ class OwnNumberClickHook(MethodHook):
 
     def before_hooked_method(self, param):
         try:
+            write_log("processOnClickOrPress called")
             if self.plugin.open_own_number_sheet(param.thisObject, int(param.args[0])):
                 param.setResult(True)
         except Exception:
-            pass
+            write_log(f"number click hook failed:\n{traceback.format_exc()}")
 
 
 class FragmentSheetOnceHook(MethodHook):
@@ -485,7 +487,7 @@ def log_path() -> str:
     return str(ApplicationLoader.applicationContext.getFilesDir().getAbsolutePath()) + "/winft_log.txt"
 
 
-LOG_ENABLED = False  # the debug log is off; set True to record winft_log.txt again
+LOG_ENABLED = True  # debug log on (opened by a long press on «Профиль» in the settings)
 
 
 def write_log(text: str):
@@ -1268,8 +1270,9 @@ class LocalNftShowcasePlugin(BasePlugin):
                                   OwnNumberClickHook(self))
             self.hook_all_methods(loader.loadClass("org.telegram.ui.ProfileActivity"), "editRow",
                                   OwnNumberEditRowHook(self))
+            write_log("profile number hooks installed")
         except Exception:
-            self.logger.exception("ProfileActivity.processOnClickOrPress not found")
+            write_log(f"profile number hooks failed:\n{traceback.format_exc()}")
         try:
             self.hook_all_methods(loader.loadClass("org.telegram.ui.FragmentUsernameBottomSheet"), "open",
                                   FragmentSheetOnceHook(self))
@@ -1337,6 +1340,7 @@ class LocalNftShowcasePlugin(BasePlugin):
                 icon="msg_saved",
                 accent=True,
                 create_sub_fragment=self.profile_page,
+                on_long_click=lambda *a: (self.show_log(), True)[1],
             ),
             Header(text="Локальный NFT"),
             Switch(
@@ -4810,10 +4814,12 @@ class LocalNftShowcasePlugin(BasePlugin):
         if not phone:
             return False
         rows = [get_private_field(profile, name) for name in ("numberRow", "phoneRow")]
-        if position < 0 or position not in [r for r in rows if r is not None]:
-            return False
         user_id = get_private_field(profile, "userId")
         account = get_private_field(profile, "currentAccount") or UserConfig.selectedAccount
+        write_log(f"number tap: position={position} rows={rows} user={user_id} "
+                  f"own={get_user_config(account).getClientUserId()}")
+        if position < 0 or position not in [r for r in rows if r is not None]:
+            return False
         if not user_id or user_id != get_user_config(account).getClientUserId():
             return False
         req = TL_fragment.TL_getCollectibleInfo()
@@ -4823,6 +4829,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         result = self.collectible_info(req)
         if result is None or result[0] is None:
             return True  # a repeated tap: swallow it
+        write_log("number tap: opening the Fragment sheet")
         from org.telegram.ui import FragmentUsernameBottomSheet
         user = get_messages_controller(account).getUser(user_id)
         FragmentUsernameBottomSheet.open(profile.getContext(), FragmentUsernameBottomSheet.TYPE_PHONE,
