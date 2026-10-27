@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.51.0"
+__version__ = "1.52.0"
 
 import json
 import random
@@ -4346,17 +4346,50 @@ class LocalNftShowcasePlugin(BasePlugin):
 
     def open_constructor_for(self, gift_id, title):
         write_log(f"open constructor for {gift_id} {title}")
-        req = TL_stars.getStarGiftUpgradePreview()
-        req.gift_id = gift_id
 
-        def on_result(response):
-            attrs = getattr(response, "sample_attributes", None)
-            if attrs is None or attrs.size() == 0:
-                BulletinHelper.show_error("Нет образцов для этой коллекции")
-                return
+        def show(attrs):
             self.show_native_constructor(gift_id, title or "NFT", attrs)
 
-        self.request_on_ui(req, on_result)
+        self.load_all_attributes(gift_id, show)
+
+    def load_all_attributes(self, gift_id, on_attrs, quiet=False):
+        """Every model, backdrop and pattern of a collection (getStarGiftUpgradeAttributes).
+        The upgrade preview has only 12 of each, so it is the fallback for older app versions."""
+        def from_preview():
+            req = TL_stars.getStarGiftUpgradePreview()
+            req.gift_id = gift_id
+
+            def on_result(response):
+                attrs = getattr(response, "sample_attributes", None)
+                if attrs is None or attrs.size() == 0:
+                    BulletinHelper.show_error("Нет образцов для этой коллекции")
+                    return
+                write_log(f"attributes: {attrs.size()} from the preview")
+                on_attrs(attrs)
+
+            if quiet:  # in the background: no spinner
+                send_request(req, lambda response, error: response is not None and error is None
+                             and run_on_ui_thread(lambda: on_result(response)))
+            else:
+                self.request_on_ui(req, on_result)
+
+        try:
+            req = TL_stars.getStarGiftUpgradeAttributes()
+            req.gift_id = gift_id
+        except Exception:
+            from_preview()  # this app version has no such request
+            return
+
+        def on_response(response, error):
+            attrs = getattr(response, "attributes", None) if error is None and response is not None else None
+            if attrs is None or attrs.size() == 0:
+                write_log(f"attributes: full list failed ({error.text if error else 'empty'})")
+                run_on_ui_thread(from_preview)
+                return
+            write_log(f"attributes: {attrs.size()} in the full list")
+            run_on_ui_thread(lambda: on_attrs(attrs))
+
+        send_request(req, on_response)
 
     def show_native_constructor(self, gift_id, title, attrs):
         try:
@@ -4869,18 +4902,16 @@ class LocalNftShowcasePlugin(BasePlugin):
         can answer at once with the new gift and Telegram plays its own upgrade animation."""
         if gift_id in self.previews:
             return
-        req = TL_stars.getStarGiftUpgradePreview()
-        req.gift_id = gift_id
 
-        def on_response(response, error):
-            attrs = jlist(getattr(response, "sample_attributes", None))
+        def on_attrs(java_attrs):
+            attrs = jlist(java_attrs)
             models = [a for a in attrs if isinstance(a, TL_stars.starGiftAttributeModel)]
             backs = [a for a in attrs if isinstance(a, TL_stars.starGiftAttributeBackdrop)]
             pats = [a for a in attrs if isinstance(a, TL_stars.starGiftAttributePattern)]
             if models and backs:
                 self.previews[gift_id] = (models, backs, pats)
 
-        send_request(req, on_response)
+        self.load_all_attributes(gift_id, on_attrs, quiet=True)
 
     def upgrade_now(self, gift_id):
         """Builds and stores the upgraded gift from cached samples, or None if not loaded yet."""
