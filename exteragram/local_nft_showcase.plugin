@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.69.3"
+__version__ = "1.69.4"
 
 import json
 import random
@@ -487,7 +487,7 @@ def log_path() -> str:
     return str(ApplicationLoader.applicationContext.getFilesDir().getAbsolutePath()) + "/winft_log.txt"
 
 
-LOG_ENABLED = True  # debug log on (opened by a long press on «Профиль» in the settings)
+LOG_ENABLED = False  # the debug log is off; True records it (opened by a long press on «Профиль»)
 
 
 def write_log(text: str):
