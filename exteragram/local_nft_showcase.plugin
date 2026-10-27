@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.66.0"
+__version__ = "1.67.0"
 
 import json
 import random
@@ -588,6 +588,7 @@ class SendRequestHook(MethodHook):
         HookFilter.ArgumentIsInstanceOf(0, TL_account.reorderUsernames().getClass()),
         HookFilter.ArgumentIsInstanceOf(0, TL_account.toggleUsername().getClass()),
         HookFilter.ArgumentIsInstanceOf(0, TL_account.updateColor().getClass()),
+        HookFilter.ArgumentIsInstanceOf(0, TLRPC.TL_messages_toggleDialogPin().getClass()),
     ))
     def before_hooked_method(self, param):
         args = list(param.args)
@@ -626,6 +627,8 @@ class SendRequestHook(MethodHook):
             result = self.plugin.toggle_username_locally(args[0])
         elif isinstance(args[0], TL_account.updateColor):
             result = self.plugin.save_colors_locally(account, args[0])
+        elif isinstance(args[0], TLRPC.TL_messages_toggleDialogPin):
+            result = self.plugin.remember_pin(account, args[0])
         else:
             return
         self.plugin.trace_request(args[0], result)
@@ -755,6 +758,95 @@ class LocalNftShowcasePlugin(BasePlugin):
         except Exception:
             pass
         self.restore_resale()
+        try:
+            from org.telegram.messenger import NotificationCenter as NC
+            for account, observer in getattr(self, "pin_observers", []):
+                NC.getInstance(account).removeObserver(observer, NC.dialogsNeedReload)
+        except Exception:
+            pass
+
+    # ----- Local pinned chats: past the server's limit, kept on this device -----
+
+    LOCAL_PIN_LIMIT = 100
+
+    def local_pins(self, account) -> list:
+        try:
+            return json.loads(self.get_setting(f"local_pins_{account}", "") or "[]")
+        except ValueError:
+            return []
+
+    def remember_pin(self, account, request):
+        """messages.toggleDialogPin still goes to the server (it keeps what it allows); the
+        pin is also remembered here, so the ones it refuses come back after a sync."""
+        if not self.get_setting("local_premium", True):
+            return None
+        peer = getattr(getattr(request, "peer", None), "peer", None)
+        did = self.input_peer_to_dialog(account, peer)
+        if did is None:
+            return None
+        pins = [d for d in self.local_pins(account) if d != did]
+        if request.pinned:
+            pins.append(did)
+        self.set_setting(f"local_pins_{account}", json.dumps(pins))
+        return None
+
+    def input_peer_to_dialog(self, account, peer):
+        if isinstance(peer, TLRPC.TL_inputPeerSelf):
+            return int(get_user_config(account).getClientUserId())
+        if isinstance(peer, TLRPC.TL_inputPeerUser):
+            return int(peer.user_id)
+        if isinstance(peer, TLRPC.TL_inputPeerChat):
+            return -int(peer.chat_id)
+        if isinstance(peer, TLRPC.TL_inputPeerChannel):
+            return -int(peer.channel_id)
+        return None
+
+    def raise_pin_limits(self, controller):
+        try:
+            if controller.maxPinnedDialogsCountPremium < self.LOCAL_PIN_LIMIT:
+                controller.maxPinnedDialogsCountPremium = self.LOCAL_PIN_LIMIT
+            if controller.maxPinnedDialogsCountDefault < self.LOCAL_PIN_LIMIT:
+                controller.maxPinnedDialogsCountDefault = self.LOCAL_PIN_LIMIT
+        except Exception:
+            pass
+
+    def reapply_pins(self, account):
+        """Pins the server dropped are pinned again, locally only (taskId -1 sends nothing)."""
+        if not self.get_setting("local_premium", True):
+            return
+        controller = get_messages_controller(account)
+        self.raise_pin_limits(controller)
+        dialogs = controller.dialogs_dict
+        for did in self.local_pins(account):
+            dialog = dialogs.get(did)
+            if dialog is not None and not dialog.pinned:
+                controller.pinDialog(did, True, None, -1)
+
+    def install_pin_keeper(self):
+        from java import dynamic_proxy
+        from org.telegram.messenger import NotificationCenter as NC
+        plugin = self
+
+        class _Observer(dynamic_proxy(NC.NotificationCenterDelegate)):
+            def __init__(self, account):
+                super().__init__()
+                self.account = account
+
+            def didReceivedNotification(self, nid, account, args):
+                try:
+                    plugin.reapply_pins(self.account)
+                except Exception:
+                    pass
+
+        self.pin_observers = []
+        for account in range(UserConfig.MAX_ACCOUNT_COUNT):
+            if not get_user_config(account).isClientActivated():
+                continue
+            observer = _Observer(account)
+            NC.getInstance(account).addObserver(observer, NC.dialogsNeedReload)
+            self.pin_observers.append((account, observer))
+            self.raise_pin_limits(get_messages_controller(account))
+            run_on_ui_thread(lambda a=account: self.reapply_pins(a), 3000)
 
     def show_log(self):
         activity = self.get_activity()
@@ -833,6 +925,10 @@ class LocalNftShowcasePlugin(BasePlugin):
         self.load_custom_gifts()
         self.migrate_fragment_settings()
         self.load_catalog()
+        try:
+            self.install_pin_keeper()
+        except Exception:
+            self.logger.exception("Local pins are off")
 
     def install_java_hooks(self):
         # Take java.lang.Class from live objects: find_class may return a Python proxy.
