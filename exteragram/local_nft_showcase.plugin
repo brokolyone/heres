@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.40.0"
+__version__ = "1.41.0"
 
 import json
 import random
@@ -166,16 +166,21 @@ class PatchUserHook(MethodHook):
         self.plugin.patch_user(param.args[self.arg_index])
 
 
-def bulletin_delegate(extra_bottom, inner=None):
-    """Bulletin.Delegate that forwards to inner (the screen's own delegate, if any) and lifts
-    bulletins extra_bottom px higher. Every method is written out: a proxy has no Java
-    default methods to fall back on."""
+def bulletin_delegate(extra_bottom, inner=None, fragment=None):
+    """Bulletin.Delegate that forwards to inner (the screen's own delegate, if any) and keeps
+    bulletins at least extra_bottom px above the screen bottom (the space a floating tab bar
+    takes); an offset that already clears it is left alone. Every method is written out: a
+    proxy has no Java default methods to fall back on."""
     from java import dynamic_proxy
     from org.telegram.ui.Components import Bulletin
 
     class _Delegate(dynamic_proxy(Bulletin.Delegate)):
         def getBottomOffset(self, tag):
-            return (inner.getBottomOffset(tag) if inner is not None else 0) + extra_bottom
+            if inner is not None:
+                base = inner.getBottomOffset(tag)
+            else:
+                base = fragment.getBottomInset() if fragment is not None else 0  # Telegram's default
+            return base if base >= extra_bottom else base + extra_bottom
 
         def bottomOffsetAnimated(self):
             return inner.bottomOffsetAnimated() if inner is not None else True
@@ -735,30 +740,33 @@ class LocalNftShowcasePlugin(BasePlugin):
             self.logger.error("ConnectionsManager.sendRequest not found, local purchases are off")
 
     def lift_profile_bulletins(self, bulletin):
-        """exteraGram's floating tab bar covers bulletins on the profile tab ("Скопировано в буфер
-        обмена" sits behind Чаты/Контакты). The profile has its own Bulletin.Delegate; wrap it
-        so its offsets stay and the tab bar's height is added while the profile is a tab."""
+        """exteraGram's floating tab bar covers bulletins shown on its main tabs ("Скопировано
+        в буфер обмена" on the profile tab sits behind Чаты/Контакты). Those bulletins belong to
+        MainTabsActivity; wrap its Bulletin.Delegate (or the profile's, when the profile is a
+        tab) so the screen's own offsets stay and the bar's height is added when missing."""
         try:
             fragment = get_private_field(bulletin, "containerFragment")
-            last = get_last_fragment()
-            name = fragment.getClass().getName() if fragment is not None else None
-            write_log(f"bulletin: container={name} "
-                      f"last={last.getClass().getName() if last is not None else None}")
-            if fragment is None or "Profile" not in fragment.getClass().getSimpleName():
+            if fragment is None:
+                return
+            name = fragment.getClass().getSimpleName()
+            if name == "MainTabsActivity":
+                pass
+            elif "Profile" in name:
+                last = get_last_fragment()
+                if last is not None and last.equals(fragment):
+                    return  # a profile opened on its own screen: no tab bar under it
+            else:
                 return
             current = fragment.getBulletinDelegate()
-            if current is not None and getattr(self, "profile_bulletin_wrapper", None) is not None \
-                    and current.equals(self.profile_bulletin_wrapper):
+            wrappers = getattr(self, "bulletin_wrappers", [])
+            if current is not None and any(current.equals(w) for w in wrappers):
                 return
-            as_tab = last is None or not last.equals(fragment)  # a tab inside exteraGram's main screen
-            write_log(f"bulletin: profile delegate={current is not None} tab={as_tab} "
-                      f"last={last.getClass().getSimpleName() if last is not None else None}")
-            if not as_tab:
-                return
-            self.profile_bulletin_wrapper = bulletin_delegate(AndroidUtilities.dp(84), current)
-            fragment.setBulletinDelegate(self.profile_bulletin_wrapper)
+            wrapper = bulletin_delegate(AndroidUtilities.dp(84), current, fragment)
+            self.bulletin_wrappers = (wrappers + [wrapper])[-8:]
+            fragment.setBulletinDelegate(wrapper)
+            write_log(f"bulletin: lifted on {name} (own delegate: {current is not None})")
         except Exception:
-            self.logger.exception("Could not lift profile bulletins")
+            self.logger.exception("Could not lift tab bulletins")
 
     def install_error_hooks(self, loader):
         factory = loader.loadClass("org.telegram.ui.Components.BulletinFactory")
