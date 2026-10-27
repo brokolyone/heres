@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.60.0"
+__version__ = "1.61.0"
 
 import json
 import random
@@ -957,14 +957,6 @@ class LocalNftShowcasePlugin(BasePlugin):
                 text="Убрать NFT",
                 icon="msg_delete",
                 on_click=lambda _: self.pick_to_remove(),
-            ),
-            Input(
-                key="slug",
-                text="Ссылки на NFT",
-                default="",
-                subtext="Через запятую: t.me/nft/PlushPepe-1, t.me/nft/DurovsCap-1",
-                icon="msg_link",
-                on_change=self.load_gifts,
             ),
             Divider(text="Подарки видны только тебе. В Telegram ничего не меняется, "
                          "другие люди в твоём профиле их не увидят. После смены "
@@ -4465,6 +4457,20 @@ class LocalNftShowcasePlugin(BasePlugin):
                 self.ctor["value"] = (edit.value_amount / 100.0, edit.value_currency)
             try:
                 self.preselect_attributes(sheet, attrs, edit)
+            except Exception:
+                write_log(f"preselect failed:\n{traceback.format_exc()}")
+        else:
+            # A new gift starts on one random model, backdrop and pattern instead of rolling.
+            try:
+                items = jlist(attrs)
+                start = TL_stars.TL_starGiftUnique()
+                start.attributes = ArrayList()
+                for kind in (TL_stars.starGiftAttributeModel, TL_stars.starGiftAttributePattern,
+                             TL_stars.starGiftAttributeBackdrop):
+                    found = [a for a in items if isinstance(a, kind)]
+                    if found:
+                        start.attributes.add(random.choice(found))
+                self.preselect_attributes(sheet, attrs, start)
             except Exception:
                 write_log(f"preselect failed:\n{traceback.format_exc()}")
         try:
