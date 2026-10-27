@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.49.0"
+__version__ = "1.50.0"
 
 import json
 import random
@@ -998,29 +998,11 @@ class LocalNftShowcasePlugin(BasePlugin):
                 icon="msg_stars",
                 on_change=lambda _: self.refresh_rating(),
             ),
-            Input(
-                key="rating_level",
-                text="Уровень",
-                default="1",
-                subtext="От 0 до 99",
+            Text(
+                text="Настроить уровень",
+                subtext=self.rating_subtext(),
                 icon="msg_premium_prolfilestar",
-                on_change=lambda _: self.refresh_rating(),
-            ),
-            Input(
-                key="rating_stars",
-                text="Звёзды",
-                default="627",
-                subtext="Сколько уже набрано, например 627",
-                icon="msg_stars",
-                on_change=lambda _: self.refresh_rating(),
-            ),
-            Input(
-                key="rating_next",
-                text="Звёзд до следующего уровня",
-                default="5000",
-                subtext="Сколько нужно, например 5000 (покажется как 5K)",
-                icon="msg_stats",
-                on_change=lambda _: self.refresh_rating(),
+                on_click=lambda _: self.fg3_rating_modal(),
             ),
             Divider(text="Уровень видишь только ты. Нажми на него в профиле, чтобы увидеть шкалу "
                          "до следующего уровня. После смены переоткрой профиль."),
@@ -5219,20 +5201,115 @@ class LocalNftShowcasePlugin(BasePlugin):
 
     # ----- Local Stars rating (the level shown next to the profile name) -----
 
+    # Points needed to reach a level. Telegram does not publish the table: level 2 at 5K is
+    # what the app's Rating window shows, the other anchors come from public breakdowns;
+    # levels between them are interpolated.
+    RATING_ANCHORS = [(1, 0), (2, 5000), (3, 12000), (4, 19000), (5, 27000), (10, 81000),
+                      (20, 212000), (50, 606000), (80, 1000000)]
+    RATING_MAX_LEVEL = 99
+
+    def rating_need(self, level: int) -> int:
+        anchors = self.RATING_ANCHORS
+        if level <= anchors[0][0]:
+            return 0
+        for (l1, p1), (l2, p2) in zip(anchors, anchors[1:]):
+            if level <= l2:
+                return int(round(p1 + (p2 - p1) * (level - l1) / float(l2 - l1)))
+        (l1, p1), (l2, p2) = anchors[-2], anchors[-1]
+        return int(round(p2 + (p2 - p1) / float(l2 - l1) * (level - l2)))
+
+    def rating_range(self, level: int):
+        """(from, to) stars allowed on a level: from its threshold up to one below the next."""
+        return self.rating_need(level), self.rating_need(level + 1) - 1
+
+    def rating_values(self):
+        level = max(1, min(self.RATING_MAX_LEVEL, int(parse_amount(self.get_setting("rating_level", "1"), 1))))
+        low, high = self.rating_range(level)
+        stars = max(low, min(high, int(parse_amount(self.get_setting("rating_stars", str(low)), low))))
+        return level, stars
+
     def local_rating(self):
-        """The rating as the profile sheet shows it: "627 / 5K" stars, "Уровень 1 → Уровень 2"."""
+        """The rating as the profile shows it: "627 / 5K", "Уровень 1 → Уровень 2"."""
         if not self.get_setting("local_rating", False):
             return None
-        level = max(0, min(99, int(parse_amount(self.get_setting("rating_level", "1"), 1))))
-        stars = max(0, int(parse_amount(self.get_setting("rating_stars", "627"), 627)))
-        nxt = max(stars, int(parse_amount(self.get_setting("rating_next", "5000"), 5000)))
+        level, stars = self.rating_values()
         rating = TL_stars.Tl_starsRating()
         rating.level = level
-        rating.current_level_stars = 0  # the bar fills as stars / next level
+        rating.current_level_stars = self.rating_need(level)
         rating.stars = stars
-        rating.next_level_stars = nxt
+        rating.next_level_stars = self.rating_need(level + 1)
         rating.flags |= 1  # next_level_stars present
         return rating
+
+    def rating_subtext(self) -> str:
+        if not self.get_setting("local_rating", False):
+            return "Выключен. Нажми, чтобы настроить"
+        level, stars = self.rating_values()
+        return f"Уровень {level} · {stars:,} / {self.rating_need(level + 1):,}"
+
+    def fg3_rating_modal(self):
+        """Fragment-styled sheet for the Stars rating: level, then stars limited to that level's
+        range (shown live), so a level never gets an impossible number of stars."""
+        sheet_ref = [None]
+        try:
+            ctx = self.get_activity()
+            if ctx is None:
+                return
+            level, stars = self.rating_values()
+            column = self.fg3e_column(ctx)
+            self.fg3e_head(ctx, column, "Stars Rating", "Your level next to your status in the profile")
+            form = self.fg3e_column(ctx)
+            form.setPadding(0, self.fg3_dp(6), 0, 0)
+            level_group, level_edit = self.fg3e_group(ctx, "Level", "1", str(level), InputType.TYPE_CLASS_NUMBER)
+            level_help = self.fg3e_help(ctx, f"From 1 to {self.RATING_MAX_LEVEL}")
+            level_group.addView(level_help)
+            form.addView(level_group)
+            stars_group, stars_edit = self.fg3e_group(ctx, "Rating", "0", str(stars), InputType.TYPE_CLASS_NUMBER)
+            stars_help = self.fg3e_help(ctx)
+            stars_group.addView(stars_help)
+            form.addView(stars_group)
+            column.addView(form)
+
+            def typed_level():
+                text = str(level_edit.getText()).strip()
+                return int(text) if text.isdigit() and 1 <= int(text) <= self.RATING_MAX_LEVEL else None
+
+            def show_range(_=None):
+                lvl = typed_level()
+                if lvl is None:
+                    self.fg3e_set_help(level_help, f"From 1 to {self.RATING_MAX_LEVEL}", error=True)
+                    self.fg3e_set_help(stars_help, "")
+                    return
+                self.fg3e_set_help(level_help, f"From 1 to {self.RATING_MAX_LEVEL}")
+                low, high = self.rating_range(lvl)
+                self.fg3e_set_help(stars_help, f"From {low:,} to {high:,} on level {lvl}")
+
+            show_range()
+            self.fg3e_watch(level_edit, show_range)
+
+            def save():
+                lvl = typed_level()
+                if lvl is None:
+                    self.fg3e_set_help(level_help, f"Level must be from 1 to {self.RATING_MAX_LEVEL}", error=True)
+                    return
+                low, high = self.rating_range(lvl)
+                text = str(stars_edit.getText()).strip()
+                value = int(text) if text.isdigit() else -1
+                if not low <= value <= high:
+                    self.fg3e_set_help(stars_help, f"Must be from {low:,} to {high:,} on level {lvl}", error=True)
+                    return
+                self.fg3e_close(sheet_ref[0], stars_edit)
+                self.set_setting("rating_level", str(lvl))
+                self.set_setting("rating_stars", str(value))
+                self.set_setting("local_rating", True)
+                self.refresh_rating()
+
+            self.fg3e_on_done(stars_edit, save)
+            self.fg3e_primary(ctx, column, "Save", save)
+            sheet_ref[0] = self.fg3e_open(ctx, column, focus=level_edit)
+        except Exception:
+            self.fg3_log_error("fg3_rating_modal failed")
+            self.fg3e_close(sheet_ref[0])
 
     def apply_rating(self, full) -> bool:
         rating = self.local_rating()
