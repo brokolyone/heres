@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.69.5"
+__version__ = "1.69.6"
 
 import json
 import random
@@ -2612,16 +2612,19 @@ class LocalNftShowcasePlugin(BasePlugin):
         for index, item in enumerate(items):
             label, on_click = item[0], item[1]
             active = index == active_index
-            cell = FrameLayout(ctx)
+            # A vertical LinearLayout sized to its text: the underline matches the word's width
+            # (in a FrameLayout it stretched to the right edge of the screen).
+            cell = LinearLayout(ctx)
+            cell.setOrientation(LinearLayout.VERTICAL)
             text = self.fg3_text(ctx, label, 18, self.FG3_TEXT if active else self.FG3_TAB_INACTIVE, bold=True)
             text.setSingleLine(True)
             text.setGravity(Gravity.CENTER_VERTICAL)
-            cell.addView(text, FrameLayout.LayoutParams(-2, -1))
+            cell.addView(text, LinearLayout.LayoutParams(-2, 0, 1.0))
+            line = View(ctx)
             if active:
-                line = View(ctx)
                 line.setBackground(self.fg3_shape(self.FG3_TAB_UNDERLINE, 3, top_only=True))
-                cell.addView(line, FrameLayout.LayoutParams(-1, self.fg3_dp(4), Gravity.BOTTOM))
-            elif on_click is not None:
+            cell.addView(line, LinearLayout.LayoutParams(-1, self.fg3_dp(4)))
+            if not active and on_click is not None:
                 self.fg3_click(cell, on_click)
             params = LinearLayout.LayoutParams(-2, -1)
             if index > 0:
