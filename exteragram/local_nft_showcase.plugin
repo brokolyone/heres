@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.65.0"
+__version__ = "1.65.1"
 
 import json
 import random
@@ -287,6 +287,22 @@ class PinnedBadgeHook(MethodHook):
                     badge.setScaleX(1.0)
                     badge.setScaleY(1.0)
                 cell.setPinned(True, False)
+        except Exception:
+            pass
+
+
+class OwnNumberClickHook(MethodHook):
+    """ProfileActivity.processOnClickOrPress: on your own profile a tap on the +888 number
+    only opened the edit menu. Open the Fragment sheet instead, like on other profiles; a
+    long press keeps the menu (Копировать / Изменить номер)."""
+
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def before_hooked_method(self, param):
+        try:
+            if self.plugin.open_own_number_sheet(param.thisObject, int(param.args[0])):
+                param.setResult(True)
         except Exception:
             pass
 
@@ -922,6 +938,11 @@ class LocalNftShowcasePlugin(BasePlugin):
                               ProcessErrorHook(self))
         self.hook_all_methods(loader.loadClass("org.telegram.ui.Components.UndoView"), "showWithAction",
                               UndoLiftHook(self))
+        try:
+            self.hook_all_methods(loader.loadClass("org.telegram.ui.ProfileActivity"), "processOnClickOrPress",
+                                  OwnNumberClickHook(self))
+        except Exception:
+            self.logger.exception("ProfileActivity.processOnClickOrPress not found")
         try:
             self.hook_all_methods(loader.loadClass("org.telegram.ui.FragmentUsernameBottomSheet"), "open",
                                   FragmentSheetOnceHook(self))
@@ -4396,6 +4417,30 @@ class LocalNftShowcasePlugin(BasePlugin):
             asked_at = now
             return info, None, lambda: self.last_collectible == (key, asked_at)
         return info, None
+
+    def open_own_number_sheet(self, profile, position) -> bool:
+        phone = parse_phone(self.get_setting("anon_number", ""))
+        if not phone:
+            return False
+        rows = [get_private_field(profile, name) for name in ("numberRow", "phoneRow")]
+        if position < 0 or position not in [r for r in rows if r is not None]:
+            return False
+        user_id = get_private_field(profile, "userId")
+        account = get_private_field(profile, "currentAccount") or UserConfig.selectedAccount
+        if not user_id or user_id != get_user_config(account).getClientUserId():
+            return False
+        req = TL_fragment.TL_getCollectibleInfo()
+        target = TL_fragment.TL_inputCollectiblePhone()
+        target.phone = phone
+        req.collectible = target
+        result = self.collectible_info(req)
+        if result is None or result[0] is None:
+            return True  # a repeated tap: swallow it
+        from org.telegram.ui import FragmentUsernameBottomSheet
+        user = get_messages_controller(account).getUser(user_id)
+        FragmentUsernameBottomSheet.open(profile.getContext(), FragmentUsernameBottomSheet.TYPE_PHONE,
+                                         phone, user, result[0], profile.getResourceProvider())
+        return True
 
     def is_main_username(self, key) -> bool:
         primary = (self.get_setting("primary_username", "") or "").lower()
