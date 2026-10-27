@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.43.0"
+__version__ = "1.44.0"
 
 import json
 import random
@@ -182,6 +182,7 @@ def bulletin_delegate(extra_bottom, inner=None, fragment=None):
     proxy has no Java default methods to fall back on."""
     from java import dynamic_proxy
     from org.telegram.ui.Components import Bulletin
+    logged = []  # log the first offset once
 
     class _Delegate(dynamic_proxy(Bulletin.Delegate)):
         def getBottomOffset(self, tag):
@@ -189,7 +190,11 @@ def bulletin_delegate(extra_bottom, inner=None, fragment=None):
                 base = inner.getBottomOffset(tag)
             else:
                 base = fragment.getBottomInset() if fragment is not None else 0  # Telegram's default
-            return base if base >= extra_bottom else base + extra_bottom
+            result = base if base >= extra_bottom else base + extra_bottom
+            if not logged:
+                logged.append(True)
+                write_log(f"bulletin: offset base={base} -> {result} (bar {extra_bottom})")
+            return result
 
         def bottomOffsetAnimated(self):
             return inner.bottomOffsetAnimated() if inner is not None else True
@@ -750,9 +755,7 @@ class LocalNftShowcasePlugin(BasePlugin):
 
     ERROR_WORDS = ("ошибк", "error", "not_found", "invalid", "_failed")
 
-    def is_error_bulletin(self, bulletin) -> bool:
-        """Any bulletin whose text reads as an error ("Неизвестная ошибка: …", "…_NOT_FOUND"),
-        whichever Telegram helper built it."""
+    def bulletin_texts(self, bulletin) -> str:
         try:
             from android.view import ViewGroup
             from android.widget import TextView as JTextView
@@ -765,10 +768,15 @@ class LocalNftShowcasePlugin(BasePlugin):
                 elif isinstance(view, ViewGroup):
                     for i in range(view.getChildCount()):
                         stack.append(view.getChildAt(i))
-            text = " ".join(texts).lower()
-            return any(word in text for word in self.ERROR_WORDS)
+            return " ".join(texts)
         except Exception:
-            return False
+            return ""
+
+    def is_error_bulletin(self, bulletin) -> bool:
+        """Any bulletin whose text reads as an error ("Неизвестная ошибка: …", "…_NOT_FOUND"),
+        whichever Telegram helper built it."""
+        text = self.bulletin_texts(bulletin).lower()
+        return any(word in text for word in self.ERROR_WORDS)
 
     def lift_profile_bulletins(self, bulletin):
         """exteraGram's floating tab bar covers bulletins shown on its main tabs ("Скопировано
@@ -777,9 +785,12 @@ class LocalNftShowcasePlugin(BasePlugin):
         tab) so the screen's own offsets stay and the bar's height is added when missing."""
         try:
             fragment = get_private_field(bulletin, "containerFragment")
+            texts = self.bulletin_texts(bulletin)
             if fragment is None:
+                write_log(f"bulletin: no fragment, text={texts[:60]!r}")
                 return
             name = fragment.getClass().getSimpleName()
+            write_log(f"bulletin: on {name}, text={texts[:60]!r}")
             if name == "MainTabsActivity":
                 pass
             elif "Profile" in name:
