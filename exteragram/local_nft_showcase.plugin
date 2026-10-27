@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.62.2"
+__version__ = "1.62.3"
 
 import json
 import random
@@ -287,6 +287,26 @@ class PinnedBadgeHook(MethodHook):
                     badge.setScaleX(1.0)
                     badge.setScaleY(1.0)
                 cell.setPinned(True, False)
+        except Exception:
+            pass
+
+
+class FragmentSheetOnceHook(MethodHook):
+    """FragmentUsernameBottomSheet.open: one tap on a collectible username could open its
+    sheet twice. A second open of the same name within 1.5 s is skipped."""
+
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def before_hooked_method(self, param):
+        try:
+            args = list(param.args)
+            key = (int(args[1]), str(args[2]).lower())
+            now = time.time()
+            last = getattr(self.plugin, "last_fragment_sheet", None)
+            self.plugin.last_fragment_sheet = (key, now)
+            if last is not None and last[0] == key and now - last[1] < 1.5:
+                param.setResult(None)
         except Exception:
             pass
 
@@ -895,6 +915,11 @@ class LocalNftShowcasePlugin(BasePlugin):
                               ProcessErrorHook(self))
         self.hook_all_methods(loader.loadClass("org.telegram.ui.Components.UndoView"), "showWithAction",
                               UndoLiftHook(self))
+        try:
+            self.hook_all_methods(loader.loadClass("org.telegram.ui.FragmentUsernameBottomSheet"), "open",
+                                  FragmentSheetOnceHook(self))
+        except Exception:
+            self.logger.exception("FragmentUsernameBottomSheet not found")
         try:
             self.hook_all_methods(loader.loadClass("org.telegram.ui.Gifts.GiftSheet$GiftCell"), "setStarsGift",
                                   PinnedBadgeHook())
