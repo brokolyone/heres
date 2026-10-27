@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.61.2"
+__version__ = "1.61.3"
 
 import json
 import random
@@ -400,8 +400,13 @@ def log_path() -> str:
     return str(ApplicationLoader.applicationContext.getFilesDir().getAbsolutePath()) + "/winft_log.txt"
 
 
+LOG_ENABLED = False  # the debug log is off; set True to record winft_log.txt again
+
+
 def write_log(text: str):
     """Synchronous append, so the line survives even if the app dies right after."""
+    if not LOG_ENABLED:
+        return
     try:
         path = log_path()
         with open(path, "a", encoding="utf-8") as f:
@@ -719,7 +724,8 @@ class LocalNftShowcasePlugin(BasePlugin):
 
     def on_plugin_load(self):
         try:
-            self.install_crash_handler()
+            if LOG_ENABLED:
+                self.install_crash_handler()
         except Exception:
             write_log(f"crash handler failed:\n{traceback.format_exc()}")
         write_log(f"plugin loaded {__version__}")
@@ -1071,12 +1077,6 @@ class LocalNftShowcasePlugin(BasePlugin):
                 default=True,
                 subtext="Не показывать всплывающие ошибки Telegram",
                 icon="msg_block",
-            ),
-            Text(
-                text="Лог winft",
-                subtext="Для отладки: что случилось при вылете",
-                icon="msg_log",
-                on_click=lambda _: self.show_log(),
             ),
             Divider(text="Премиум и статус тоже видны только тебе. Функции, которые "
                          "проверяет сервер (передача и продажа подарков, большие файлы и т.п.), "
