@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.61.3"
+__version__ = "1.62.0"
 
 import json
 import random
@@ -939,6 +939,13 @@ class LocalNftShowcasePlugin(BasePlugin):
 
     def create_settings(self) -> List[Any]:
         return [
+            Text(
+                text="Профиль",
+                subtext="Сохранить или загрузить все настройки и подарки",
+                icon="msg_saved",
+                accent=True,
+                create_sub_fragment=self.profile_page,
+            ),
             Header(text="Локальный NFT"),
             Switch(
                 key="enabled",
@@ -5688,6 +5695,152 @@ class LocalNftShowcasePlugin(BasePlugin):
                         NotificationCenter.userInfoDidLoad, Long(config.getClientUserId()), full)
         except Exception:
             self.logger.exception("Could not refresh the Stars rating")
+
+    # ----- Profile backups: every setting and gift of the plugin, in its own folder -----
+
+    PROFILE_PREFIX = "winft_profile_"
+
+    def profiles_dir(self):
+        """A folder of its own, created on first use: Documents/winft (visible in a file
+        manager), or the app's own storage when shared storage is not writable."""
+        import os
+        candidates = []
+        try:
+            from android.os import Environment
+            candidates.append(os.path.join(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS).getAbsolutePath(),
+                "winft"))
+        except Exception:
+            pass
+        try:
+            from org.telegram.messenger import ApplicationLoader
+            ext = ApplicationLoader.applicationContext.getExternalFilesDir(None)
+            if ext is not None:
+                candidates.append(os.path.join(ext.getAbsolutePath(), "winft_profiles"))
+            candidates.append(os.path.join(ApplicationLoader.applicationContext.getFilesDir().getAbsolutePath(),
+                                           "winft_profiles"))
+        except Exception:
+            pass
+        for folder in candidates:
+            try:
+                os.makedirs(folder, exist_ok=True)
+                probe = os.path.join(folder, ".probe")
+                with open(probe, "w") as f:
+                    f.write("ok")
+                os.remove(probe)
+                return folder
+            except Exception:
+                continue
+        return None
+
+    def list_profiles(self):
+        """[(path, saved_at)] newest first."""
+        import os
+        folder = self.profiles_dir()
+        if folder is None:
+            return []
+        items = []
+        for name in os.listdir(folder):
+            if name.startswith(self.PROFILE_PREFIX) and name.endswith(".json"):
+                path = os.path.join(folder, name)
+                try:
+                    with open(path, encoding="utf-8") as f:
+                        saved_at = int(json.load(f).get("saved_at", 0))
+                except Exception:
+                    saved_at = int(os.path.getmtime(path))
+                items.append((path, saved_at))
+        items.sort(key=lambda item: item[1], reverse=True)
+        return items
+
+    def profile_page(self):
+        items = [
+            Header(text="Профиль"),
+            Text(text="Сохранить профиль", icon="msg_download", accent=True,
+                 on_click=lambda _: self.save_profile()),
+            Text(text="Загрузить профиль", icon="msg_saved",
+                 on_click=lambda _: self.pick_profile_to_load()),
+            Divider(text="Сохраняются все подарки, подписи, закрепления, коллекции, надетый статус, "
+                         "юзернеймы, номер, баланс и уровень. Файлы лежат в папке "
+                         + (self.profiles_dir() or "плагина") + "."),
+        ]
+        saves = self.list_profiles()[:15]
+        if saves:
+            items.append(Header(text="Последние сохранения"))
+            for path, saved_at in saves:
+                items.append(Text(
+                    text=time.strftime("%d.%m.%Y", time.localtime(saved_at)),
+                    subtext=time.strftime("в %H:%M:%S", time.localtime(saved_at)),
+                    icon="msg_recent",
+                    on_click=lambda _, p=path, t=saved_at: self.confirm_load_profile(p, t),
+                ))
+        return items
+
+    def save_profile(self):
+        import os
+        folder = self.profiles_dir()
+        if folder is None:
+            return
+        now = int(time.time())
+        data = {"winft_profile": 1, "version": __version__, "saved_at": now,
+                "settings": self.export_settings()}
+        name = self.PROFILE_PREFIX + time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(now)) + ".json"
+        try:
+            with open(os.path.join(folder, name), "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+        except Exception:
+            self.logger.exception("Could not save the profile")
+            return
+        self.set_setting("profile_saved_at", now, reload_settings=True)  # shows the new save
+
+    def pick_profile_to_load(self):
+        saves = self.list_profiles()
+        if not saves:
+            return
+        labels = [time.strftime("%d.%m.%Y в %H:%M:%S", time.localtime(t)) for _, t in saves]
+        self.show_items("Загрузить профиль", labels,
+                        lambda i: self.confirm_load_profile(saves[i][0], saves[i][1]))
+
+    def confirm_load_profile(self, path, saved_at):
+        activity = self.get_activity()
+        if activity is None:
+            return
+        builder = AlertDialogBuilder(activity)
+        builder.set_title("Загрузить профиль?")
+        builder.set_message("Сохранение от " + time.strftime("%d.%m.%Y в %H:%M:%S", time.localtime(saved_at))
+                            + ". Текущие подарки и настройки плагина заменятся на сохранённые.")
+
+        def on_ok(bld, _):
+            bld.dismiss()
+            self.load_profile(path)
+
+        builder.set_positive_button("Загрузить", on_ok)
+        builder.set_negative_button("Отмена", lambda bld, _: bld.dismiss())
+        builder.show()
+
+    def load_profile(self, path):
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            settings = data.get("settings") if isinstance(data, dict) else None
+            if not isinstance(settings, dict):
+                return
+        except Exception:
+            self.logger.exception("Could not read the profile")
+            return
+        self.import_settings(settings, reload_settings=True)
+        # Rebuild everything the plugin keeps in memory from the loaded settings.
+        self.custom = {}
+        self.gifts = {}
+        self.statuses = {}
+        self.local_msg_ids = {}
+        self.local_regular_msg = {}
+        self.local_saved_ids = {}
+        self.load_custom_gifts()
+        self.load_gifts(self.get_setting("slug", ""))
+        self.load_catalog()
+        self.refresh_own_users()
+        self.refresh_rating()
+        self.notify_balance()
 
     def get_own_ids(self):
         if not self.own_ids:
