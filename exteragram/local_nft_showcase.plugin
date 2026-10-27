@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.42.0"
+__version__ = "1.43.0"
 
 import json
 import random
@@ -27,7 +27,6 @@ from android_utils import OnClickListener, R, copy_to_clipboard, run_on_ui_threa
 from hook_utils import get_private_field
 from client_utils import get_last_fragment, get_messages_controller, get_user_config, send_request
 from ui.alert import AlertDialogBuilder
-from ui.bulletin import BulletinHelper
 from ui.settings import Divider, Header, Input, Selector, Switch, Text
 
 from android.graphics import Typeface
@@ -48,6 +47,16 @@ from org.telegram.tgnet.tl import TL_account, TL_fragment, TL_stars, TL_update
 from org.telegram.ui import ChatActivity
 from org.telegram.ui.ActionBar import BottomSheet
 from org.telegram.ui.Stars import StarsController
+
+class _QuietBulletins:
+    """The plugin shows no pop-up messages of its own: every BulletinHelper call is a no-op.
+    Telegram's own bulletins are untouched."""
+
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
+
+
+BulletinHelper = _QuietBulletins()
 
 NANO = 1_000_000_000
 FIAT = ["USD", "EUR", "RUB"]
@@ -2223,6 +2232,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         return sheet
 
     def fg3_toast(self, text):
+        return  # the plugin shows no pop-up messages of its own
         def show():
             try:
                 from android.widget import FrameLayout
