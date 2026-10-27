@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.64.1"
+__version__ = "1.65.0"
 
 import json
 import random
@@ -569,6 +569,8 @@ class SendRequestHook(MethodHook):
         HookFilter.ArgumentIsInstanceOf(0, TL_stars.createStarGiftCollection().getClass()),
         HookFilter.ArgumentIsInstanceOf(0, TL_stars.updateStarGiftCollection().getClass()),
         HookFilter.ArgumentIsInstanceOf(0, TL_stars.deleteStarGiftCollection().getClass()),
+        HookFilter.ArgumentIsInstanceOf(0, TL_account.reorderUsernames().getClass()),
+        HookFilter.ArgumentIsInstanceOf(0, TL_account.toggleUsername().getClass()),
     ))
     def before_hooked_method(self, param):
         args = list(param.args)
@@ -601,6 +603,10 @@ class SendRequestHook(MethodHook):
         elif isinstance(args[0], (TL_stars.createStarGiftCollection, TL_stars.updateStarGiftCollection,
                                   TL_stars.deleteStarGiftCollection)):
             result = self.plugin.collection_request(account, args[0])
+        elif isinstance(args[0], TL_account.reorderUsernames):
+            result = self.plugin.reorder_usernames_locally(account, args[0])
+        elif isinstance(args[0], TL_account.toggleUsername):
+            result = self.plugin.toggle_username_locally(args[0])
         else:
             return
         self.plugin.trace_request(args[0], result)
@@ -6139,15 +6145,17 @@ class LocalNftShowcasePlugin(BasePlugin):
             own.username = user.username
             user.usernames.add(own)
         present = {user.usernames.get(i).username.lower() for i in range(user.usernames.size())}
+        active = {d["name"].lower(): d.get("active", True) for d in self.get_usernames()}
         for name in names:
             if name.lower() in present:
                 continue
             entry = TLRPC.TL_username()
-            entry.active = True
+            entry.active = bool(active.get(name.lower(), True))
             entry.username = name
             user.usernames.add(entry)
         if names:
             user.flags2 |= FLAG_USERNAMES
+        self.apply_username_order(user)
 
         # Choose which username shows under the name (user.username). The rest fall under "also".
         primary = parse_usernames(self.get_setting("primary_username", ""))
@@ -6163,6 +6171,57 @@ class LocalNftShowcasePlugin(BasePlugin):
             user.username = entry.username if entry is not None else choice
         elif user.id in self.real_username:
             user.username = self.real_username[user.id]
+
+    def get_username_order(self) -> list:
+        try:
+            return json.loads(self.get_setting("username_order", "") or "[]")
+        except ValueError:
+            return []
+
+    def apply_username_order(self, user):
+        """The order set in Telegram's username screen, real and local names together."""
+        order = self.get_username_order()
+        if not order or user.usernames is None or user.usernames.size() < 2:
+            return
+        entries = jlist(user.usernames)
+        rank = {name: i for i, name in enumerate(order)}
+        ordered = sorted(enumerate(entries), key=lambda pair: (
+            0 if pair[1].active else 1,  # hidden ones stay below, as in the app
+            rank.get(str(pair[1].username).lower(), len(order)), pair[0]))
+        user.usernames.clear()
+        for _, entry in ordered:
+            user.usernames.add(entry)
+
+    def reorder_usernames_locally(self, account, request):
+        """account.reorderUsernames: the server knows only the real names, so the full order
+        is kept here and only the real names go on to the server."""
+        local = {n.lower() for n in self.username_names()}
+        order = [str(request.order.get(i)) for i in range(request.order.size())]
+        if not any(name.lower() in local for name in order):
+            return None
+        self.set_setting("username_order", json.dumps([name.lower() for name in order]))
+        real = ArrayList()
+        for name in order:
+            if name.lower() not in local:
+                real.add(name)
+        if real.size() > 1:
+            request.order = real
+            return None  # the real ones keep their order on the server too
+        return TLRPC.TL_boolTrue(), None
+
+    def toggle_username_locally(self, request):
+        """account.toggleUsername for a local name: shown or hidden in the profile."""
+        name = str(request.username or "").lower()
+        items = self.get_usernames()
+        found = False
+        for d in items:
+            if d["name"].lower() == name:
+                d["active"] = bool(request.active)
+                found = True
+        if not found:
+            return None
+        self.set_setting("usernames_json", json.dumps(items))
+        return TLRPC.TL_boolTrue(), None
 
     def patch_phone(self, user):
         fake = parse_phone(self.get_setting("anon_number", ""))
