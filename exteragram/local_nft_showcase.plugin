@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.69.6"
+__version__ = "1.69.7"
 
 import json
 import random
@@ -5554,6 +5554,34 @@ class LocalNftShowcasePlugin(BasePlugin):
                 saved.collection_id.add(Integer(cid))
             saved.flags |= FLAG_COLLECTIONS
 
+    def get_collection_orders(self) -> dict:
+        """collection id (str) -> keys of all its gifts in the order you set."""
+        try:
+            return json.loads(self.get_setting("collection_orders", "") or "{}")
+        except Exception:
+            return {}
+
+    def order_key(self, entry):
+        key = self.local_key(entry)
+        if key is not None:
+            return key
+        if isinstance(entry, TL_stars.TL_inputSavedStarGiftUser):
+            return f"m:{entry.msg_id}"
+        if isinstance(entry, TL_stars.TL_inputSavedStarGiftChat):
+            return f"s:{entry.saved_id}"
+        if isinstance(entry, TL_stars.TL_inputSavedStarGiftSlug):
+            return f"slug:{entry.slug}"
+        return None
+
+    def order_keys_of(self, saved):
+        if saved.saved_id in self.local_saved_ids:
+            return [self.local_saved_ids[saved.saved_id]]
+        keys = [f"m:{saved.msg_id}", f"s:{saved.saved_id}"]
+        slug = getattr(saved.gift, "slug", None)
+        if slug:
+            keys.append(f"slug:{slug}")
+        return keys
+
     def split_local(self, lst):
         """Takes local gifts out of a Java list of InputSavedStarGift, returns their keys."""
         keys = []
@@ -5573,6 +5601,9 @@ class LocalNftShowcasePlugin(BasePlugin):
             data = self.get_collections()
             data.pop(str(request.collection_id), None)
             self.save_collections(data)
+            orders = self.get_collection_orders()
+            if orders.pop(str(request.collection_id), None) is not None:
+                self.set_setting("collection_orders", json.dumps(orders))
             return None
         if isinstance(request, TL_stars.createStarGiftCollection):
             self.pending_create.append(self.split_local(request.stargift))
@@ -5592,6 +5623,10 @@ class LocalNftShowcasePlugin(BasePlugin):
             if request.add_stargift.size() == 0:
                 request.flags &= ~4
         if request.flags & 8:
+            # The full order you set, real gifts included, so local ones keep their place among them.
+            orders = self.get_collection_orders()
+            orders[str(request.collection_id)] = [self.order_key(e) for e in jlist(request.order)]
+            self.set_setting("collection_orders", json.dumps(orders))
             order = self.split_local(request.order)
             members.sort(key=lambda k: order.index(k) if k in order else len(order))
             if request.order.size() == 0:
@@ -6208,13 +6243,30 @@ class LocalNftShowcasePlugin(BasePlugin):
                 saved = [g for g in saved if self.saved_key(g) in members]
                 saved.sort(key=lambda g: members.index(self.saved_key(g)))
             if saved:
-                # Pinned gifts first (local, then the server's), then the rest, as Telegram
-                # orders them; otherwise an unpinned local gift lands among the pinned ones.
                 server = jlist(response.gifts)
-                ordered = ([g for g in saved if g.pinned_to_top and not g.unsaved]
-                           + [g for g in server if g.pinned_to_top and not g.unsaved]
-                           + [g for g in saved if not (g.pinned_to_top and not g.unsaved)]
-                           + [g for g in server if not (g.pinned_to_top and not g.unsaved)])
+                if request.flags & 64:
+                    # A collection keeps its own order, as in Telegram: pins don't lift gifts
+                    # there. Gifts added after the last reorder go first, as new ones do.
+                    ordered = saved + server
+                    order = self.get_collection_orders().get(str(request.collection_id))
+                    if order:
+                        pos = {k: i for i, k in enumerate(order)}
+
+                        def place(g):
+                            if g in saved:
+                                found = [pos[k] for k in [self.saved_key(g)] if k in pos]
+                            else:
+                                found = [pos[k] for k in self.order_keys_of(g) if k in pos]
+                            return found[0] if found else -1
+
+                        ordered.sort(key=place)
+                else:
+                    # Pinned gifts first (local, then the server's), then the rest, as Telegram
+                    # orders them; otherwise an unpinned local gift lands among the pinned ones.
+                    ordered = ([g for g in saved if g.pinned_to_top and not g.unsaved]
+                               + [g for g in server if g.pinned_to_top and not g.unsaved]
+                               + [g for g in saved if not (g.pinned_to_top and not g.unsaved)]
+                               + [g for g in server if not (g.pinned_to_top and not g.unsaved)])
                 response.gifts.clear()
                 for gift in ordered:
                     response.gifts.add(gift)
