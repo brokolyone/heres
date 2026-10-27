@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.50.0"
+__version__ = "1.51.0"
 
 import json
 import random
@@ -917,12 +917,6 @@ class LocalNftShowcasePlugin(BasePlugin):
                 subtext="Через запятую: t.me/nft/PlushPepe-1, t.me/nft/DurovsCap-1",
                 icon="msg_link",
                 on_change=self.load_gifts,
-            ),
-            Switch(
-                key="pinned",
-                text="Закрепить у аватарки",
-                default=True,
-                icon="msg_pin",
             ),
             Divider(text="Подарки видны только тебе. В Telegram ничего не меняется, "
                          "другие люди в твоём профиле их не увидят. После смены "
@@ -5490,7 +5484,7 @@ class LocalNftShowcasePlugin(BasePlugin):
         saved = TL_stars.TL_savedStarGift()
         saved.gift = gift
         saved.date = int(time.time())
-        saved.pinned_to_top = self.get_pinned_map().get(gift.slug, self.get_setting("pinned", True))
+        saved.pinned_to_top = self.get_pinned_map().get(gift.slug, False)  # only what you pin yourself
         # A unique saved_id: without it the app cannot tell our gifts apart and drops
         # their pinned state when the profile is reopened.
         all_slugs = self.all_slugs()
