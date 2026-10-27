@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.44.0"
+__version__ = "1.45.0"
 
 import json
 import random
@@ -265,6 +265,23 @@ class BulletinShowHook(MethodHook):
             param.setResult(bulletin)
             return
         self.plugin.lift_profile_bulletins(bulletin)
+
+
+class UndoLiftHook(MethodHook):
+    """UndoView.showWithAction: the profile's older toast ("Скопировано в буфер обмена" when a
+    username is copied) sits at the very bottom, under exteraGram's floating tab bar. Lift it
+    while the main tabs are on screen."""
+
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def before_hooked_method(self, param):
+        try:
+            last = get_last_fragment()
+            on_tabs = last is not None and last.getClass().getSimpleName() == "MainTabsActivity"
+            param.thisObject.setAdditionalTranslationY(float(AndroidUtilities.dp(84)) if on_tabs else 0.0)
+        except Exception:
+            pass
 
 
 class ProcessErrorHook(MethodHook):
@@ -821,6 +838,8 @@ class LocalNftShowcasePlugin(BasePlugin):
                               BulletinShowHook(self))
         self.hook_all_methods(loader.loadClass("org.telegram.ui.Components.AlertsCreator"), "processError",
                               ProcessErrorHook(self))
+        self.hook_all_methods(loader.loadClass("org.telegram.ui.Components.UndoView"), "showWithAction",
+                              UndoLiftHook(self))
 
     def install_market_hooks(self, loader):
         def cls(name):
