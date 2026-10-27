@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.69.0"
+__version__ = "1.69.1"
 
 import json
 import random
@@ -658,6 +658,10 @@ class SendRequestHook(MethodHook):
         delegate = next((a for a in args[1:] if a is not None and hasattr(a, "run")), None)
         account = get_private_field(param.thisObject, "currentAccount") or 0
         if isinstance(args[0], TL_stars.TL_payments_getStarsTransactions):
+            # Once per request: the nested overloads would wrap the wrapped delegate again
+            # and add the local transactions once per overload.
+            self.plugin.answered_requests = (self.plugin.answered_requests
+                                             + [(args[0], time.time(), False)])[-20:]
             self.plugin.wrap_transactions(param, args, delegate, account)
             return
         if isinstance(args[0], TL_stars.TL_payments_sendStarsForm):
