@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.48.0"
+__version__ = "1.49.0"
 
 import json
 import random
@@ -1001,15 +1001,24 @@ class LocalNftShowcasePlugin(BasePlugin):
             Input(
                 key="rating_level",
                 text="Уровень",
-                default="10",
+                default="1",
                 subtext="От 0 до 99",
                 icon="msg_premium_prolfilestar",
                 on_change=lambda _: self.refresh_rating(),
             ),
             Input(
-                key="rating_progress",
-                text="Прогресс до следующего, %",
-                default="50",
+                key="rating_stars",
+                text="Звёзды",
+                default="627",
+                subtext="Сколько уже набрано, например 627",
+                icon="msg_stars",
+                on_change=lambda _: self.refresh_rating(),
+            ),
+            Input(
+                key="rating_next",
+                text="Звёзд до следующего уровня",
+                default="5000",
+                subtext="Сколько нужно, например 5000 (покажется как 5K)",
                 icon="msg_stats",
                 on_change=lambda _: self.refresh_rating(),
             ),
@@ -5210,25 +5219,19 @@ class LocalNftShowcasePlugin(BasePlugin):
 
     # ----- Local Stars rating (the level shown next to the profile name) -----
 
-    def rating_thresholds(self, level: int):
-        """Stars needed to reach a level and the next one (a smooth curve; the server's own
-        table is not public). Level 0 starts at 0."""
-        def need(n):
-            return 0 if n <= 0 else int(25 * n * (n + 3))
-        return need(level), need(level + 1)
-
     def local_rating(self):
+        """The rating as the profile sheet shows it: "627 / 5K" stars, "Уровень 1 → Уровень 2"."""
         if not self.get_setting("local_rating", False):
             return None
-        level = max(0, min(99, int(parse_amount(self.get_setting("rating_level", "10"), 10))))
-        progress = max(0.0, min(100.0, parse_amount(self.get_setting("rating_progress", "50"), 50))) / 100.0
-        current, nxt = self.rating_thresholds(level)
+        level = max(0, min(99, int(parse_amount(self.get_setting("rating_level", "1"), 1))))
+        stars = max(0, int(parse_amount(self.get_setting("rating_stars", "627"), 627)))
+        nxt = max(stars, int(parse_amount(self.get_setting("rating_next", "5000"), 5000)))
         rating = TL_stars.Tl_starsRating()
         rating.level = level
-        rating.current_level_stars = current
+        rating.current_level_stars = 0  # the bar fills as stars / next level
+        rating.stars = stars
         rating.next_level_stars = nxt
         rating.flags |= 1  # next_level_stars present
-        rating.stars = current + int((nxt - current) * progress)
         return rating
 
     def apply_rating(self, full) -> bool:
