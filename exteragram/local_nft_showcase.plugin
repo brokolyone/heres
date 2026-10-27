@@ -11,7 +11,7 @@ __id__ = "windows_nft"
 __name__ = "winft"
 __description__ = "Локально показывает NFT-подарки в твоём профиле, локальный премиум и ношение подарков (видишь только ты)"
 __author__ = "wlyffi · @vvooices"
-__version__ = "1.69.6"
+__version__ = "1.69.7"
 
 import json
 import random
@@ -6208,13 +6208,17 @@ class LocalNftShowcasePlugin(BasePlugin):
                 saved = [g for g in saved if self.saved_key(g) in members]
                 saved.sort(key=lambda g: members.index(self.saved_key(g)))
             if saved:
-                # Pinned gifts first (local, then the server's), then the rest, as Telegram
-                # orders them; otherwise an unpinned local gift lands among the pinned ones.
                 server = jlist(response.gifts)
-                ordered = ([g for g in saved if g.pinned_to_top and not g.unsaved]
-                           + [g for g in server if g.pinned_to_top and not g.unsaved]
-                           + [g for g in saved if not (g.pinned_to_top and not g.unsaved)]
-                           + [g for g in server if not (g.pinned_to_top and not g.unsaved)])
+                if request.flags & 64:
+                    # A collection keeps its own order, as in Telegram: pins don't lift gifts there.
+                    ordered = saved + server
+                else:
+                    # Pinned gifts first (local, then the server's), then the rest, as Telegram
+                    # orders them; otherwise an unpinned local gift lands among the pinned ones.
+                    ordered = ([g for g in saved if g.pinned_to_top and not g.unsaved]
+                               + [g for g in server if g.pinned_to_top and not g.unsaved]
+                               + [g for g in saved if not (g.pinned_to_top and not g.unsaved)]
+                               + [g for g in server if not (g.pinned_to_top and not g.unsaved)])
                 response.gifts.clear()
                 for gift in ordered:
                     response.gifts.add(gift)
