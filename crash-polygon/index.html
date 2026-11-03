@@ -574,7 +574,8 @@ class Car{
     let best=0,bi=0; const o=part.orig,t=part.tgt; for(let i=0;i<t.length;i+=3){ const d=Math.abs(t[i]-o[i])+Math.abs(t[i+1]-o[i+1])+Math.abs(t[i+2]-o[i+2]); if(d>best){best=d;bi=i;} }
     const uv=part.mesh.geometry.attributes.uv.array; const tex=crackTexture(uv[bi/3*2],uv[bi/3*2+1]);
     part.mesh.material=new THREE.MeshPhysicalMaterial({color:0x26302f,map:tex,roughness:0.2,transparent:true,opacity:0.8,side:THREE.DoubleSide,flatShading:true}); glassSound(10); }
-  shatter(part,nW,color=0xbfd2d4,count){ part.gone=true; this.group.remove(part.mesh);
+  shatter(part,nW,color=0xbfd2d4,count){ part.gone=true; this.group.remove(part.mesh); this.group.updateMatrixWorld();
+    if(part.cfg.kind==='glass'){ glassBreak(this,part,nW,!!part.cfg.laminated); count=Math.round(25+part.mesh.geometry.attributes.position.count*0.6); }
     const t=part.mesh.geometry.attributes.position.array, n=t.length/3; const N=count||Math.min(160,Math.max(40,n*3)); const vel=this.body.velocity; const w=new THREE.Vector3();
     for(let k=0;k<N;k++){ const i=((Math.random()*n)|0)*3; this.partWorldPoint(part,i,w); shard(w,{x:vel.x*0.85-nW.x*rnd(0.5,3)+rnd(-1,1),y:vel.y*0.85+rnd(0.3,2.5),z:vel.z*0.85-nW.z*rnd(0.5,3)+rnd(-1,1)},color); }
     glassSound(count?8:22); part.mesh.geometry.dispose(); }
@@ -600,6 +601,53 @@ class Car{
   flip(){ const e=new THREE.Euler().setFromQuaternion(new THREE.Quaternion(this.body.quaternion.x,this.body.quaternion.y,this.body.quaternion.z,this.body.quaternion.w),'YXZ');
     this.body.quaternion.setFromEuler(0,e.y,0); this.body.position.y+=1.2; this.body.velocity.set(0,0,0); this.body.angularVelocity.set(0,0,0); }
 }
+
+// ───────────────────────────── glass fragments
+// A broken pane is cut into real pieces: every triangle of the pane is split along random points of its longest edge
+// until the pieces reach the size of tempered (small) or laminated (large sheets) glass, each piece gets a 5 mm
+// thickness, flies off with the car's momentum, tumbles, bounces and settles flat on the tarmac.
+const glassBitMat=new THREE.MeshPhysicalMaterial({color:0xa9bcbc,roughness:0.06,metalness:0.15,transparent:true,opacity:0.72,side:THREE.DoubleSide,flatShading:true,envMapIntensity:1.6,depthWrite:false});
+const glassSets=[];
+function glassBreak(car,part,nW,laminated){
+  const src=part.mesh.geometry.attributes.position.array, M=car.group.matrixWorld, nm=new THREE.Matrix3().getNormalMatrix(M);
+  const target=laminated?0.05:0.0035, tris=[];
+  const A=new THREE.Vector3(),B=new THREE.Vector3(),C=new THREE.Vector3();
+  const split=(a,b,c,d)=>{ const ab=a.distanceToSquared(b), bc=b.distanceToSquared(c), ca=c.distanceToSquared(a); const area=new THREE.Vector3().subVectors(b,a).cross(new THREE.Vector3().subVectors(c,a)).length()/2;
+    if(area<target*rnd(0.5,1.6)||d>9){ tris.push([a,b,c]); return; }
+    const t=rnd(0.3,0.7); if(ab>=bc&&ab>=ca){ const m=a.clone().lerp(b,t); split(a,m,c,d+1); split(m,b,c,d+1); }
+    else if(bc>=ca){ const m=b.clone().lerp(c,t); split(a,b,m,d+1); split(a,m,c,d+1); } else { const m=c.clone().lerp(a,t); split(a,b,m,d+1); split(m,b,c,d+1); } };
+  for(let i=0;i<src.length;i+=9){ A.fromArray(src,i).applyMatrix4(M); B.fromArray(src,i+3).applyMatrix4(M); C.fromArray(src,i+6).applyMatrix4(M); split(A.clone(),B.clone(),C.clone(),0); }
+  // laminated glass holds together: merge neighbours into big sheets
+  const pieces=[]; if(laminated){ for(let i=0;i<tris.length;i+=3) pieces.push(tris.slice(i,i+3)); } else for(const t of tris) pieces.push([t]);
+  const n=pieces.length, vertsPer=pieces.map(p=>p.length*24); const total=vertsPer.reduce((a,b)=>a+b,0);
+  const pos=new Float32Array(total*3), geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  const mesh=new THREE.Mesh(geo,glassBitMat); mesh.frustumCulled=false; mesh.renderOrder=3; scene.add(mesh);
+  const vel=car.body.velocity, frags=[]; let o=0;
+  for(const pc of pieces){ const c=new THREE.Vector3(); let k=0; for(const t of pc) for(const v of t){ c.add(v); k++; } c.divideScalar(k);
+    const nrm=new THREE.Vector3().subVectors(pc[0][1],pc[0][0]).cross(new THREE.Vector3().subVectors(pc[0][2],pc[0][0])).normalize();
+    const loc=[]; const th=0.0025; for(const t of pc){ const [a,b,cc]=t.map(v=>v.clone().sub(c)); const up=nrm.clone().multiplyScalar(th), dn=nrm.clone().multiplyScalar(-th);
+      const a1=a.clone().add(up),b1=b.clone().add(up),c1=cc.clone().add(up),a2=a.clone().add(dn),b2=b.clone().add(dn),c2=cc.clone().add(dn);
+      loc.push(a1,b1,c1, a2,c2,b2, a1,a2,b2, a1,b2,b1, b1,b2,c2, b1,c2,c1, c1,c2,a2, c1,a2,a1); }
+    const out=-1; const sp=laminated?rnd(0.3,1.2):rnd(0.6,3.2);
+    frags.push({o,loc,p:c,q:new THREE.Quaternion(),v:new THREE.Vector3(vel.x*rnd(0.7,0.95)+nW.x*out*sp+rnd(-.6,.6),vel.y*0.8+rnd(0.2,1.8),vel.z*rnd(0.7,0.95)+nW.z*out*sp+rnd(-.6,.6)),
+      w:new THREE.Vector3(rnd(-1,1),rnd(-1,1),rnd(-1,1)).multiplyScalar(laminated?4:14),n:nrm,rest:false,flat:null}); o+=loc.length; }
+  const set={mesh,geo,pos,frags,age:0,live:true}; glassSets.push(set); writeGlass(set,true);
+  let count=glassSets.reduce((a,s)=>a+s.frags.length,0); while(count>2600&&glassSets.length>1){ const old=glassSets.shift(); count-=old.frags.length; scene.remove(old.mesh); old.geo.dispose(); }
+}
+const _gq=new THREE.Quaternion(), _gv=new THREE.Vector3(), _gUp=new THREE.Vector3(0,1,0);
+function writeGlass(set,all){ const P=set.pos; for(const f of set.frags){ if(f.rest&&!all) continue; let o=f.o*3; for(const v of f.loc){ _gv.copy(v).applyQuaternion(f.q).add(f.p); P[o++]=_gv.x; P[o++]=_gv.y; P[o++]=_gv.z; } } set.geo.attributes.position.needsUpdate=true; }
+function updateGlass(dt){ if(dt<=0) return;
+  for(const set of glassSets){ if(!set.live) continue; let moving=0;
+    for(const f of set.frags){ if(f.rest) continue; moving++;
+      f.v.y-=9.81*dt; f.v.multiplyScalar(Math.pow(0.985,dt*60)); f.p.addScaledVector(f.v,dt);
+      const wl=f.w.length(); if(wl>1e-4){ _gq.setFromAxisAngle(_gv.copy(f.w).divideScalar(wl),wl*dt); f.q.premultiply(_gq); }
+      if(f.p.y<0.006){ f.p.y=0.006;
+        if(Math.abs(f.v.y)>0.8){ f.v.y*=-0.22; f.v.x*=0.55; f.v.z*=0.55; f.w.multiplyScalar(0.5); }
+        else { // settle flat: rotate the piece's normal onto the ground
+          if(!f.flat){ const nn=f.n.clone().applyQuaternion(f.q); if(nn.y<0) nn.negate(); f.flat=new THREE.Quaternion().setFromUnitVectors(nn,_gUp).multiply(f.q); }
+          f.q.slerp(f.flat,Math.min(1,dt*12)); f.v.multiplyScalar(Math.pow(0.02,dt)); f.v.y=0; f.w.set(0,0,0);
+          if(f.v.lengthSq()<0.0004&&f.q.angleTo(f.flat)<0.02){ f.q.copy(f.flat); f.rest=true; } } } }
+    writeGlass(set,false); if(!moving) set.live=false; } }
 
 // ───────────────────────────── debris
 const debris=[];
@@ -906,7 +954,7 @@ function physStep(){
   if(player){ const v=player.body.velocity; const dv=v.vsub(player.prevV).length()/FIXED/9.81; player.gNow=lerp(player.gNow,Math.min(dv,99),0.2); player.prevV.copy(v); }
 }
 // test hook: run the simulation faster than real time (used for automated checks)
-window.__k7={ simulate(sec){ const n=Math.round(sec/FIXED); for(let i=0;i<n;i++){ physStep(); if(test&&test.phase==='impact'){ test.t+=FIXED; if(test.t>2.2){ test.phase='after'; finishReport(); } } if(i%4===3){ for(const c of cars) syncCar(c,FIXED*4); updateFX(FIXED*4); } } updateCamera(0.5); },
+window.__k7={ simulate(sec){ const n=Math.round(sec/FIXED); for(let i=0;i<n;i++){ physStep(); if(test&&test.phase==='impact'){ test.t+=FIXED; if(test.t>2.2){ test.phase='after'; finishReport(); } } if(i%4===3){ for(const c of cars) syncCar(c,FIXED*4); updateFX(FIXED*4); updateGlass(FIXED*4); } } updateCamera(0.5); },
   state(){ const p=player; const fw=p.forward(); return {st:+p.vehicle.wheelInfos[0].steering.toFixed(3),head:+Math.atan2(fw.x,fw.z).toFixed(3),vx:+p.body.velocity.x.toFixed(2),pos:[p.body.position.x,p.body.position.y,p.body.position.z].map(v=>+v.toFixed(2)), kmh:+(p.speed()*3.6).toFixed(1), phase:test&&test.phase, front:p.frontCrush, zone:p.zone, cab:p.cabinIntr, engine:p.engine, gone:p.parts.filter(x=>x.gone).map(x=>x.name), wheels:p.wheelState.map(w=>w.broken), debris:debris.length}; },
   // model-review helpers: fixed camera, x-ray (hide body shell/panels/glass to see inside), spawn a parked car
   cam(px,py,pz,lx,ly,lz){ camOverride=px===undefined?null:{p:new THREE.Vector3(px,py,pz),l:new THREE.Vector3(lx,ly,lz)}; updateCamera(0.5); },
@@ -924,7 +972,7 @@ function frame(now){
   while(acc>=FIXED&&n<10){ physStep(); acc-=FIXED; n++; }
   if(n>=10) acc=0;
   for(const c of cars) syncCar(c,dt);
-  updateFX(dt); updateCamera(dtR); updateAudio(dtR,timeScale); hud(dtR);
+  updateFX(dt); updateGlass(dt); updateCamera(dtR); updateAudio(dtR,timeScale); hud(dtR);
   renderer.render(scene,camera); requestAnimationFrame(frame);
 }
 hudTest(); spawnFree(); camPos.set(-30,3,-48);
