@@ -80,52 +80,8 @@ body:not(.live) .hud{display:none!important}
 
 <canvas id="gl" tabindex="-1"></canvas>
 
-<div class="hud" id="brand"><span class="mark"></span>ПОЛИГОН</div>
+<div class="hud" id="brand"><span class="mark"></span></div>
 
-<div class="hud" id="tc"><div id="slomo" hidden><span class="rec">●</span> съёмка 1000 к/с</div><div id="toast"></div></div>
-
-<div class="hud" id="speedo">
-  <canvas id="dmg" width="88" height="160" hidden></canvas>
-  <div class="side"><span id="gear">1</span><span>км/ч</span><span id="eng" hidden></span></div>
-  <div id="spd" class="num">0</div>
-</div>
-
-<div class="hud" id="testline"><span><b id="tname">—</b> · <span id="tspeed" class="num">64</span> км/ч</span><span id="mode"></span></div>
-
-<div class="hud" id="help" hidden>
-  <span>W A S D</span><span>газ, тормоз, руль</span>
-  <span>Пробел</span><span>ручник</span>
-  <span>B · Q E</span><span>тип теста · скорость</span>
-  <span>C</span><span>запустить краш-тест</span>
-  <span>R · F</span><span>новая машина · на колёса</span>
-  <span>T · V</span><span>замедление · камера</span>
-  <span>мышь</span><span>клик — обзор, колесо — дистанция</span>
-  <span>H</span><span>скрыть подсказку</span>
-</div>
-
-<div class="hud" id="report" hidden>
-  <div class="head"><span id="rtitle">протокол 1</span><span id="rsub">—</span><span id="verdict">—</span><span class="close">W A S D или Esc — закрыть</span></div>
-  <canvas id="pulse" width="840" height="192"></canvas>
-  <dl>
-    <div><dt>скорость удара</dt><dd id="r_v">—</dd></div>
-    <div><dt>деформация</dt><dd id="r_d">—</dd></div>
-    <div><dt id="r_cl">в салон</dt><dd id="r_c">—</dd></div>
-    <div><dt>пик замедления</dt><dd id="r_g">—</dd></div>
-    <div><dt>импульс</dt><dd id="r_t">—</dd></div>
-  </dl>
-</div>
-
-<div id="intro">
-  <div class="word"><span class="mark"></span><h1>ПОЛИГОН</h1></div>
-  <p>Испытательная площадка: разгонная прямая, бетонный барьер, столб, вторая машина для бокового удара, трамплин и слалом. Кузов мнётся по зонам жёсткости, после каждого теста выходит протокол.</p>
-  <div class="keys">
-    <span>W A S D</span><span>езда</span><span>Пробел</span><span>ручник</span>
-    <span>B</span><span>тип теста</span><span>Q / E</span><span>скорость теста</span>
-    <span>C</span><span>краш-тест</span><span>R</span><span>новая машина</span>
-    <span>V</span><span>камера</span><span>H</span><span>подсказка</span>
-  </div>
-  <button id="start">Enter или клик — начать</button>
-</div>
 
 <script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
@@ -137,7 +93,8 @@ const rnd=(a=0,b=1)=>a+Math.random()*(b-a);
 function pw(z,k){ if(z<=k[0][0]) return k[0][1]; for(let i=1;i<k.length;i++){ if(z<=k[i][0]){ const t=(z-k[i-1][0])/(k[i][0]-k[i-1][0]); return lerp(k[i-1][1],k[i][1],t);} } return k[k.length-1][1]; }
 function hash3(x,y,z){ const h=Math.sin(x*127.1+y*311.7+z*74.7)*43758.5453; return h-Math.floor(h); }
 const fall=(e,band)=> e<=0?1:(e>=band?0:(1-e/band)*(1-e/band));
-const $=id=>document.getElementById(id);
+// the page shows no text at all: HUD elements the logic writes to are detached stand-ins
+const _off={}; const $=id=>document.getElementById(id)||(_off[id]||(_off[id]=document.createElement(id==='dmg'||id==='pulse'?'canvas':'div')));
 
 // ───────────────────────────── renderer / scene
 const canvas=$('gl');
@@ -232,7 +189,7 @@ const RUNWAY={x0:-26,x1:28,z0:-78,z1:64};
     x.font=`600 ${Math.round(1.6*ppm)}px "IBM Plex Mono", monospace`; x.textAlign='center'; x.textBaseline='middle';
     for(const lx of [LANES.wall,LANES.pole,LANES.side]){ const tz= lx===LANES.wall?61: lx===LANES.pole?60.13:61.1;
       for(let d=10;d<=130;d+=10){ const z=tz-d; if(z<RUNWAY.z0+1) break; x.fillStyle='rgba(235,232,220,.8)'; x.fillRect(X(lx-3.4),Z(z)-1,6.8*ppm*0.2,0.2*ppm); x.fillRect(X(lx+3.4)-6.8*ppm*0.2,Z(z)-1,6.8*ppm*0.2,0.2*ppm);
-        x.save(); x.translate(X(lx-2.3),Z(z)-1.4*ppm); x.fillText(String(d),0,0); x.restore(); }
+        }
       // release line
       x.fillStyle='rgba(227,174,28,.95)'; x.fillRect(X(lx-3.4),Z(tz-5.15)-2,6.8*ppm,0.3*ppm);
     }
@@ -259,7 +216,7 @@ const concreteMat=STD(0x9a968d,{roughness:0.95});
   const blk=new THREE.Mesh(new THREE.BoxGeometry(8,3,2.4),concreteMat); g.add(blk);
   const face=new THREE.Mesh(new THREE.BoxGeometry(8.02,1.4,0.06),STD(0x555a5c,{metalness:0.6,roughness:0.5})); face.position.set(0,-0.6,-1.21); g.add(face);
   const hz=new THREE.Mesh(new THREE.PlaneGeometry(8,0.35),new THREE.MeshStandardMaterial({map:hazardTex,roughness:0.8})); hazardTex.repeat.set(8,1); hz.position.set(0,0.35,-1.205); hz.rotation.y=Math.PI; g.add(hz);
-  const tag=canvasTex(256,64,(x,w,h)=>{x.fillStyle='#9a968d';x.fillRect(0,0,w,h);x.fillStyle='#1d1d1b';x.font='700 34px "IBM Plex Sans Condensed", "Arial Narrow", Arial, sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText('БАРЬЕР 1',w/2,h/2+2);});
+  const tag=canvasTex(256,64,(x,w,h)=>{x.fillStyle='#9a968d';x.fillRect(0,0,w,h);x.fillStyle='#1d1d1b';x.font='700 34px "IBM Plex Sans Condensed", "Arial Narrow", Arial, sans-serif';x.textAlign='center';x.textBaseline='middle';0;});
   const tg=new THREE.Mesh(new THREE.PlaneGeometry(2.6,0.65),new THREE.MeshStandardMaterial({map:tag,roughness:0.9})); tg.rotation.y=Math.PI; tg.position.set(0,1.05,-1.205); g.add(tg);
   g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
   addStatic(g,new CANNON.Box(half),new CANNON.Vec3(0,1.5,62.2),null,boxOb(half,0.78));
@@ -299,7 +256,7 @@ for(const [x,z] of [[-40,-70],[40,-70],[-40,10],[40,10],[-40,72],[40,72],[-80,-4
   const walls=new THREE.Mesh(new THREE.BoxGeometry(34,7,22),shell); walls.position.y=3.5; hg.add(walls);
   const roof=new THREE.Mesh(new THREE.CylinderGeometry(11.6,11.6,34.4,10,1,false,0,Math.PI),STD(0x6f7476,{metalness:0.4,roughness:0.55})); roof.rotation.z=Math.PI/2; roof.rotation.x=Math.PI/2; roof.scale.set(1,1,0.42); roof.position.y=7; hg.add(roof);
   const door=new THREE.Mesh(new THREE.PlaneGeometry(14,6),STD(0x4b5052)); door.position.set(0,3,11.02); hg.add(door);
-  const sign=canvasTex(512,64,(x,w,h)=>{x.fillStyle='#e3ae1c';x.fillRect(0,0,w,h);x.fillStyle='#161614';x.font='700 30px "IBM Plex Sans Condensed", "Arial Narrow", Arial, sans-serif';x.textBaseline='middle';x.fillText('КОРПУС 3 · ПОДГОТОВКА',16,h/2+2);});
+  const sign=canvasTex(512,64,(x,w,h)=>{x.fillStyle='#e3ae1c';x.fillRect(0,0,w,h);x.fillStyle='#161614';x.font='700 30px "IBM Plex Sans Condensed", "Arial Narrow", Arial, sans-serif';x.textBaseline='middle';0;});
   const sg=new THREE.Mesh(new THREE.PlaneGeometry(12,1.5),new THREE.MeshStandardMaterial({map:sign})); sg.position.set(0,6.3,11.03); hg.add(sg);
   hg.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
   hg.position.set(-75,0,-118); scene.add(hg);
@@ -464,7 +421,7 @@ function paintTexture(base){
     // test id
     x.fillStyle='#161614'; x.font='600 22px "IBM Plex Mono", monospace';
     // +x side reads mirrored along u, −x side upside down: pre-flip so both read correctly from outside
-    const label=(z,v,fx,fy)=>{ x.save(); x.translate(U(z),V(v)); x.scale(fx,fy); x.textAlign='center'; x.textBaseline='middle'; x.fillText('ИСП-07',0,0); x.restore(); };
+    const label=(z,v,fx,fy)=>{ x.save(); x.translate(U(z),V(v)); x.scale(fx,fy); x.textAlign='center'; x.textBaseline='middle';  x.restore(); };
     label(-1.4,lerp(VT[4],VT[5],0.35),-1,1); label(-1.4,lerp(VT[13],VT[14],0.65),1,-1);
   });
 }
@@ -693,7 +650,7 @@ function addDebris(mesh,body,keepTransform){ world.addBody(body); scene.add(mesh
 // ───────────────────────────── input
 const keys=new Set();
 const DRIVE_KEYS=['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'];
-let started=false;
+let started=true;
 addEventListener('keydown',e=>{ if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','Tab'].includes(e.code)) e.preventDefault();
   if(!started){ if(e.code==='Enter'||e.code==='Space'){ startGame(); } return; }
   if(e.repeat) return; keys.add(e.code); onKey(e.code); });
@@ -989,6 +946,6 @@ function frame(now){
 }
 hudTest(); spawnFree(); camPos.set(-30,3,-48);
 function startGame(){ if(started) return; started=true; $('intro').hidden=true; document.body.classList.add('live'); initAudio(); canvas.focus(); testInfoT=5; }
-$('intro').addEventListener('click',startGame);
+startGame(); for(const ev of ['keydown','pointerdown']) addEventListener(ev,()=>initAudio(),{once:true});
 requestAnimationFrame(frame);
 </script>
