@@ -3,140 +3,128 @@
 <title>Краш-полигон К-7</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600&family=Unbounded:wght@500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&display=swap">
 <style>
-/* Layout: full-bleed 3D view, instrument readouts pinned to the four corners like a test-bench monitor. */
+/* Layout: a clean camera frame. Wordmark top-left, timecode top-right, speed bottom-right,
+   test line bottom-left. No panels: type sits on the footage with a soft shadow. */
 :root{
-  --ink:#ebe8df;        /* main readout text */
-  --dim:#9d9a90;        /* secondary labels */
-  --panel:rgba(22,23,21,.80);
-  --rule:rgba(235,232,223,.16);
-  --hazard:#e3ae1c;     /* test-facility yellow */
-  --bad:#d9482c;
-  --ok:#7fae5a;
-  --mono:"Chivo Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-  --display:"Unbounded", "Arial Black", system-ui, sans-serif;
+  --ink:#f1efe8;                 /* text on footage */
+  --dim:rgba(241,239,232,.62);   /* secondary text */
+  --hazard:#e6b01e;              /* test-ground yellow: mark and verdicts only */
+  --bad:#e0543a;
+  --ok:#9cc46e;
+  --sheet:rgba(16,17,16,.86);    /* protocol lower third */
+  --shadow:0 1px 2px rgba(0,0,0,.55),0 0 14px rgba(0,0,0,.28);
+  --cond:"IBM Plex Sans Condensed","Arial Narrow","Roboto Condensed",Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
   color-scheme:dark;
 }
 [hidden]{display:none!important}
-html,body{height:100%;margin:0;overflow:hidden;background:#8f9599;color:var(--ink);font-family:var(--mono);font-size:12px}
-#gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
-.hud{position:fixed;z-index:2;pointer-events:none}
-.panel{background:var(--panel);border:1px solid var(--rule);padding:10px 12px}
-.lbl{color:var(--dim);letter-spacing:.08em;text-transform:uppercase;font-size:10px}
-.tab{font-variant-numeric:tabular-nums}
-#plate{top:calc(10px + env(safe-area-inset-top,0px));left:calc(10px + env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:6px;max-width:min(380px,calc(100vw - 20px))}
-#plate .name{display:flex;align-items:stretch;gap:0}
-#plate .stripe{width:22px;background:repeating-linear-gradient(-45deg,var(--hazard) 0 6px,#161614 6px 12px)}
-#plate .title{background:var(--panel);border:1px solid var(--rule);border-left:0;padding:7px 10px;font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:.02em}
-#plate .title small{display:block;font-family:var(--mono);font-weight:400;font-size:10px;color:var(--dim);letter-spacing:.1em;margin-top:2px}
-#testbar{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;align-items:baseline}
-#testbar b{color:var(--hazard);font-weight:600}
-#tele{top:calc(10px + env(safe-area-inset-top,0px));right:calc(10px + env(safe-area-inset-right,0px));display:flex;gap:10px;align-items:flex-start}
-#tele .speed{font-family:var(--display);font-weight:500;font-size:44px;line-height:1;letter-spacing:-.02em}
-#tele .row{display:flex;justify-content:space-between;gap:14px;margin-top:6px}
-#rpmbar{height:4px;background:var(--rule);margin-top:8px;position:relative}
-#rpmbar i{position:absolute;inset:0 auto 0 0;background:var(--ink)}
-#dmg{display:block}
-#report{bottom:calc(10px + env(safe-area-inset-bottom,0px));left:calc(10px + env(safe-area-inset-left,0px));width:min(360px,calc(100vw - 20px))}
-#report h3{margin:0 0 8px;font-family:var(--display);font-size:13px;font-weight:700;display:flex;justify-content:space-between;gap:8px}
-#report dl{display:grid;grid-template-columns:1fr auto;gap:3px 12px;margin:8px 0 0}
-#report dt{color:var(--dim)}#report dd{margin:0;text-align:right}
-#verdict{padding:1px 6px;font-family:var(--mono);font-size:11px;color:#141412}
-#pulse{display:block;width:100%;height:auto}
-#help{bottom:calc(10px + env(safe-area-inset-bottom,0px));right:calc(10px + env(safe-area-inset-right,0px));line-height:1.6;max-width:260px}
-#help kbd{font-family:var(--mono);border:1px solid var(--rule);padding:0 4px;color:var(--ink)}
-#toast{top:30%;left:50%;transform:translateX(-50%);font-family:var(--display);font-weight:700;font-size:22px;letter-spacing:.02em;text-shadow:0 2px 0 rgba(0,0,0,.35);opacity:0;transition:opacity .25s;white-space:nowrap}
+html,body{height:100%;margin:0;overflow:hidden;background:#8f9599;color:var(--ink);font-family:var(--cond);font-size:14px}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+body.locked #gl{cursor:none}
+body:not(.live) .hud{display:none!important}
+.hud{position:fixed;z-index:2;pointer-events:none;text-shadow:var(--shadow)}
+.num{font-variant-numeric:tabular-nums}
+.mark{display:inline-block;width:30px;height:18px;background:repeating-linear-gradient(-45deg,var(--hazard) 0 5px,#141413 5px 10px);box-shadow:0 1px 3px rgba(0,0,0,.35)}
+
+#brand{top:24px;left:28px;display:flex;align-items:center;gap:12px;font-weight:700;font-size:21px;letter-spacing:.06em}
+
+#tc{top:26px;right:30px;font-family:var(--mono);font-size:12.5px;text-align:right;line-height:1.7;color:var(--ink)}
+#tc .rec{color:var(--bad)}
+#toast{opacity:0;transition:opacity .3s}
 #toast.on{opacity:1}
-#slomo{top:calc(54px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);color:var(--hazard);letter-spacing:.2em}
-#intro{position:fixed;inset:0;z-index:5;display:grid;place-items:center;background:rgba(30,31,29,.55);padding:16px}
-#intro .card{background:#1b1c1a;border:1px solid var(--rule);max-width:520px;width:100%;display:grid;grid-template-columns:22px 1fr}
-#intro .stripe{background:repeating-linear-gradient(-45deg,var(--hazard) 0 8px,#161614 8px 16px)}
-#intro .body{padding:20px 22px;display:flex;flex-direction:column;gap:12px}
-#intro h1{margin:0;font-family:var(--display);font-size:24px;line-height:1.15;text-wrap:balance}
-#intro p{margin:0;color:var(--dim);line-height:1.55;font-size:12px}
-#intro table{border-collapse:collapse;font-size:11.5px}
-#intro td{padding:3px 10px 3px 0;vertical-align:top}#intro td:first-child{color:var(--hazard);white-space:nowrap}
-#start{font-family:var(--display);font-size:14px;font-weight:700;background:var(--hazard);color:#161614;border:0;padding:12px 18px;cursor:pointer;justify-self:start;align-self:flex-start}
-#start:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
-#touch{position:fixed;inset:auto 0 0 0;z-index:3;display:none;justify-content:space-between;padding:0 max(12px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));pointer-events:none}
-#touch .grp{display:flex;gap:8px;pointer-events:auto}
-#touch button{width:64px;height:64px;background:var(--panel);border:1px solid var(--rule);color:var(--ink);font-family:var(--mono);font-size:12px;touch-action:none;user-select:none;-webkit-user-select:none}
-#touch button.on{background:var(--hazard);color:#161614}
-body.touch #touch{display:flex}
-body.touch #help{display:none}
-body.touch #report{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
-@media (max-width:640px){#tele .speed{font-size:32px}#dmgp{display:none}#plate .title{font-size:11px}#testbar{font-size:10.5px}#tele .panel{min-width:112px;padding:8px 10px}}
-@media (max-width:520px){#touch .grp{gap:6px}#touch button{width:54px;height:58px;font-size:11px}#testbar .lbl:first-child,#testbar #mode{display:none}#plate{max-width:calc(100vw - 150px)}#plate .title small{display:none}#toast{font-size:17px}}
+
+#speedo{right:30px;bottom:24px;display:flex;align-items:flex-end;gap:14px}
+#spd{font-weight:600;font-size:84px;line-height:.82;letter-spacing:-.02em;min-width:2.1ch;text-align:right}
+#speedo .side{display:flex;flex-direction:column;gap:4px;padding-bottom:2px;font-family:var(--mono);font-size:12px;color:var(--dim)}
+#gear{font-family:var(--cond);font-weight:600;font-size:26px;line-height:1;color:var(--ink)}
+#eng{color:var(--hazard)}
+#eng.bad{color:var(--bad)}
+#dmg{width:44px;height:80px;margin-right:4px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
+
+#testline{left:28px;bottom:26px;font-size:17px;font-weight:500;display:flex;gap:14px;align-items:baseline;opacity:0;transition:opacity .35s}
+#testline.on{opacity:1}
+#testline b{font-weight:600}
+#mode{font-family:var(--mono);font-size:12.5px;color:var(--dim)}
+
+#help{left:28px;bottom:70px;font-family:var(--mono);font-size:12.5px;line-height:1.85;display:grid;grid-template-columns:auto auto;gap:0 18px}
+#help span:nth-child(odd){color:var(--ink)}#help span:nth-child(even){color:var(--dim)}
+
+#report{left:0;right:0;bottom:0;background:var(--sheet);text-shadow:none;border-top:1px solid rgba(241,239,232,.12);
+  display:grid;grid-template-columns:minmax(220px,1fr) auto minmax(320px,1.3fr);gap:36px;align-items:center;padding:18px 30px 20px}
+#report .head{display:flex;flex-direction:column;gap:6px;min-width:0}
+#rtitle{font-family:var(--mono);font-size:12px;color:var(--dim)}
+#rsub{font-size:22px;font-weight:600;line-height:1.1}
+#verdict{font-size:15px;font-weight:700;letter-spacing:.08em}
+#pulse{width:420px;height:96px;display:block}
+#report dl{margin:0;display:grid;grid-template-columns:repeat(3,auto);gap:10px 28px;justify-content:start}
+#report dl div{display:flex;flex-direction:column;gap:2px}
+#report dt{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+#report dd{margin:0;font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+#report .close{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:4px}
+
+#intro{position:fixed;inset:0;z-index:5;cursor:pointer;background:linear-gradient(90deg,rgba(12,13,12,.78) 0%,rgba(12,13,12,.5) 45%,rgba(12,13,12,.05) 80%);
+  display:flex;flex-direction:column;justify-content:center;gap:22px;padding:0 8vw;text-shadow:var(--shadow)}
+#intro .word{display:flex;align-items:center;gap:22px}
+#intro .mark{width:64px;height:42px;background:repeating-linear-gradient(-45deg,var(--hazard) 0 10px,#141413 10px 20px)}
+#intro h1{margin:0;font-weight:700;font-size:clamp(64px,9vw,148px);line-height:.9;letter-spacing:.03em}
+#intro p{margin:0;max-width:56ch;font-size:18px;line-height:1.45;color:var(--ink)}
+#intro .keys{display:grid;grid-template-columns:repeat(2,max-content 14ch);gap:7px 16px;justify-content:start;font-family:var(--mono);font-size:13px;max-width:720px}
+#intro .keys span:nth-child(odd){color:var(--hazard)}#intro .keys span:nth-child(even){color:var(--dim)}
+#start{all:unset;cursor:pointer;font-family:var(--mono);font-size:14px;color:var(--ink);border-bottom:1px solid var(--hazard);padding-bottom:3px;align-self:flex-start}
+#start:focus-visible{outline:2px solid var(--hazard);outline-offset:6px}
+@media (max-width:1100px){#report{grid-template-columns:1fr auto;gap:14px 28px}#report dl{grid-column:1/-1}#pulse{width:360px;height:82px}}
+@media (prefers-reduced-motion:reduce){#toast,#testline{transition:none}}
 </style>
 
-<canvas id="gl"></canvas>
+<canvas id="gl" tabindex="-1"></canvas>
 
-<div class="hud" id="plate">
-  <div class="name"><div class="stripe"></div><div class="title">ПОЛИГОН К-7<small>ДОРОЖНО-ИСПЫТАТЕЛЬНЫЙ КОМПЛЕКС</small></div></div>
-  <div class="panel" id="testbar">
-    <span class="lbl">режим</span><span id="mode">свободный заезд</span>
-    <span class="lbl">тест</span><span><b id="tname">—</b></span>
-    <span class="lbl">скорость</span><span class="tab"><b id="tspeed">64</b> км/ч</span>
-  </div>
+<div class="hud" id="brand"><span class="mark"></span>ПОЛИГОН</div>
+
+<div class="hud" id="tc"><div id="slomo" hidden><span class="rec">●</span> съёмка 1000 к/с</div><div id="toast"></div></div>
+
+<div class="hud" id="speedo">
+  <canvas id="dmg" width="88" height="160" hidden></canvas>
+  <div class="side"><span id="gear">1</span><span>км/ч</span><span id="eng" hidden></span></div>
+  <div id="spd" class="num">0</div>
 </div>
 
-<div class="hud" id="tele">
-  <div class="panel" style="min-width:150px">
-    <div class="lbl">скорость, км/ч</div>
-    <div class="speed tab" id="spd">0</div>
-    <div id="rpmbar"><i id="rpm" style="width:10%"></i></div>
-    <div class="row"><span class="lbl">передача</span><span class="tab" id="gear">1</span></div>
-    <div class="row"><span class="lbl">двигатель</span><span class="tab" id="eng">100%</span></div>
-    <div class="row"><span class="lbl">перегрузка</span><span class="tab" id="gnow">0.0 g</span></div>
-  </div>
-  <div class="panel" id="dmgp"><div class="lbl" style="margin-bottom:6px">деформация, мм</div><canvas id="dmg" width="132" height="210"></canvas></div>
+<div class="hud" id="testline"><span><b id="tname">—</b> · <span id="tspeed" class="num">64</span> км/ч</span><span id="mode"></span></div>
+
+<div class="hud" id="help" hidden>
+  <span>W A S D</span><span>газ, тормоз, руль</span>
+  <span>Пробел</span><span>ручник</span>
+  <span>B · Q E</span><span>тип теста · скорость</span>
+  <span>C</span><span>запустить краш-тест</span>
+  <span>R · F</span><span>новая машина · на колёса</span>
+  <span>T · V</span><span>замедление · камера</span>
+  <span>мышь</span><span>клик — обзор, колесо — дистанция</span>
+  <span>H</span><span>скрыть подсказку</span>
 </div>
 
-<div class="hud panel" id="report" hidden>
-  <h3><span id="rtitle">Протокол №1</span><span id="verdict">—</span></h3>
-  <div class="lbl" id="rsub">—</div>
-  <canvas id="pulse" width="680" height="230"></canvas>
+<div class="hud" id="report" hidden>
+  <div class="head"><span id="rtitle">протокол 1</span><span id="rsub">—</span><span id="verdict">—</span><span class="close">W A S D или Esc — закрыть</span></div>
+  <canvas id="pulse" width="840" height="192"></canvas>
   <dl>
-    <dt>скорость в момент удара</dt><dd class="tab" id="r_v">—</dd>
-    <dt>остаточная деформация</dt><dd class="tab" id="r_d">—</dd>
-    <dt id="r_cl">проникновение в салон</dt><dd class="tab" id="r_c">—</dd>
-    <dt>пиковое замедление</dt><dd class="tab" id="r_g">—</dd>
-    <dt>длительность импульса</dt><dd class="tab" id="r_t">—</dd>
+    <div><dt>скорость удара</dt><dd id="r_v">—</dd></div>
+    <div><dt>деформация</dt><dd id="r_d">—</dd></div>
+    <div><dt id="r_cl">в салон</dt><dd id="r_c">—</dd></div>
+    <div><dt>пик замедления</dt><dd id="r_g">—</dd></div>
+    <div><dt>импульс</dt><dd id="r_t">—</dd></div>
   </dl>
 </div>
 
-<div class="hud panel" id="help">
-  <div class="lbl" style="margin-bottom:4px">управление</div>
-  <kbd>W A S D</kbd> / стрелки — езда<br>
-  <kbd>Пробел</kbd> ручник · <kbd>F</kbd> перевернуть<br>
-  <kbd>B</kbd> вид теста · <kbd>Q</kbd>/<kbd>E</kbd> скорость<br>
-  <kbd>C</kbd> запустить краш-тест<br>
-  <kbd>R</kbd> новая машина · <kbd>T</kbd> замедление<br>
-  <kbd>V</kbd> камера · мышь — обзор
-</div>
-
-<div class="hud" id="toast"></div>
-<div class="hud" id="slomo" hidden>ЗАМЕДЛЕННАЯ СЪЁМКА 1000 К/С</div>
-
-<div id="touch">
-  <div class="grp"><button id="tL">◀</button><button id="tR">▶</button></div>
-  <div class="grp"><button id="tT">ТИП</button><button id="tC">ТЕСТ</button><button id="tB">ТОРМ</button><button id="tG">ГАЗ</button></div>
-</div>
-
 <div id="intro">
-  <div class="card"><div class="stripe"></div><div class="body">
-    <h1>Краш-полигон К-7</h1>
-    <p>Испытательная площадка вместо карты: разгонная прямая, бетонный барьер, столб, второй автомобиль для бокового удара, трамплин, слалом. Кузов сминается по зонам жёсткости: передний и задний лонжероны мягкие, силовая клетка салона держит.</p>
-    <table>
-      <tr><td>Барьер 100%</td><td>лобовой удар в жёсткую стену всей шириной</td></tr>
-      <tr><td>Перекрытие 40%</td><td>удар левой частью передка, как в Euro NCAP</td></tr>
-      <tr><td>Столб 254 мм</td><td>узкий удар, глубокое проникновение</td></tr>
-      <tr><td>Боковой</td><td>удар передком в дверь стоящей машины</td></tr>
-    </table>
-    <p>Машину на тест разгоняет буксир до заданной скорости и отпускает за 3 м до препятствия. После удара выходит протокол.</p>
-    <button id="start">Начать заезд</button>
-  </div></div>
+  <div class="word"><span class="mark"></span><h1>ПОЛИГОН</h1></div>
+  <p>Испытательная площадка: разгонная прямая, бетонный барьер, столб, вторая машина для бокового удара, трамплин и слалом. Кузов мнётся по зонам жёсткости, после каждого теста выходит протокол.</p>
+  <div class="keys">
+    <span>W A S D</span><span>езда</span><span>Пробел</span><span>ручник</span>
+    <span>B</span><span>тип теста</span><span>Q / E</span><span>скорость теста</span>
+    <span>C</span><span>краш-тест</span><span>R</span><span>новая машина</span>
+    <span>V</span><span>камера</span><span>H</span><span>подсказка</span>
+  </div>
+  <button id="start">Enter или клик — начать</button>
 </div>
 
 <script type="module">
@@ -241,7 +229,7 @@ const RUNWAY={x0:-26,x1:28,z0:-78,z1:64};
     // offset lane guide (dashed yellow)
     x.fillStyle='rgba(227,174,28,.9)'; for(let z=RUNWAY.z0+2;z<RUNWAY.z1-4;z+=4){ x.fillRect(X(LANES.offset-0.05),Z(z+2),0.1*ppm,2*ppm); }
     // distance marks to barrier
-    x.font=`600 ${Math.round(1.6*ppm)}px "Chivo Mono", monospace`; x.textAlign='center'; x.textBaseline='middle';
+    x.font=`600 ${Math.round(1.6*ppm)}px "IBM Plex Mono", monospace`; x.textAlign='center'; x.textBaseline='middle';
     for(const lx of [LANES.wall,LANES.pole,LANES.side]){ const tz= lx===LANES.wall?61: lx===LANES.pole?60.13:61.1;
       for(let d=10;d<=130;d+=10){ const z=tz-d; if(z<RUNWAY.z0+1) break; x.fillStyle='rgba(235,232,220,.8)'; x.fillRect(X(lx-3.4),Z(z)-1,6.8*ppm*0.2,0.2*ppm); x.fillRect(X(lx+3.4)-6.8*ppm*0.2,Z(z)-1,6.8*ppm*0.2,0.2*ppm);
         x.save(); x.translate(X(lx-2.3),Z(z)-1.4*ppm); x.fillText(String(d),0,0); x.restore(); }
@@ -271,7 +259,7 @@ const concreteMat=STD(0x9a968d,{roughness:0.95});
   const blk=new THREE.Mesh(new THREE.BoxGeometry(8,3,2.4),concreteMat); g.add(blk);
   const face=new THREE.Mesh(new THREE.BoxGeometry(8.02,1.4,0.06),STD(0x555a5c,{metalness:0.6,roughness:0.5})); face.position.set(0,-0.6,-1.21); g.add(face);
   const hz=new THREE.Mesh(new THREE.PlaneGeometry(8,0.35),new THREE.MeshStandardMaterial({map:hazardTex,roughness:0.8})); hazardTex.repeat.set(8,1); hz.position.set(0,0.35,-1.205); hz.rotation.y=Math.PI; g.add(hz);
-  const tag=canvasTex(256,64,(x,w,h)=>{x.fillStyle='#9a968d';x.fillRect(0,0,w,h);x.fillStyle='#1d1d1b';x.font='700 34px Unbounded, Arial Black, sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText('БАРЬЕР 1',w/2,h/2+2);});
+  const tag=canvasTex(256,64,(x,w,h)=>{x.fillStyle='#9a968d';x.fillRect(0,0,w,h);x.fillStyle='#1d1d1b';x.font='700 34px "IBM Plex Sans Condensed", "Arial Narrow", Arial, sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText('БАРЬЕР 1',w/2,h/2+2);});
   const tg=new THREE.Mesh(new THREE.PlaneGeometry(2.6,0.65),new THREE.MeshStandardMaterial({map:tag,roughness:0.9})); tg.rotation.y=Math.PI; tg.position.set(0,1.05,-1.205); g.add(tg);
   g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
   addStatic(g,new CANNON.Box(half),new CANNON.Vec3(0,1.5,62.2),null,boxOb(half,0.78));
@@ -311,7 +299,7 @@ for(const [x,z] of [[-40,-70],[40,-70],[-40,10],[40,10],[-40,72],[40,72],[-80,-4
   const walls=new THREE.Mesh(new THREE.BoxGeometry(34,7,22),shell); walls.position.y=3.5; hg.add(walls);
   const roof=new THREE.Mesh(new THREE.CylinderGeometry(11.6,11.6,34.4,10,1,false,0,Math.PI),STD(0x6f7476,{metalness:0.4,roughness:0.55})); roof.rotation.z=Math.PI/2; roof.rotation.x=Math.PI/2; roof.scale.set(1,1,0.42); roof.position.y=7; hg.add(roof);
   const door=new THREE.Mesh(new THREE.PlaneGeometry(14,6),STD(0x4b5052)); door.position.set(0,3,11.02); hg.add(door);
-  const sign=canvasTex(512,64,(x,w,h)=>{x.fillStyle='#e3ae1c';x.fillRect(0,0,w,h);x.fillStyle='#161614';x.font='700 30px Unbounded, Arial Black, sans-serif';x.textBaseline='middle';x.fillText('КОРПУС 3 · ПОДГОТОВКА',16,h/2+2);});
+  const sign=canvasTex(512,64,(x,w,h)=>{x.fillStyle='#e3ae1c';x.fillRect(0,0,w,h);x.fillStyle='#161614';x.font='700 30px "IBM Plex Sans Condensed", "Arial Narrow", Arial, sans-serif';x.textBaseline='middle';x.fillText('КОРПУС 3 · ПОДГОТОВКА',16,h/2+2);});
   const sg=new THREE.Mesh(new THREE.PlaneGeometry(12,1.5),new THREE.MeshStandardMaterial({map:sign})); sg.position.set(0,6.3,11.03); hg.add(sg);
   hg.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
   hg.position.set(-75,0,-118); scene.add(hg);
@@ -474,7 +462,7 @@ function paintTexture(base){
     // measuring scale on the sill: 100 mm black/white blocks
     for(let z=-1.9,k=0;z<1.9;z+=0.1,k++){ x.fillStyle=k%2?'#efeee8':'#161614'; x.fillRect(U(z),V(VT[2])-6,sx*0.1,6); x.fillRect(U(z),V(VT[16]),sx*0.1,6); }
     // test id
-    x.fillStyle='#161614'; x.font='600 22px "Chivo Mono", monospace';
+    x.fillStyle='#161614'; x.font='600 22px "IBM Plex Mono", monospace';
     // +x side reads mirrored along u, −x side upside down: pre-flip so both read correctly from outside
     const label=(z,v,fx,fy)=>{ x.save(); x.translate(U(z),V(v)); x.scale(fx,fy); x.textAlign='center'; x.textBaseline='middle'; x.fillText('ИСП-07',0,0); x.restore(); };
     label(-1.4,lerp(VT[4],VT[5],0.35),-1,1); label(-1.4,lerp(VT[13],VT[14],0.65),1,-1);
@@ -703,34 +691,38 @@ function addDebris(mesh,body,keepTransform){ world.addBody(body); scene.add(mesh
   while(debris.length>90){ const d=debris.shift(); world.removeBody(d.body); scene.remove(d.mesh); obstacles.delete(d.body.id); } }
 
 // ───────────────────────────── input
-const keys=new Set(); const touch={L:false,R:false,G:false,B:false};
-addEventListener('keydown',e=>{ if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','Tab'].includes(e.code)) e.preventDefault(); if(e.repeat) return; keys.add(e.code); onKey(e.code); });
+const keys=new Set();
+const DRIVE_KEYS=['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'];
+let started=false;
+addEventListener('keydown',e=>{ if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','Tab'].includes(e.code)) e.preventDefault();
+  if(!started){ if(e.code==='Enter'||e.code==='Space'){ startGame(); } return; }
+  if(e.repeat) return; keys.add(e.code); onKey(e.code); });
 addEventListener('keyup',e=>keys.delete(e.code));
 addEventListener('blur',()=>keys.clear());
 const K=(...c)=>c.some(k=>keys.has(k));
 let camMode=0; const CAM_NAMES=['погоня','капот','облёт'];
-let slowMo=false;
+let slowMo=false, testInfoT=0, camZoom=1;
 function onKey(c){
+  if(DRIVE_KEYS.includes(c)||c==='Escape') $('report').hidden=true;
   if(c==='KeyR') spawnFree();
   if(c==='KeyF'&&player) player.flip();
   if(c==='KeyC') launchTest();
   if(c==='KeyB') { testIdx=(testIdx+1)%TESTS.length; hudTest(); }
   if(c==='KeyQ') { speedIdx=Math.max(0,speedIdx-1); hudTest(); }
   if(c==='KeyE') { speedIdx=Math.min(SPEEDS.length-1,speedIdx+1); hudTest(); }
-  if(c==='KeyT') { slowMo=!slowMo; toast(slowMo?'замедление ×0.2':'обычная скорость'); }
-  if(c==='KeyV') { camMode=(camMode+1)%3; toast('камера: '+CAM_NAMES[camMode]); }
+  if(c==='KeyT') { slowMo=!slowMo; toast(slowMo?'замедление 1:5':'реальное время'); }
+  if(c==='KeyV') { camMode=(camMode+1)%3; toast('камера · '+CAM_NAMES[camMode]); }
   if(c==='KeyH') $('help').hidden=!$('help').hidden;
 }
+// mouse look: pointer lock after a click, drag as a fallback when lock is refused; wheel sets camera distance
 let drag=null, orbitYaw=0, orbitPitch=0.18, orbitIdle=0;
-canvas.addEventListener('pointerdown',e=>{ drag={x:e.clientX,y:e.clientY}; canvas.setPointerCapture(e.pointerId); });
-canvas.addEventListener('pointermove',e=>{ if(!drag) return; orbitYaw-=(e.clientX-drag.x)*0.006; orbitPitch=clamp(orbitPitch+(e.clientY-drag.y)*0.004,-0.05,1.2); drag={x:e.clientX,y:e.clientY}; orbitIdle=0; });
-canvas.addEventListener('pointerup',()=>drag=null);
-if('ontouchstart' in window||navigator.maxTouchPoints>0) document.body.classList.add('touch');
-for(const [id,k] of [['tL','L'],['tR','R'],['tG','G'],['tB','B']]){ const el=$(id);
-  el.addEventListener('pointerdown',e=>{e.preventDefault();touch[k]=true;el.classList.add('on');initAudio();});
-  for(const ev of ['pointerup','pointercancel','pointerleave']) el.addEventListener(ev,()=>{touch[k]=false;el.classList.remove('on');}); }
-$('tC').addEventListener('click',()=>{initAudio();launchTest();});
-$('tT').addEventListener('click',()=>{ testIdx=(testIdx+1)%TESTS.length; hudTest(); toast(TESTS[testIdx].name.toLowerCase()); });
+const look=(dx,dy)=>{ orbitYaw-=dx*0.0045; orbitPitch=clamp(orbitPitch+dy*0.003,-0.05,1.2); orbitIdle=0; };
+canvas.addEventListener('pointerdown',e=>{ if(!started) return; if(document.pointerLockElement===canvas) return;
+  drag={x:e.clientX,y:e.clientY}; try{ const r=canvas.requestPointerLock&&canvas.requestPointerLock(); if(r&&r.catch) r.catch(()=>{}); }catch(err){} });
+addEventListener('pointermove',e=>{ if(document.pointerLockElement===canvas){ look(e.movementX,e.movementY); return; } if(!drag) return; look(e.clientX-drag.x,e.clientY-drag.y); drag={x:e.clientX,y:e.clientY}; });
+addEventListener('pointerup',()=>drag=null);
+document.addEventListener('pointerlockchange',()=>document.body.classList.toggle('locked',document.pointerLockElement===canvas));
+canvas.addEventListener('wheel',e=>{ e.preventDefault(); camZoom=clamp(camZoom*Math.exp(e.deltaY*0.001),0.6,2.2); },{passive:false});
 
 // ───────────────────────────── crash test program
 const TESTS=[
@@ -742,15 +734,15 @@ const TESTS=[
 const SPEEDS=[30,40,50,56,64,80,100,120];
 let testIdx=0, speedIdx=4, testNo=0;
 let test=null;   // {phase,cfg,v,release,impactT,...}
-function hudTest(){ $('tname').textContent=TESTS[testIdx].name; $('tspeed').textContent=SPEEDS[speedIdx]; }
+function hudTest(){ $('tname').textContent=TESTS[testIdx].name; $('tspeed').textContent=SPEEDS[speedIdx]; testInfoT=4; }
 function clearCars(){ for(const c of [...cars]) c.remove(); player=null; target=null; }
-function spawnFree(){ clearCars(); test=null; player=new Car({pos:{x:-30,z:-40},yaw:0,isPlayer:true}); $('mode').textContent='свободный заезд'; $('report').hidden=true; parkTarget(); }
+function spawnFree(){ clearCars(); test=null; player=new Car({pos:{x:-30,z:-40},yaw:0,isPlayer:true}); $('mode').textContent='C — старт'; $('report').hidden=true; parkTarget(); }
 function parkTarget(){ target=new Car({pos:{x:LANES.side,z:62},yaw:Math.PI/2,color:'#6d7f8c'}); WHEELS.forEach((w,i)=>target.vehicle.setBrake(30,i)); }
 function launchTest(){
   const cfg=TESTS[testIdx]; clearCars(); testNo++;
   player=new Car({pos:{x:cfg.lane,z:-70},yaw:0,isPlayer:true}); parkTarget();
   test={phase:'tow',cfg,v:SPEEDS[speedIdx]/3.6,kmh:SPEEDS[speedIdx],t:0,impact:null,no:testNo};
-  $('mode').textContent='краш-тест · буксир'; $('report').hidden=true; toast('тест №'+testNo+' · '+cfg.name.toLowerCase());
+  $('mode').textContent='тест '+testNo+' · буксир'; $('tname').textContent=cfg.name; $('tspeed').textContent=test.kmh; $('report').hidden=true; toast('тест '+testNo+' · '+cfg.name.toLowerCase());
 }
 function towStep(dt){
   const c=player, b=c.body, cfg=test.cfg; const fw=c.forward(); const vf=b.velocity.dot(fw);
@@ -760,7 +752,7 @@ function towStep(dt){
     // guide rail: steer the front wheels to hold the lane centre, no brakes
     const head=Math.atan2(fw.x,fw.z); const st=clamp(-(b.position.x-cfg.lane)*0.12-b.velocity.x*0.08-head*1.6,-0.25,0.25);
     for(let i=0;i<4;i++){ c.vehicle.setBrake(0,i); if(i<2) c.vehicle.setSteeringValue(st,i); }
-    if(frontZ>cfg.face-3){ test.phase='free'; $('mode').textContent='краш-тест · свободный ход'; }
+    if(frontZ>cfg.face-3){ test.phase='free'; $('mode').textContent='тест '+test.no+' · свободный ход'; }
   }
 }
 function finishReport(){
@@ -769,32 +761,34 @@ function finishReport(){
   const aAvg=vms*vms/((side?4:2)*dEff)/9.81, T=2*dEff/vms, peak=aAvg*Math.PI/2*1.08;
   const cab=(side?target.cabinIntr:c.cabinIntr)*1000, def=c.maxDef*1000;
   const verdict= cab<80&&peak<55?['ХОРОШО','var(--ok)']: cab<190&&peak<80?['ПРИЕМЛЕМО','var(--hazard)']:['ПЛОХО','var(--bad)'];
-  $('rtitle').textContent='Протокол №'+test.no; $('rsub').textContent=test.cfg.name+' · задано '+test.kmh+' км/ч';
+  $('rtitle').textContent='протокол '+String(test.no).padStart(3,'0')+' · задано '+test.kmh+' км/ч'; $('rsub').textContent=test.cfg.name;
   $('r_v').textContent=(vms*3.6).toFixed(1)+' км/ч'; $('r_d').textContent=Math.round(def)+' мм'; $('r_c').textContent=Math.round(cab)+' мм';
-  $('r_cl').textContent=side?'проникновение в салон цели':'проникновение в салон';
+  $('r_cl').textContent=side?'в салон цели':'в салон';
   $('r_g').textContent=peak.toFixed(1)+' g'; $('r_t').textContent=(T*1000).toFixed(0)+' мс';
-  const vd=$('verdict'); vd.textContent=verdict[0]; vd.style.background=verdict[1];
-  drawPulse(peak,T); $('report').hidden=false; $('mode').textContent='краш-тест · протокол готов';
+  const vd=$('verdict'); vd.textContent=verdict[0]; vd.style.color=verdict[1];
+  drawPulse(peak,T); $('report').hidden=false; $('mode').textContent='C — повторить';
 }
 function drawPulse(peak,T){
-  const cv=$('pulse'), x=cv.getContext('2d'), W=cv.width, H=cv.height, padL=58,padB=36,padT=14,padR=12;
-  x.clearRect(0,0,W,H); const tMax=Math.max(0.16,T*1.6), gMax=Math.ceil(peak*1.25/10)*10||10;
+  const cv=$('pulse'), x=cv.getContext('2d'), W=cv.width, H=cv.height, padL=70,padB=40,padT=16,padR=8;
+  x.clearRect(0,0,W,H); const tMax=Math.max(0.16,T*1.6), gMax=Math.ceil(peak*1.2/10)*10||10;
   const X=t=>padL+(W-padL-padR)*t/tMax, Y=g=>H-padB-(H-padB-padT)*g/gMax;
-  x.strokeStyle='rgba(235,232,223,.13)'; x.lineWidth=1; x.fillStyle='rgba(157,154,144,1)'; x.font='20px "Chivo Mono", monospace';
-  for(let g=0;g<=gMax;g+=gMax/4){ x.beginPath(); x.moveTo(padL,Y(g)); x.lineTo(W-padR,Y(g)); x.stroke(); x.textAlign='right'; x.fillText(Math.round(g)+'g',padL-8,Y(g)+6); }
-  const step=tMax>0.3?0.1:0.04; for(let t=0;t<=tMax+1e-6;t+=step){ x.beginPath(); x.moveTo(X(t),padT); x.lineTo(X(t),H-padB); x.stroke(); x.textAlign='center'; x.fillText(Math.round(t*1000),X(t),H-padB+24); }
-    // pulse: half-sine with structural ringing (crumple of rails, engine block contact)
-  x.beginPath(); const pts=[]; for(let i=0;i<=200;i++){ const t=tMax*i/200; let g=0; if(t<T){ const ph=t/T; g=peak*Math.sin(Math.PI*ph)*(0.86+0.14*Math.sin(ph*31+1.3))*(ph>0.55&&ph<0.7?1.12:1); } pts.push([X(t),Y(Math.max(0,g))]); }
-  x.moveTo(pts[0][0],pts[0][1]); pts.forEach(p=>x.lineTo(p[0],p[1])); x.lineTo(X(tMax),Y(0)); x.lineTo(X(0),Y(0)); x.closePath(); x.fillStyle='rgba(227,174,28,.18)'; x.fill();
-  x.beginPath(); pts.forEach((p,i)=>i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1])); x.strokeStyle='#e3ae1c'; x.lineWidth=3; x.stroke();
-  x.fillStyle='#ebe8df'; x.textAlign='left'; x.fillText('замедление ЦМ, g · время, мс (расчёт)',padL+8,padT+20);
+  x.font='22px "IBM Plex Mono", monospace'; x.fillStyle='rgba(241,239,232,.55)'; x.strokeStyle='rgba(241,239,232,.14)'; x.lineWidth=2;
+  x.beginPath(); x.moveTo(padL,Y(0)); x.lineTo(W-padR,Y(0)); x.stroke();
+  x.setLineDash([4,8]); for(const g of [gMax/2,gMax]){ x.beginPath(); x.moveTo(padL,Y(g)); x.lineTo(W-padR,Y(g)); x.stroke(); } x.setLineDash([]);
+  x.textAlign='right'; x.textBaseline='middle'; for(const g of [0,gMax/2,gMax]) x.fillText(Math.round(g)+'g',padL-12,Y(g));
+  const step=tMax>0.3?0.1:0.04; x.textAlign='center'; x.textBaseline='top';
+  for(let t=0;t<=tMax+1e-6;t+=step){ if(X(t)>W-padR-70) break; x.beginPath(); x.moveTo(X(t),Y(0)); x.lineTo(X(t),Y(0)+8); x.stroke(); x.fillText(Math.round(t*1000),X(t),Y(0)+12); }
+  x.textAlign='right'; x.fillText('мс',W-padR,Y(0)+12);
+  // pulse: half-sine with structural ringing (rails folding, engine block contact)
+  x.beginPath(); for(let i=0;i<=240;i++){ const t=tMax*i/240; let g=0; if(t<T){ const ph=t/T; g=peak*Math.sin(Math.PI*ph)*(0.86+0.14*Math.sin(ph*31+1.3))*(ph>0.55&&ph<0.7?1.12:1); } const px=X(t),py=Y(Math.max(0,g)); i?x.lineTo(px,py):x.moveTo(px,py); }
+  x.strokeStyle='#f1efe8'; x.lineWidth=3; x.lineJoin='round'; x.stroke();
 }
 
 // ───────────────────────────── driving model
 const GEARS=[3.5,2.15,1.5,1.15,0.92], FINAL=3.9;
 function drive(c,dt){
   const v=c.vehicle, b=c.body; const sp=c.speed(); const kmh=Math.abs(sp)*3.6;
-  let thr=K('KeyW','ArrowUp')||touch.G?1:0, brk=K('KeyS','ArrowDown')||touch.B?1:0, st=(K('KeyA','ArrowLeft')||touch.L?1:0)-(K('KeyD','ArrowRight')||touch.R?1:0), hb=K('Space');
+  let thr=K('KeyW','ArrowUp')?1:0, brk=K('KeyS','ArrowDown')?1:0, st=(K('KeyA','ArrowLeft')?1:0)-(K('KeyD','ArrowRight')?1:0), hb=K('Space');
   if(test&&test.phase!=='done'&&test.phase!=='after'){ thr=0;brk=0;st=0;hb=false; }
   // reverse when stopped and holding brake
   let rev=false; if(brk&&sp<1.2){ rev=true; thr=brk; brk=0; }
@@ -876,11 +870,11 @@ function updateCamera(dt){
   if(!player) return; const b=player.body; const P=new THREE.Vector3(b.position.x,b.position.y,b.position.z); const q=new THREE.Quaternion(b.quaternion.x,b.quaternion.y,b.quaternion.z,b.quaternion.w);
   const fw=new THREE.Vector3(0,0,1).applyQuaternion(q); fw.y=0; if(fw.lengthSq()<1e-4) fw.set(0,0,1); fw.normalize();
   orbitIdle+=dt; if(orbitIdle>2.5&&camMode!==2) orbitYaw*=Math.pow(0.15,dt);
-  let want, look, lerpK=1-Math.pow(0.0008,dt), fov=camera.aspect<1?68:58;
+  let want, look, lerpK=1-Math.pow(0.0008,dt), fov=58;
   const sideCam = test&&(test.phase==='free'||test.phase==='impact'||test.phase==='after'||test.phase==='done')&&camMode===0;
   if(sideCam){ const cfg=test.cfg; want=new THREE.Vector3(cfg.lane+9.5,1.4,cfg.face-4.5); look=new THREE.Vector3(cfg.lane,0.7,Math.min(P.z+1.2,cfg.face-1.0)); lerpK=1; fov=40; }
   else if(camMode===1){ want=P.clone().add(new THREE.Vector3(0,1.25-CG+0.15,0.5).applyQuaternion(q)); look=want.clone().add(new THREE.Vector3(0,-0.05,1).applyQuaternion(q)); lerpK=1; fov=70; }
-  else { const yaw=Math.atan2(fw.x,fw.z)+orbitYaw+(camMode===2?performance.now()*0.00012:0); const portrait=camera.aspect<1; const dist=(camMode===2?9:6.4)*(portrait?1.45:1); const ph=camMode===2?0.32:orbitPitch;
+  else { const yaw=Math.atan2(fw.x,fw.z)+orbitYaw+(camMode===2?performance.now()*0.00012:0); const dist=(camMode===2?9:6.4)*camZoom; const ph=camMode===2?0.32:orbitPitch;
     want=new THREE.Vector3(P.x-Math.sin(yaw)*Math.cos(ph)*dist,P.y+0.6+Math.sin(ph)*dist,P.z-Math.cos(yaw)*Math.cos(ph)*dist); if(want.y<0.4) want.y=0.4;
     look=P.clone().add(new THREE.Vector3(0,0.55,0)).addScaledVector(fw,1.4); }
   camPos.lerp(want,lerpK); camLook.lerp(look,camMode===1||sideCam?1:1-Math.pow(0.0004,dt));
@@ -888,29 +882,28 @@ function updateCamera(dt){
   camera.lookAt(camLook); if(Math.abs(camera.fov-fov)>0.1){ camera.fov=lerp(camera.fov,fov,0.2); camera.updateProjectionMatrix(); FX.smoke.mat.uniforms.scale.value=innerHeight*renderer.getPixelRatio()/2/Math.tan(THREE.MathUtils.degToRad(camera.fov/2)); }
   sun.position.set(P.x+30,P.y+40,P.z-38); sun.target.position.copy(P);
 }
-let toastT=0; function toast(s){ const t=$('toast'); t.textContent=s; t.classList.add('on'); toastT=1.6; }
+const tcode=()=>{ const t=simT; const m=Math.floor(t/60), sec=t-m*60; return String(m).padStart(2,'0')+':'+sec.toFixed(2).padStart(5,'0'); };
+let toastT=0; function toast(s){ const t=$('toast'); t.textContent=tcode()+'  '+s; t.classList.add('on'); toastT=2.2; }
 const dmgCtx=$('dmg').getContext('2d');
-function drawDamage(c){
-  const x=dmgCtx, W=132,H=210; x.clearRect(0,0,W,H);
-  const col=m=>{ const k=clamp(m/0.5,0,1); if(m<0.004) return 'rgba(235,232,223,.18)'; return `rgb(${Math.round(lerp(227,217,k))},${Math.round(lerp(174,72,k))},${Math.round(lerp(28,44,k))})`; };
-  const z=c.zone; const cx=W/2, top=24, bw=58, bl=150;
-  x.lineWidth=1; x.strokeStyle='rgba(235,232,223,.35)';
-  // plan view: front up
-  const rect=(x0,y0,w,h,m)=>{ x.fillStyle=col(m); x.fillRect(x0,y0,w,h); };
-  rect(cx-bw/2,top,bw,34,z.F); rect(cx-bw/2,top+bl-30,bw,30,z.R); rect(cx-bw/2,top+36,10,bl-68,z.L); rect(cx+bw/2-10,top+36,10,bl-68,z.Rt); rect(cx-bw/2+12,top+44,bw-24,bl-90,z.T);
-  x.strokeRect(cx-bw/2+.5,top+.5,bw,bl);
-  c.wheelState.forEach((s,i)=>{ const w=WHEELS[i]; const wx=w.x>0?cx-bw/2-9:cx+bw/2+2, wy=w.z>0?top+22:top+bl-42; x.fillStyle=s.broken?'#d9482c':s.dmg>0.15?'#e3ae1c':'rgba(235,232,223,.55)'; x.fillRect(wx,wy,7,22); });
-  x.fillStyle='#ebe8df'; x.font='10px "Chivo Mono", monospace'; x.textAlign='center';
-  x.fillText(Math.round(z.F*1000),cx,top-6); x.fillText(Math.round(z.R*1000),cx,top+bl+14);
-  x.textAlign='right'; x.fillText(Math.round(z.L*1000),cx-bw/2-12,top+bl/2+4); x.textAlign='left'; x.fillText(Math.round(z.Rt*1000),cx+bw/2+12,top+bl/2+4);
-  x.textAlign='center'; x.fillStyle='rgba(235,232,223,.8)'; x.fillText('крыша '+Math.round(z.T*1000),cx,top+bl/2+4);
+function drawDamage(c){ // plan view of the body, front up; zones tint from bone to red by intrusion
+  const x=dmgCtx, W=88,H=160; x.clearRect(0,0,W,H);
+  const col=m=> m<0.004?'rgba(241,239,232,.30)':`rgba(${Math.round(lerp(230,224,clamp(m/0.5,0,1)))},${Math.round(lerp(176,84,clamp(m/0.5,0,1)))},${Math.round(lerp(30,58,clamp(m/0.5,0,1)))},.95)`;
+  const z=c.zone, L=16, R=72, T=8, B=152;
+  x.fillStyle=col(z.F); x.fillRect(L,T,R-L,34);
+  x.fillStyle=col(z.R); x.fillRect(L,B-28,R-L,28);
+  x.fillStyle=col(z.L); x.fillRect(L,T+37,8,B-T-68);
+  x.fillStyle=col(z.Rt); x.fillRect(R-8,T+37,8,B-T-68);
+  x.fillStyle=col(z.T); x.fillRect(L+12,T+48,R-L-24,B-T-100);
+  c.wheelState.forEach((s,i)=>{ const w=WHEELS[i]; x.fillStyle=s.broken?'#e0543a':s.dmg>0.15?'#e6b01e':'rgba(241,239,232,.6)'; x.fillRect(w.x>0?L-8:R+2,w.z>0?T+26:B-50,6,22); });
 }
 function hud(dt){
   if(!player) return; const c=player; const kmh=Math.abs(c.speed())*3.6;
-  $('spd').textContent=Math.round(kmh); $('gear').textContent=c.speed()<-0.5?'R':String(c.gear+1); $('rpm').style.width=clamp(c.rpm/7000*100,0,100)+'%';
-  const e=$('eng'); e.textContent=Math.round(c.engine*100)+'%'; e.style.color=c.engine<0.3?'var(--bad)':c.engine<0.7?'var(--hazard)':'var(--ink)';
-  $('gnow').textContent=c.gNow.toFixed(1)+' g';
-  drawDamage(c);
+  $('spd').textContent=Math.round(kmh); $('gear').textContent=c.speed()<-0.5?'R':String(c.gear+1);
+  const e=$('eng'); const hurt=c.engine<0.95; e.hidden=!hurt; if(hurt){ e.textContent=c.engine<0.06?'мотор заглох':'мотор '+Math.round(c.engine*100)+'%'; e.classList.toggle('bad',c.engine<0.3); }
+  const dmg=$('dmg'); const any=c.maxDef>0.005||c.wheelState.some(w=>w.broken); dmg.hidden=!any; if(any) drawDamage(c);
+  $('speedo').hidden=!$('report').hidden;
+  testInfoT=Math.max(0,testInfoT-dt); const inTest=test&&(test.phase==='tow'||test.phase==='free'||test.phase==='impact');
+  $('testline').hidden=!$('report').hidden; $('testline').classList.toggle('on',testInfoT>0||inTest);
   if(toastT>0){ toastT-=dt; if(toastT<=0) $('toast').classList.remove('on'); }
 }
 
@@ -957,7 +950,7 @@ function updateFX(dt){
 }
 function updateAudio(dtR,ts){
   if(!AU.on||!player) return; const c=player, t=AU.ac.currentTime; const sp=Math.abs(c.speed());
-  const f=c.rpm/60*2*(0.6+0.4*ts); const thr=(K('KeyW','ArrowUp')||touch.G)&&c.engine>0.06?1:0.45;
+  const f=c.rpm/60*2*(0.6+0.4*ts); const thr=K('KeyW','ArrowUp')&&c.engine>0.06?1:0.45;
   AU.o1.frequency.setTargetAtTime(f,t,0.03); AU.o2.frequency.setTargetAtTime(f*1.003,t,0.03); AU.o3.frequency.setTargetAtTime(f/2,t,0.03);
   AU.eFilt.frequency.setTargetAtTime(380+c.rpm*0.32*thr,t,0.05);
   AU.eGain.gain.setTargetAtTime(c.engine<0.06?0:(0.05+0.07*thr)*(0.5+0.5*c.engine),t,0.05);
@@ -995,6 +988,7 @@ function frame(now){
   renderer.render(scene,camera); requestAnimationFrame(frame);
 }
 hudTest(); spawnFree(); camPos.set(-30,3,-48);
-$('start').addEventListener('click',()=>{ $('intro').hidden=true; initAudio(); canvas.focus(); });
+function startGame(){ if(started) return; started=true; $('intro').hidden=true; document.body.classList.add('live'); initAudio(); canvas.focus(); testInfoT=5; }
+$('intro').addEventListener('click',startGame);
 requestAnimationFrame(frame);
 </script>
