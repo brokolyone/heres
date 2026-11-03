@@ -81,9 +81,9 @@ body:not(.live) .hud{display:none!important}
 body.touch #touch{display:block}
 #touch .pad{position:absolute;pointer-events:auto;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
 #steer{left:0;bottom:0;width:46%;height:58%}
-#steer .ring{position:absolute;width:132px;height:132px;margin:-66px 0 0 -66px;border-radius:50%;border:2px solid rgba(235,232,223,.35);background:rgba(20,21,19,.18);display:none}
+#steer .ring{position:absolute;left:calc(96px + env(safe-area-inset-left,0px));top:calc(100% - 100px - env(safe-area-inset-bottom,0px));width:132px;height:132px;margin:-66px 0 0 -66px;border-radius:50%;border:2px solid rgba(235,232,223,.35);background:rgba(20,21,19,.18);opacity:.45}
 #steer .knob{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;border-radius:50%;background:rgba(235,232,223,.55)}
-#steer.on .ring{display:block}
+#steer.on .ring{opacity:1}
 .pbtn{position:absolute;display:grid;place-items:center;border:2px solid rgba(235,232,223,.4);background:rgba(20,21,19,.32);border-radius:14px}
 .pbtn.on{background:rgba(227,174,28,.75);border-color:rgba(227,174,28,.95)}
 .pbtn svg{width:46%;height:46%;fill:none;stroke:#ebe8df;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
@@ -3320,19 +3320,19 @@ addEventListener('pointermove',e=>{ if(document.pointerLockElement===canvas){ lo
 addEventListener('pointerup',()=>drag=null);
 document.addEventListener('pointerlockchange',()=>document.body.classList.toggle('locked',document.pointerLockElement===canvas));
 // ── touch controls: analog steering pad (left), pedals and handbrake (right), icon tools (top), look pad
-let touchSteer=null;
+let touchSteer=null; const cap=(el,id)=>{ try{ el.setPointerCapture(id); }catch(e){} };
 if(MOBILE||matchMedia('(pointer:coarse)').matches){ document.body.classList.add('touch');
   const st=$('steer'), ring=st.querySelector('.ring'), knob=st.querySelector('.knob'); let sid=null, sx=0, sy=0;
-  st.addEventListener('pointerdown',e=>{ e.preventDefault(); initAudio(); sid=e.pointerId; st.setPointerCapture(sid); sx=e.clientX; sy=e.clientY; const r=st.getBoundingClientRect(); ring.style.left=(sx-r.left)+'px'; ring.style.top=(sy-r.top)+'px'; st.classList.add('on'); touchSteer=0; knob.style.transform=''; });
+  st.addEventListener('pointerdown',e=>{ e.preventDefault(); initAudio(); sid=e.pointerId; cap(st,sid); sx=e.clientX; sy=e.clientY; const r=st.getBoundingClientRect(); ring.style.left=(sx-r.left)+'px'; ring.style.top=(sy-r.top)+'px'; st.classList.add('on'); touchSteer=0; knob.style.transform=''; });
   st.addEventListener('pointermove',e=>{ if(e.pointerId!==sid) return; const dx=clamp(e.clientX-sx,-60,60); touchSteer=-dx/60; knob.style.transform='translateX('+dx+'px)'; });
-  const endS=e=>{ if(e.pointerId!==sid) return; sid=null; touchSteer=null; st.classList.remove('on'); };
+  const endS=e=>{ if(e.pointerId!==sid) return; sid=null; touchSteer=null; st.classList.remove('on'); knob.style.transform=''; ring.style.left=''; ring.style.top=''; };
   st.addEventListener('pointerup',endS); st.addEventListener('pointercancel',endS);
-  const hold=(el,code)=>{ const on=e=>{ e.preventDefault(); initAudio(); el.setPointerCapture&&el.setPointerCapture(e.pointerId); keys.add(code); el.classList.add('on'); }; const off=()=>{ keys.delete(code); el.classList.remove('on'); };
-    el.addEventListener('pointerdown',on); el.addEventListener('pointerup',off); el.addEventListener('pointercancel',off); el.addEventListener('lostpointercapture',off); };
+  const hold=(el,code)=>{ const on=e=>{ e.preventDefault(); initAudio(); cap(el,e.pointerId); keys.add(code); el.classList.add('on'); }; const off=()=>{ keys.delete(code); el.classList.remove('on'); };
+    el.addEventListener('pointerdown',on); el.addEventListener('pointerup',off); el.addEventListener('pointercancel',off);  };
   hold($('gas'),'KeyW'); hold($('brk'),'KeyS'); hold($('hbk'),'Space');
   for(const b of document.querySelectorAll('#tools .pbtn')) b.addEventListener('pointerdown',e=>{ e.preventDefault(); initAudio(); onKey(b.dataset.k); b.classList.add('on'); setTimeout(()=>b.classList.remove('on'),160); });
   const lk=$('look'); let lid=null, lx=0, ly=0;
-  lk.addEventListener('pointerdown',e=>{ lid=e.pointerId; lk.setPointerCapture(lid); lx=e.clientX; ly=e.clientY; });
+  lk.addEventListener('pointerdown',e=>{ lid=e.pointerId; cap(lk,lid); lx=e.clientX; ly=e.clientY; });
   lk.addEventListener('pointermove',e=>{ if(e.pointerId!==lid) return; look(e.clientX-lx,e.clientY-ly); lx=e.clientX; ly=e.clientY; });
   lk.addEventListener('pointerup',()=>lid=null); lk.addEventListener('pointercancel',()=>lid=null);
   document.addEventListener('touchmove',e=>e.preventDefault(),{passive:false}); document.addEventListener('gesturestart',e=>e.preventDefault());
