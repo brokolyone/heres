@@ -559,22 +559,63 @@ export function tyre() { const g = inst([[pick(tyreGeos)(), tyreMat]]); g.childr
 // ───────────────────────────── scenery
 // Non-colliding scenery outside the pad (|x|>120 or |z|>150): trees, hills, fences, buildings far away.
 function treeKinds() {
-  const spruce = (tiers, slim) => { const k = new Kit(); k.cyl(MAT.white, 0.11, 0.2, 2.2, 5, 0, 1.1, 0, 0, 0, 0, 0x5a4330, true);
-    let y = 1.1, r = 1.9 * slim; for (let i = 0; i < tiers; i++) { const h = 3.4 - i * 0.35; const g = new THREE.ConeGeometry(r, h, 6, 1, i > 0);
-      k.add(MAT.white, g, 0, y + h / 2, 0, 0, i * 0.7, 0, new THREE.Color().setRGB(0.18 + i * 0.012, 0.27 + i * 0.015, 0.17)); y += h * 0.52; r *= 0.76; }
+  // Low-poly but botanically shaped: irregular silhouettes, crown shading (darker underneath and inside), several variants.
+  let seed = 0;
+  const R = () => { seed += 1; return hsh(seed * 0.731, seed * 0.177, 3.3); };
+  const clump = (r, sy, col, flat = 0) => { const sd = R() * 10;
+    return paint(new THREE.IcosahedronGeometry(r, 1), (v, c) => {
+      const n = hsh(v.x + sd, v.y, v.z), m = hsh(v.z, v.x + sd, v.y);
+      const k = 0.72 + 0.5 * n; v.x *= k; v.z *= k; v.y *= sy * (0.8 + 0.4 * m); if (flat && v.y < 0) v.y *= 0.45;
+      const t = v.y / (r * sy); const sh = t < 0 ? 0.55 + 0.3 * (1 + t) : 0.85 + 0.35 * t; const j = 0.9 + 0.2 * m;
+      c.setRGB(col[0] * sh * j, col[1] * sh * j, col[2] * sh * (0.95 + 0.1 * n)); }); };
+  const trunk = (k, pts, r0, r1, colFn) => { for (let i = 0; i < pts.length - 1; i++) { const a = pts[i], b = pts[i + 1], t0 = i / (pts.length - 1);
+      const d = V3().subVectors(b, a), len = d.length(), q = new THREE.Quaternion().setFromUnitVectors(UP, d.normalize());
+      const ra = r0 + (r1 - r0) * t0, rb = r0 + (r1 - r0) * (i + 1) / (pts.length - 1);
+      const g = paint(new THREE.CylinderGeometry(rb, ra, len, 6, 3, true), (v, c) => colFn(v.y + len / 2 + a.y, c));
+      k.add(MAT.white, g, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2, 0, 0, 0, null, q); } };
+  const bark = (lo, hi, split) => (y, c) => { const t = Math.min(1, y / split); c.setRGB(lo[0] + (hi[0] - lo[0]) * t, lo[1] + (hi[1] - lo[1]) * t, lo[2] + (hi[2] - lo[2]) * t); };
+  const branch = (k, a, b, w, col) => k.beam(MAT.white, a, b, w, w, col);
+
+  // Norway spruce: dense, narrow, drooping tiers with ragged edges, dark blue-green
+  const spruce = (H, tiers, wid) => { const k = new Kit();
+    trunk(k, [V3(0, -0.2, 0), V3(0, 3.0, 0)], 0.3, 0.2, bark([0.24, 0.19, 0.15], [0.33, 0.25, 0.18], 3));
+    for (let i = 0; i < tiers; i++) { const t = i / (tiers - 1), y0 = 1.0 + t * (H - 3.4), r = wid * Math.pow(1 - t, 0.9) + 0.3, h = 3.2 - 1.6 * t, sd = R() * 10;
+      const g = paint(new THREE.ConeGeometry(r, h, 8, 1, true), (v, c) => { const rim = v.y < -h * 0.2; const rr = Math.hypot(v.x, v.z);
+        if (rr > 0.01) { const j = 0.78 + 0.42 * hsh(v.x + sd, v.z, v.y); v.x *= j; v.z *= j; }
+        if (rim) v.y -= r * 0.22 * (0.5 + hsh(v.z + sd, v.x, 1));                      // tips droop
+        const sh = rim ? 0.95 + 0.25 * hsh(v.x, v.z + sd, 2) : 0.62 + 0.3 * (v.y / h + 0.5);
+        c.setRGB(0.075 * sh, 0.14 * sh, 0.095 * sh); });
+      k.add(MAT.white, g, 0, y0 + h / 2, 0, 0, R() * 6.3, 0); }
+    k.add(MAT.white, paint(new THREE.ConeGeometry(0.28, 1.8, 5), (v, c) => c.setRGB(0.09, 0.16, 0.1)), 0, H + 0.1, 0);
     return merge(k.parts.get(MAT.white)); };
-  const pine = () => { const k = new Kit(); k.cyl(MAT.white, 0.13, 0.24, 9.5, 5, 0, 4.75, 0, 0, 0, 0, 0x7a5236, true);
-    for (const [x, y, z, s] of [[0, 9.7, 0, 1.9], [1.0, 8.7, 0.4, 1.4], [-0.8, 9.0, -0.6, 1.5]]) {
-      const g = new THREE.IcosahedronGeometry(s, 0); g.scale(1, 0.6, 1); k.add(MAT.white, g, x, y, z, 0, x, 0, new THREE.Color().setRGB(0.22, 0.3, 0.17)); }
+
+  // Scots pine: tall bare trunk, grey-brown below and orange above, slight bend, wide flat irregular crown on a few limbs
+  const pine = (H, lean) => { const k = new Kit(); const lx = lean * (R() - 0.5), lz = lean * (R() - 0.5);
+    const p1 = V3(lx * 0.3, H * 0.45, lz * 0.3), p2 = V3(lx * 0.8, H * 0.78, lz * 0.8), top = V3(lx, H, lz);
+    trunk(k, [V3(0, -0.2, 0), p1, p2, top], 0.32, 0.1, bark([0.3, 0.26, 0.23], [0.62, 0.36, 0.2], H * 0.6));
+    const n = 7; for (let i = 0; i < n; i++) { const a = i / n * 6.283 + R() * 0.9, hy = H * (0.72 + 0.24 * R()), spread = 0.7 + 1.3 * R();
+      const base = V3().lerpVectors(p2, top, Math.max(0, (hy - p2.y) / (top.y - p2.y))); const end = V3(base.x + Math.cos(a) * spread, hy + 0.4 + R() * 0.6, base.z + Math.sin(a) * spread);
+      branch(k, base, end, 0.11, 0x6a4a33);
+      k.add(MAT.white, clump(1.5 + R() * 0.9, 0.62, [0.13, 0.2, 0.1]), end.x, end.y + 0.2, end.z, 0, R() * 6, 0); }
+    k.add(MAT.white, clump(1.9, 0.7, [0.15, 0.22, 0.11]), top.x, top.y + 0.2, top.z);
     return merge(k.parts.get(MAT.white)); };
-  const birch = () => { const k = new Kit(); k.cyl(MAT.white, 0.09, 0.16, 6.5, 5, 0, 3.25, 0, 0, 0, 0, 0xcfcac0, true);
-    for (const [x, y, z, s] of [[0, 6.3, 0, 1.9], [0.9, 5.3, 0.5, 1.4], [-0.8, 5.7, -0.4, 1.5]]) {
-      const g = new THREE.IcosahedronGeometry(s, 0); g.scale(1, 1.1, 1); k.add(MAT.white, g, x, y, z, x, 0, 0, new THREE.Color().setRGB(0.36, 0.42, 0.2)); }
+
+  // Silver birch: slender white trunk with black lenticels, upswept limbs, airy drooping crown in light yellow-green
+  const birch = (H) => { const k = new Kit(); const lx = 0.9 * (R() - 0.5), lz = 0.9 * (R() - 0.5);
+    const pts = [V3(0, -0.2, 0), V3(lx * 0.4, H * 0.4, lz * 0.4), V3(lx, H * 0.85, lz)];
+    trunk(k, pts, 0.17, 0.06, (y, c) => { const dark = y < 0.8 ? 1 : hsh(Math.round(y * 2.5), 1, 7) > 0.62; const g = y < 0.8 ? 0.22 : dark ? 0.16 : 0.86; c.setRGB(g, g * 0.98, g * 0.94); });
+    const n = 8; for (let i = 0; i < n; i++) { const a = i / n * 6.283 + R(), hy = H * (0.4 + 0.5 * i / n), reach = 0.7 + 1.2 * R() * (1 - i / n * 0.5);
+      const base = V3(lx * hy / H, hy, lz * hy / H), end = V3(base.x + Math.cos(a) * reach, hy + 1.0 + R(), base.z + Math.sin(a) * reach);
+      branch(k, base, end, 0.05, 0x8d877c);
+      k.add(MAT.white, clump(1.15 + R() * 0.6, 1.3, [0.3, 0.38, 0.15]), end.x, end.y - 0.4, end.z, 0, R() * 6, 0); }
+    k.add(MAT.white, clump(1.3, 1.35, [0.32, 0.4, 0.16]), lx, H, lz);
     return merge(k.parts.get(MAT.white)); };
-  const bush = () => { const k = new Kit(); for (const [x, z, s] of [[0, 0, 1.0], [0.75, 0.3, 0.8]]) {
-      const g = new THREE.IcosahedronGeometry(s, 0); g.scale(1, 0.7, 1); k.add(MAT.white, g, x, s * 0.45, z, 0, x * 3, 0, new THREE.Color().setRGB(0.27, 0.33, 0.18)); }
+
+  const bush = () => { const k = new Kit(); for (let i = 0; i < 4; i++) { const a = i * 1.7 + R(), d = i ? 0.5 + R() * 0.4 : 0, s = 0.65 + R() * 0.45;
+      k.add(MAT.white, clump(s, 0.75, [0.2, 0.27, 0.14]), Math.cos(a) * d, s * 0.55, Math.sin(a) * d, 0, R() * 6, 0); }
     return merge(k.parts.get(MAT.white)); };
-  return { spruceA: spruce(4, 1), spruceB: spruce(5, 0.8), pine: pine(), birch: birch(), bush: bush() };
+  return { spruceA: spruce(14, 10, 2.5), spruceB: spruce(17, 12, 2.2), pineA: pine(17, 1.6), pineB: pine(15, 2.4),
+    birchA: birch(11), birchB: birch(13), bush: bush() };
 }
 function pylonGeo() {
   const k = new Kit(), m = MAT.white, B = 4, T = 0.8, H1 = 26, H2 = 33;
@@ -598,7 +639,7 @@ export function scenery(scene) {
   const scatter = (geo, n, fn, colFn, near = 0) => {
     const im = new THREE.InstancedMesh(geo, MAT.white, n); let i = 0, guard = 0;
     while (i < n && guard++ < n * 60) {
-      const x = rnd(-345, 345), z = rnd(-345, 345); if (!free(x, z, near)) continue;
+      const x = rnd(-285, 285), z = rnd(-285, 285); if (!free(x, z, near) || x * x + z * z > 285 * 285 || (Math.abs(x) < 150 && Math.abs(z) < 180 && Math.random() < 0.6)) continue;
       const dens = 0.55 + 0.45 * Math.sin(x * 0.021 + 1.3) * Math.cos(z * 0.017 - 0.4); if (Math.random() > dens) continue;
       const k = fn(); p.set(x, -0.1, z); q.setFromAxisAngle(UP, rnd(0, 6.3)); s.set(k, k * rnd(0.85, 1.2), k);
       im.setMatrixAt(i, mm.compose(p, q, s)); im.setColorAt(i, colFn(col)); i++;
@@ -606,10 +647,34 @@ export function scenery(scene) {
     im.count = i; im.receiveShadow = true; root.add(im); return im;
   };
   const T = treeKinds(), green = c => c.setRGB(rnd(0.8, 1.15), rnd(0.85, 1.15), rnd(0.8, 1.1));
-  scatter(T.spruceA, 200, () => rnd(0.8, 1.5), green);
-  scatter(T.spruceB, 150, () => rnd(0.9, 1.6), green);
-  scatter(T.pine, 150, () => rnd(0.8, 1.25), green);
-  scatter(T.birch, 110, () => rnd(0.8, 1.2), c => c.setRGB(rnd(0.85, 1.2), rnd(0.9, 1.15), rnd(0.75, 1.0)));
+  const tint = c => { const k = rnd(0.85, 1.12); return c.setRGB(k * rnd(0.95, 1.05), k, k * rnd(0.92, 1.05)); };
+  scatter(T.spruceA, 260, () => rnd(0.75, 1.25), tint);
+  scatter(T.spruceB, 220, () => rnd(0.8, 1.3), tint);
+  scatter(T.pineA, 120, () => rnd(0.85, 1.15), tint);
+  scatter(T.pineB, 100, () => rnd(0.85, 1.15), tint);
+  scatter(T.birchA, 80, () => rnd(0.85, 1.15), c => c.setRGB(rnd(0.9, 1.15), rnd(0.92, 1.12), rnd(0.8, 1.0)));
+  scatter(T.birchB, 70, () => rnd(0.85, 1.15), c => c.setRGB(rnd(0.9, 1.15), rnd(0.92, 1.12), rnd(0.8, 1.0)));
+  // mass forest: ~150k cheap instanced trees (≈20 triangles each) filling everything from the near belt out into the fog
+  { const lowSpruce = (() => { const k = new Kit();
+      k.add(MAT.white, paint(new THREE.CylinderGeometry(0.12, 0.2, 2, 3, 1, true), (v, c) => c.setRGB(0.25, 0.2, 0.15)), 0, 1, 0);
+      for (const [y, r, h] of [[2.6, 2.4, 5], [6, 1.7, 4.2], [9.2, 1.0, 3.4]]) k.add(MAT.white, paint(new THREE.ConeGeometry(r, h, 6, 1, true), (v, c) => { const t = v.y / h + 0.5; c.setRGB(0.06 + 0.04 * t, 0.12 + 0.05 * t, 0.08 + 0.03 * t); }), 0, y, 0, 0, y, 0);
+      return merge(k.parts.get(MAT.white)); })();
+    const lowBroad = (top, trunkC, crownC) => { const k = new Kit();
+      k.add(MAT.white, paint(new THREE.CylinderGeometry(0.1, 0.18, top, 3, 1, true), (v, c) => c.setRGB(...trunkC)), 0, top / 2, 0);
+      for (const [x, y, z, r] of [[0, top + 0.6, 0, 2.2], [0.9, top - 0.6, 0.5, 1.6]]) k.add(MAT.white, paint(new THREE.OctahedronGeometry(r, 0), (v, c) => { const t = v.y > 0 ? 1.1 : 0.6; c.setRGB(crownC[0] * t, crownC[1] * t, crownC[2] * t); }), x, y, z, 0, x, 0);
+      return merge(k.parts.get(MAT.white)); };
+    const kinds = [[lowSpruce, 0.62], [lowBroad(10, [0.55, 0.33, 0.2], [0.13, 0.2, 0.1]), 0.24], [lowBroad(7, [0.8, 0.79, 0.75], [0.3, 0.38, 0.15]), 0.14]];
+    const TOTAL = 150000, Rmax = 470;
+    const inForest = (x, z) => { if (Math.abs(x) < 150 && Math.abs(z) < 180) return false; if (Math.abs(z + 250) < 16) return false;   // power-line cut
+      if (excl.some(([ex, ez, er]) => er && (x - ex) ** 2 + (z - ez) ** 2 < er * er)) return false;
+      const glade = Math.sin(x * 0.013 + 0.7) * Math.cos(z * 0.011 - 1.1) + 0.35 * Math.sin(x * 0.041 + z * 0.037);   // natural clearings
+      return glade > -0.55; };
+    for (const [geo, share] of kinds) { const n = Math.round(TOTAL * share), im = new THREE.InstancedMesh(geo, MAT.white, n); let i = 0, guard = 0;
+      while (i < n && guard++ < n * 8) { const a = Math.random() * 6.2832, r = Math.sqrt(rnd(140 * 140, Rmax * Rmax)), x = Math.cos(a) * r, z = Math.sin(a) * r;
+        if (!inForest(x, z)) continue; const k = rnd(0.7, 1.35);
+        p.set(x, -0.15, z); q.setFromAxisAngle(UP, rnd(0, 6.3)); s.set(k, k * rnd(0.85, 1.25), k); im.setMatrixAt(i, mm.compose(p, q, s));
+        const t = rnd(0.82, 1.15); im.setColorAt(i, col.setRGB(t * rnd(0.95, 1.05), t, t)); i++; }
+      im.count = i; im.castShadow = false; im.receiveShadow = false; im.frustumCulled = false; root.add(im); } }
   // bushes: a belt along the fence plus scattered clumps
   { const n = 180, im = new THREE.InstancedMesh(T.bush, MAT.white, n);
     for (let i = 0; i < n; i++) { const side = i % 4, t = rnd(-1, 1); let x, z;
