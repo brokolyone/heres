@@ -631,6 +631,7 @@ function pylonGeo() {
   return merge(k.parts.get(m));
 }
 export function scenery(scene) {
+  const TF = globalThis.K7_TREE_FACTOR ?? 1;   // tree density (the phone build uses 1/15)
   const root = tag(new THREE.Group()); root.name = 'scenery'; scene.add(root);
   const mm = new THREE.Matrix4(), q = new THREE.Quaternion(), s = V3(), p = V3(), col = new THREE.Color();
   const excl = [[-215, 205, 42], [222, -215, 30], [210, 222, 34], [0, -250, 0]];
@@ -648,12 +649,12 @@ export function scenery(scene) {
   };
   const T = treeKinds(), green = c => c.setRGB(rnd(0.8, 1.15), rnd(0.85, 1.15), rnd(0.8, 1.1));
   const tint = c => { const k = rnd(0.85, 1.12); return c.setRGB(k * rnd(0.95, 1.05), k, k * rnd(0.92, 1.05)); };
-  scatter(T.spruceA, 260, () => rnd(0.75, 1.25), tint);
-  scatter(T.spruceB, 220, () => rnd(0.8, 1.3), tint);
-  scatter(T.pineA, 120, () => rnd(0.85, 1.15), tint);
-  scatter(T.pineB, 100, () => rnd(0.85, 1.15), tint);
-  scatter(T.birchA, 80, () => rnd(0.85, 1.15), c => c.setRGB(rnd(0.9, 1.15), rnd(0.92, 1.12), rnd(0.8, 1.0)));
-  scatter(T.birchB, 70, () => rnd(0.85, 1.15), c => c.setRGB(rnd(0.9, 1.15), rnd(0.92, 1.12), rnd(0.8, 1.0)));
+  scatter(T.spruceA, Math.round(260 * TF), () => rnd(0.75, 1.25), tint);
+  scatter(T.spruceB, Math.round(220 * TF), () => rnd(0.8, 1.3), tint);
+  scatter(T.pineA, Math.round(120 * TF), () => rnd(0.85, 1.15), tint);
+  scatter(T.pineB, Math.round(100 * TF), () => rnd(0.85, 1.15), tint);
+  scatter(T.birchA, Math.round(80 * TF), () => rnd(0.85, 1.15), c => c.setRGB(rnd(0.9, 1.15), rnd(0.92, 1.12), rnd(0.8, 1.0)));
+  scatter(T.birchB, Math.round(70 * TF), () => rnd(0.85, 1.15), c => c.setRGB(rnd(0.9, 1.15), rnd(0.92, 1.12), rnd(0.8, 1.0)));
   // mass forest: ~150k cheap instanced trees (≈20 triangles each) filling everything from the near belt out into the fog
   { const lowSpruce = (() => { const k = new Kit();
       k.add(MAT.white, paint(new THREE.CylinderGeometry(0.12, 0.2, 2, 3, 1, true), (v, c) => c.setRGB(0.25, 0.2, 0.15)), 0, 1, 0);
@@ -664,7 +665,7 @@ export function scenery(scene) {
       for (const [x, y, z, r] of [[0, top + 0.6, 0, 2.2], [0.9, top - 0.6, 0.5, 1.6]]) k.add(MAT.white, paint(new THREE.OctahedronGeometry(r, 0), (v, c) => { const t = v.y > 0 ? 1.1 : 0.6; c.setRGB(crownC[0] * t, crownC[1] * t, crownC[2] * t); }), x, y, z, 0, x, 0);
       return merge(k.parts.get(MAT.white)); };
     const kinds = [[lowSpruce, 0.62], [lowBroad(10, [0.55, 0.33, 0.2], [0.13, 0.2, 0.1]), 0.24], [lowBroad(7, [0.8, 0.79, 0.75], [0.3, 0.38, 0.15]), 0.14]];
-    const TOTAL = 150000, Rmax = 470;
+    const TOTAL = Math.round(150000 * TF), Rmax = 470;
     const inForest = (x, z) => { if (Math.abs(x) < 150 && Math.abs(z) < 180) return false; if (Math.abs(z + 250) < 16) return false;   // power-line cut
       if (excl.some(([ex, ez, er]) => er && (x - ex) ** 2 + (z - ez) ** 2 < er * er)) return false;
       const glade = Math.sin(x * 0.013 + 0.7) * Math.cos(z * 0.011 - 1.1) + 0.35 * Math.sin(x * 0.041 + z * 0.037);   // natural clearings
@@ -676,7 +677,7 @@ export function scenery(scene) {
         const t = rnd(0.82, 1.15); im.setColorAt(i, col.setRGB(t * rnd(0.95, 1.05), t, t)); i++; }
       im.count = i; im.castShadow = false; im.receiveShadow = false; im.frustumCulled = false; root.add(im); } }
   // bushes: a belt along the fence plus scattered clumps
-  { const n = 180, im = new THREE.InstancedMesh(T.bush, MAT.white, n);
+  { const n = Math.max(12, Math.round(180 * TF)), im = new THREE.InstancedMesh(T.bush, MAT.white, n);
     for (let i = 0; i < n; i++) { const side = i % 4, t = rnd(-1, 1); let x, z;
       if (side < 2) { x = (side ? 1 : -1) * rnd(131, 150); z = t * 170; } else { z = (side === 2 ? 1 : -1) * rnd(161, 180); x = t * 140; }
       if (!free(x, z)) { x *= 1.15; z *= 1.08; }

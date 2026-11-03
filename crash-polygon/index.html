@@ -76,11 +76,44 @@ body:not(.live) .hud{display:none!important}
 #start:focus-visible{outline:2px solid var(--hazard);outline-offset:6px}
 @media (max-width:1100px){#report{grid-template-columns:1fr auto;gap:14px 28px}#report dl{grid-column:1/-1}#pulse{width:360px;height:82px}}
 @media (prefers-reduced-motion:reduce){#toast,#testline{transition:none}}
+/* touch controls: only on phones/tablets; icons only, no lettering */
+#touch{position:fixed;inset:0;z-index:4;pointer-events:none;display:none}
+body.touch #touch{display:block}
+#touch .pad{position:absolute;pointer-events:auto;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+#steer{left:0;bottom:0;width:46%;height:58%}
+#steer .ring{position:absolute;width:132px;height:132px;margin:-66px 0 0 -66px;border-radius:50%;border:2px solid rgba(235,232,223,.35);background:rgba(20,21,19,.18);display:none}
+#steer .knob{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;border-radius:50%;background:rgba(235,232,223,.55)}
+#steer.on .ring{display:block}
+.pbtn{position:absolute;display:grid;place-items:center;border:2px solid rgba(235,232,223,.4);background:rgba(20,21,19,.32);border-radius:14px}
+.pbtn.on{background:rgba(227,174,28,.75);border-color:rgba(227,174,28,.95)}
+.pbtn svg{width:46%;height:46%;fill:none;stroke:#ebe8df;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+#gas{right:calc(18px + env(safe-area-inset-right,0px));bottom:calc(22px + env(safe-area-inset-bottom,0px));width:86px;height:128px}
+#brk{right:calc(118px + env(safe-area-inset-right,0px));bottom:calc(22px + env(safe-area-inset-bottom,0px));width:86px;height:92px}
+#hbk{right:calc(118px + env(safe-area-inset-right,0px));bottom:calc(126px + env(safe-area-inset-bottom,0px));width:86px;height:48px}
+#tools{position:absolute;top:calc(10px + env(safe-area-inset-top,0px));right:calc(10px + env(safe-area-inset-right,0px));display:flex;gap:8px;pointer-events:auto}
+#tools .pbtn{position:relative;width:46px;height:46px;border-radius:12px}
+#look{left:46%;right:0;top:0;bottom:40%}
 </style>
 
 <canvas id="gl" tabindex="-1"></canvas>
 
 <div class="hud" id="brand"><span class="mark"></span></div>
+<div id="touch">
+  <div class="pad" id="look"></div>
+  <div class="pad" id="steer"><div class="ring"><div class="knob"></div></div></div>
+  <div class="pad pbtn" id="gas"><svg viewBox="0 0 24 24"><path d="M12 4 L19 14 H5 Z"/><path d="M8 19h8"/></svg></div>
+  <div class="pad pbtn" id="brk"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></svg></div>
+  <div class="pad pbtn" id="hbk"><svg viewBox="0 0 24 24"><path d="M6 12h12"/><path d="M12 6v12"/><circle cx="12" cy="12" r="8"/></svg></div>
+  <div id="tools">
+    <div class="pad pbtn" data-k="KeyQ"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></div>
+    <div class="pad pbtn" data-k="KeyE"><svg viewBox="0 0 24 24"><path d="M6 12h12M12 6v12"/></svg></div>
+    <div class="pad pbtn" data-k="KeyB"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></div>
+    <div class="pad pbtn" data-k="KeyC"><svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg></div>
+    <div class="pad pbtn" data-k="KeyV"><svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></div>
+    <div class="pad pbtn" data-k="KeyR"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg></div>
+    <div class="pad pbtn" data-k="KeyF"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></div>
+  </div>
+</div>
 
 
 <script type="module">
@@ -112,7 +145,8 @@ const _off={}; const $=id=>document.getElementById(id)||(_off[id]||(_off[id]=doc
 // ───────────────────────────── renderer / scene
 const canvas=$('gl');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+const MOBILE=!!globalThis.K7_MOBILE;
+renderer.setPixelRatio(Math.min(devicePixelRatio,MOBILE?1.25:2));
 renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=0.92;
 renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 const scene=new THREE.Scene();
@@ -135,7 +169,7 @@ scene.add(skyMesh());
 const hemi=new THREE.HemisphereLight(0xd3dade,0x5d5848,0.9); scene.add(hemi);
 const sun=new THREE.DirectionalLight(0xfff0da,2.3);
 sun.position.set(30,40,-38); sun.castShadow=true;
-sun.shadow.mapSize.set(2048,2048); const sc=sun.shadow.camera; sc.left=-38;sc.right=38;sc.top=38;sc.bottom=-38;sc.near=1;sc.far=140;
+sun.shadow.mapSize.set(MOBILE?1024:2048,MOBILE?1024:2048); const sc=sun.shadow.camera; sc.left=-38;sc.right=38;sc.top=38;sc.bottom=-38;sc.near=1;sc.far=140;
 sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.03;
 scene.add(sun); scene.add(sun.target);
 
@@ -686,6 +720,24 @@ canvas.addEventListener('pointerdown',e=>{ if(!started) return; if(document.poin
 addEventListener('pointermove',e=>{ if(document.pointerLockElement===canvas){ look(e.movementX,e.movementY); return; } if(!drag) return; look(e.clientX-drag.x,e.clientY-drag.y); drag={x:e.clientX,y:e.clientY}; });
 addEventListener('pointerup',()=>drag=null);
 document.addEventListener('pointerlockchange',()=>document.body.classList.toggle('locked',document.pointerLockElement===canvas));
+// ── touch controls: analog steering pad (left), pedals and handbrake (right), icon tools (top), look pad
+let touchSteer=null;
+if(MOBILE||matchMedia('(pointer:coarse)').matches){ document.body.classList.add('touch');
+  const st=$('steer'), ring=st.querySelector('.ring'), knob=st.querySelector('.knob'); let sid=null, sx=0, sy=0;
+  st.addEventListener('pointerdown',e=>{ e.preventDefault(); initAudio(); sid=e.pointerId; st.setPointerCapture(sid); sx=e.clientX; sy=e.clientY; const r=st.getBoundingClientRect(); ring.style.left=(sx-r.left)+'px'; ring.style.top=(sy-r.top)+'px'; st.classList.add('on'); touchSteer=0; knob.style.transform=''; });
+  st.addEventListener('pointermove',e=>{ if(e.pointerId!==sid) return; const dx=clamp(e.clientX-sx,-60,60); touchSteer=-dx/60; knob.style.transform='translateX('+dx+'px)'; });
+  const endS=e=>{ if(e.pointerId!==sid) return; sid=null; touchSteer=null; st.classList.remove('on'); };
+  st.addEventListener('pointerup',endS); st.addEventListener('pointercancel',endS);
+  const hold=(el,code)=>{ const on=e=>{ e.preventDefault(); initAudio(); el.setPointerCapture&&el.setPointerCapture(e.pointerId); keys.add(code); el.classList.add('on'); }; const off=()=>{ keys.delete(code); el.classList.remove('on'); };
+    el.addEventListener('pointerdown',on); el.addEventListener('pointerup',off); el.addEventListener('pointercancel',off); el.addEventListener('lostpointercapture',off); };
+  hold($('gas'),'KeyW'); hold($('brk'),'KeyS'); hold($('hbk'),'Space');
+  for(const b of document.querySelectorAll('#tools .pbtn')) b.addEventListener('pointerdown',e=>{ e.preventDefault(); initAudio(); onKey(b.dataset.k); b.classList.add('on'); setTimeout(()=>b.classList.remove('on'),160); });
+  const lk=$('look'); let lid=null, lx=0, ly=0;
+  lk.addEventListener('pointerdown',e=>{ lid=e.pointerId; lk.setPointerCapture(lid); lx=e.clientX; ly=e.clientY; });
+  lk.addEventListener('pointermove',e=>{ if(e.pointerId!==lid) return; look(e.clientX-lx,e.clientY-ly); lx=e.clientX; ly=e.clientY; });
+  lk.addEventListener('pointerup',()=>lid=null); lk.addEventListener('pointercancel',()=>lid=null);
+  document.addEventListener('touchmove',e=>e.preventDefault(),{passive:false}); document.addEventListener('gesturestart',e=>e.preventDefault());
+}
 canvas.addEventListener('wheel',e=>{ e.preventDefault(); camZoom=clamp(camZoom*Math.exp(e.deltaY*0.001),0.6,2.2); },{passive:false});
 
 // ───────────────────────────── crash test program
@@ -753,6 +805,7 @@ const GEARS=[3.5,2.15,1.5,1.15,0.92], FINAL=3.9;
 function drive(c,dt){
   const v=c.vehicle, b=c.body; const sp=c.speed(); const kmh=Math.abs(sp)*3.6;
   let thr=K('KeyW','ArrowUp')?1:0, brk=K('KeyS','ArrowDown')?1:0, st=(K('KeyA','ArrowLeft')?1:0)-(K('KeyD','ArrowRight')?1:0), hb=K('Space');
+  if(touchSteer!==null&&!st) st=touchSteer;
   if(test&&test.phase!=='done'&&test.phase!=='after'){ thr=0;brk=0;st=0;hb=false; }
   // reverse when stopped and holding brake
   let rev=false; if(brk&&sp<1.2){ rev=true; thr=brk; brk=0; }
