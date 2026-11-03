@@ -292,12 +292,13 @@ export function createInterior(ctx) {
   cyl(DS0, DSm, 0.032, 0.032, 8, M.steel, under, 1, 1, true); cyl(DSm, DS1, 0.034, 0.034, 8, M.steel, under, 1, 1, true);
   for (const p of [DS0, DSm, DS1]) { box(0.07, 0.07, 0.05, p.x, p.y, p.z, M.cast, under); }
   box(0.16, 0.05, 0.05, 0, 0.27, -0.24, M.rubber, under);                    // centre bearing bracket
-  // rear axle: diff housing, pinion nose, rear cover, axle tubes
-  ball(0.12, V(0, 0.33, -1.27), M.cast, under, 1, [1.0, 0.95, 0.85]).castShadow = true;
-  cyl(V(0, 0.32, -1.16), V(0, 0.31, -1.07), 0.06, 0.045, 8, M.cast, under);
-  mesh(new THREE.CylinderGeometry(0.105, 0.105, 0.03, 10).rotateX(Math.PI / 2).translate(0, 0.33, -1.37), M.dark, under);
-  cyl(V(-0.62, 0.33, -1.28), V(0.62, 0.33, -1.28), 0.042, 0.042, 8, M.cast, under, 1, 1, true);
-  for (const s of [-1, 1]) { cyl(V(s * 0.10, 0.33, -1.28), V(s * 0.30, 0.33, -1.28), 0.06, 0.045, 8, M.cast, under); box(0.03, 0.1, 0.12, s * 0.58, 0.33, -1.28, M.dark, under); }
+  // rear axle: diff housing, pinion nose, rear cover, axle tubes — rides with the rear suspension (see update)
+  const axle = new THREE.Group(); axle.name = 'rearAxle'; under.add(axle);
+  ball(0.12, V(0, 0.33, -1.27), M.cast, axle, 1, [1.0, 0.95, 0.85]).castShadow = true;
+  cyl(V(0, 0.32, -1.16), V(0, 0.31, -1.07), 0.06, 0.045, 8, M.cast, axle);
+  mesh(new THREE.CylinderGeometry(0.105, 0.105, 0.03, 10).rotateX(Math.PI / 2).translate(0, 0.33, -1.37), M.dark, axle);
+  cyl(V(-0.62, 0.33, -1.28), V(0.62, 0.33, -1.28), 0.042, 0.042, 8, M.cast, axle, 1, 1, true);
+  for (const s of [-1, 1]) { cyl(V(s * 0.10, 0.33, -1.28), V(s * 0.30, 0.33, -1.28), 0.06, 0.045, 8, M.cast, axle); box(0.03, 0.1, 0.12, s * 0.58, 0.33, -1.28, M.dark, axle); }
 
   // fuel tank under the rear seat (left of the tunnel), straps, filler neck
   const tankG = new THREE.Group(); tankG.name = 'fuelTank'; under.add(tankG);
@@ -404,6 +405,10 @@ export function createInterior(ctx) {
       }
     },
     update(dt) {
+      { // live axle follows the rear wheel centres: hub height = CG - 0.1 - suspensionLength (ground), rest ≈ 0.33
+        const wi = ctx.car.vehicle && ctx.car.vehicle.wheelInfos; if (wi && wi[2] && wi[3]) {
+          const hl = CG - 0.1 - wi[2].suspensionLength, hr = CG - 0.1 - wi[3].suspensionLength;
+          axle.position.y = (hl + hr) / 2 - 0.33; axle.rotation.z = Math.atan2(hl - hr, 1.58); } }
       dt = Math.min(dt, 0.05);
       // ── intrusion: dash, column and pedals pushed back/up, footwell floor bulges
       const want = clamp(0.6 * car.cabinIntr + 0.45 * Math.max(0, car.frontCrush - 0.5), 0, 0.30);
