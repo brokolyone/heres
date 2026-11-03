@@ -87,7 +87,7 @@ body:not(.live) .hud{display:none!important}
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js';
 // 3D models live in ./models (one module per owner, shared frame in models/common.js and models/SPEC.md)
-import { CG, ZF, ZR, WHEELS } from './models/common.js';
+import { CG, ZF, ZR, WHEELS, bodySection } from './models/common.js';
 // Each module loads on its own: if one fails to load, its frozen copy in models/baseline/ is used instead.
 async function loadModel(name){ try{ return await import('./models/'+name+'.js'); }catch(e){ console.error('model module failed to load: '+name+' → baseline used', e); return import('./models/baseline/'+name+'.js'); } }
 const ENV_BASE=await import('./models/baseline/environment.js');
@@ -471,8 +471,8 @@ class Car{
         for(let i=0,k=0;i<p.length;i+=3,k+=2){ uv[k]=side?(p[i+2]-bb.min.z)/(bb.max.z-bb.min.z+1e-6):(p[i]-bb.min.x)/(bb.max.x-bb.min.x+1e-6); uv[k+1]=(p[i+1]-bb.min.y)/(bb.max.y-bb.min.y+1e-6); } }
       this.addPart(name,g,mat,cfg); }
     const box=(name,w,h,d,x,y,z,mat,rx=0)=>{ const g=subdividedBox(w,h,d,2,1,1); if(rx) g.rotateX(rx); g.translate(x,y-CG,z); this.addPart(name,g,mat,PART_CFG[name]); };
-    box('headL',0.34,0.1,0.12,0.56,0.63,2.06,headMat,-0.5); box('headR',0.34,0.1,0.12,-0.56,0.63,2.06,headMat,-0.5);
-    box('tailL',0.32,0.11,0.06,0.6,0.84,-2.11,tailMat,0.3); box('tailR',0.32,0.11,0.06,-0.6,0.84,-2.11,tailMat,0.3);
+    box('headL',0.3,0.09,0.035,0.56,0.6,2.167,headMat); box('headR',0.3,0.09,0.035,-0.56,0.6,2.167,headMat);
+    box('tailL',0.3,0.1,0.035,0.6,0.7,-2.167,tailMat); box('tailR',0.3,0.1,0.035,-0.6,0.7,-2.167,tailMat);
     box('grille',0.8,0.15,0.08,0,0.48,2.13,trimMat); box('mirrorL',0.1,0.09,0.17,0.95,0.9,0.82,trimMat); box('mirrorR',0.1,0.09,0.17,-0.95,0.9,0.82,trimMat);
     // physics: three boxes so the crumpled nose/tail can shorten the collider
     const b=new CANNON.Body({mass:1250,material:mCar,linearDamping:0.01,angularDamping:0.05}); b.allowSleep=false;
@@ -846,10 +846,28 @@ function syncCar(c,dtG){
   c.wheelState.forEach((s,i)=>{ if(!s.broken||b.velocity.length()<3) return; _w.set(WHEELS[i].x,-CG+0.05,WHEELS[i].z); c.group.localToWorld(_w); if(_w.y<0.25&&Math.random()<0.7) for(let k=0;k<2;k++) spark({x:_w.x,y:0.05,z:_w.z},{x:b.velocity.x*0.6+rnd(-1.5,1.5),y:rnd(.5,2.5),z:b.velocity.z*0.6+rnd(-1.5,1.5)}); });
 }
 const _m4=new THREE.Matrix4(), _e=new THREE.Euler(), _s1=new THREE.Vector3(1,1,1);
+// smoke can't pass through metal: test each puff against every car's body envelope (chassis frame, lofted profile)
+const _sq=new THREE.Quaternion(), _sv=new THREE.Vector3(), _sp=new THREE.Vector3();
+function smokeVsCars(S,i){
+  for(const c of cars){ const b=c.body; const dx=S.pos[i*3]-b.position.x, dy=S.pos[i*3+1]-b.position.y, dz=S.pos[i*3+2]-b.position.z; if(dx*dx+dy*dy+dz*dz>9) continue;
+    _sq.set(b.quaternion.x,b.quaternion.y,b.quaternion.z,b.quaternion.w).invert(); _sp.set(dx,dy,dz).applyQuaternion(_sq);
+    const zf=ZF-c.frontCrush*0.8, zr=ZR+c.rearCrush*0.8; if(_sp.z>zf||_sp.z<zr) continue;
+    const st=bodySection(_sp.z); const hoodGone=c.parts.some(p=>p.gone&&p.name==='hood')&&_sp.z>0.97;
+    const top=st.ytop-CG+0.04, bot=st.yb-CG, w=st.w+0.04; if(_sp.y>top||_sp.y<bot||Math.abs(_sp.x)>w) continue;
+    if(hoodGone&&_sp.y>bot+0.2) continue;                                   // open bay: smoke rises freely
+    // nearest way out: over the top, round the side, or past the bumper; the escape axis loses its inward speed
+    const outTop=top-_sp.y, outSide=w-Math.abs(_sp.x), outF=zf-_sp.z, outR=_sp.z-zr; const m=Math.min(outTop,outSide,outF,outR);
+    _sv.set(S.vel[i*3],S.vel[i*3+1],S.vel[i*3+2]).applyQuaternion(_sq);
+    if(m===outTop){ _sp.y=top; if(_sv.y<0) _sv.y=0; _sv.y+=0.15; }
+    else if(m===outSide){ const sg=Math.sign(_sp.x)||1; _sp.x=sg*w; if(_sv.x*sg<0) _sv.x=0; _sv.y=Math.max(_sv.y,0.2); }
+    else if(m===outF){ _sp.z=zf; if(_sv.z<0) _sv.z=0; } else { _sp.z=zr; if(_sv.z>0) _sv.z=0; }
+    _sq.invert(); _sp.applyQuaternion(_sq); _sv.applyQuaternion(_sq);
+    S.pos[i*3]=b.position.x+_sp.x; S.pos[i*3+1]=b.position.y+_sp.y; S.pos[i*3+2]=b.position.z+_sp.z; S.vel[i*3]=_sv.x; S.vel[i*3+1]=_sv.y; S.vel[i*3+2]=_sv.z; }
+}
 function updateFX(dt){
   { const S=FX.smoke; for(let i=0;i<S.N;i++){ if(S.life[i]>=S.max[i]){ S.alpha[i]=0; continue; } S.life[i]+=dt; const t=S.life[i]/S.max[i];
       S.vel[i*3+1]+=dt*0.15; const dr=Math.pow(0.6,dt); S.vel[i*3]*=dr;S.vel[i*3+2]*=dr;
-      S.pos[i*3]+=S.vel[i*3]*dt;S.pos[i*3+1]+=S.vel[i*3+1]*dt;S.pos[i*3+2]+=S.vel[i*3+2]*dt;
+      S.pos[i*3]+=S.vel[i*3]*dt;S.pos[i*3+1]+=S.vel[i*3+1]*dt;S.pos[i*3+2]+=S.vel[i*3+2]*dt; smokeVsCars(S,i);
       S.size[i]=lerp(S.s0[i],S.s1[i],Math.sqrt(t)); S.alpha[i]=S.a0[i]*(t<0.1?t/0.1:1)*(1-t)*(1-t); }
     S.g.attributes.position.needsUpdate=true;S.g.attributes.size.needsUpdate=true;S.g.attributes.alpha.needsUpdate=true;S.g.attributes.tint.needsUpdate=true; }
   { const S=FX.spark; for(let i=0;i<S.N;i++){ const o=i*6; if(S.life[i]>0.7){ S.pos.fill(0,o,o+6); continue; } S.life[i]+=dt;
