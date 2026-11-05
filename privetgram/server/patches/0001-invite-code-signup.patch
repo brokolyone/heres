@@ -1,0 +1,121 @@
+diff --git a/app/bff/authorization/internal/core/auth.sendCode_handler.go b/app/bff/authorization/internal/core/auth.sendCode_handler.go
+index 89a6c84..515b612 100644
+--- a/app/bff/authorization/internal/core/auth.sendCode_handler.go
++++ b/app/bff/authorization/internal/core/auth.sendCode_handler.go
+@@ -29,6 +29,7 @@ import (
+ 	"github.com/teamgram/teamgram-server/app/service/authsession/authsession"
+ 	userpb "github.com/teamgram/teamgram-server/app/service/biz/user/user"
+ 	statuspb "github.com/teamgram/teamgram-server/app/service/status/status"
++	"github.com/teamgram/teamgram-server/pkg/code/none"
+ 
+ 	"google.golang.org/grpc/status"
+ )
+@@ -366,6 +367,10 @@ func (c *AuthorizationCore) authSendCode(authKeyId, sessionId int64, request *mt
+ 					// codeData2.SentCodeType = model.CodeTypeSms
+ 					codeData2.SentCodeType = model.SentCodeTypeSms
+ 					codeData2.PhoneCodeExtraData = extraData
++					if !phoneRegistered {
++						// Privetgram: new numbers sign up with the server's invite code.
++						codeData2.PhoneCodeExtraData = none.InviteMarker
++					}
+ 				}
+ 			}
+ 
+diff --git a/pkg/code/none/none_verify_code.go b/pkg/code/none/none_verify_code.go
+index 00c4845..b9545d8 100644
+--- a/pkg/code/none/none_verify_code.go
++++ b/pkg/code/none/none_verify_code.go
+@@ -18,30 +18,89 @@
+ 
+ package none
+ 
++// Privetgram: there is no SMS provider on a private server, so
++//   - a NEW phone number signs up with the server's invite code (Code.Key in bff.yaml);
++//   - an EXISTING account signs in with the random login code, which the server pushes
++//     to the account's logged-in devices and also writes to its log (for recovery).
++// Wrong codes are counted per code request; after maxFailures that request is dead.
++
+ import (
+ 	"context"
++	"crypto/subtle"
++	"sync"
++	"time"
+ 
+ 	"github.com/teamgram/proto/mtproto"
+ 	"github.com/teamgram/teamgram-server/pkg/code/conf"
++	"github.com/zeromicro/go-zero/core/logx"
+ )
+ 
++// InviteMarker is stored as the code's extra data when the phone is not registered yet.
++const InviteMarker = "privetgram:invite"
++
++const maxFailures = 5
++
+ func New(c *conf.SmsVerifyCodeConfig) *noneVerifyCode {
+ 	return &noneVerifyCode{
+-		code: c,
++		code:     c,
++		failures: map[string]*failure{},
+ 	}
+ }
+ 
++type failure struct {
++	n     int
++	first time.Time
++}
++
+ type noneVerifyCode struct {
+-	code *conf.SmsVerifyCodeConfig
++	code     *conf.SmsVerifyCodeConfig
++	mu       sync.Mutex
++	failures map[string]*failure
+ }
+ 
+ func (m *noneVerifyCode) SendSmsVerifyCode(ctx context.Context, phoneNumber, code, codeHash string) (string, error) {
++	logx.WithContext(ctx).Infof("privetgram: login code for %s: %s", phoneNumber, code)
+ 	return code, nil
+ }
+ 
++func (m *noneVerifyCode) blocked(codeHash string) bool {
++	m.mu.Lock()
++	defer m.mu.Unlock()
++	now := time.Now()
++	for k, v := range m.failures {
++		if now.Sub(v.first) > 10*time.Minute {
++			delete(m.failures, k)
++		}
++	}
++	f := m.failures[codeHash]
++	return f != nil && f.n >= maxFailures
++}
++
++func (m *noneVerifyCode) fail(codeHash string) {
++	m.mu.Lock()
++	defer m.mu.Unlock()
++	f := m.failures[codeHash]
++	if f == nil {
++		f = &failure{first: time.Now()}
++		m.failures[codeHash] = f
++	}
++	f.n++
++}
++
+ func (m *noneVerifyCode) VerifySmsCode(ctx context.Context, codeHash, code, extraData string) error {
+-	if code != "12345" {
++	if m.blocked(codeHash) {
+ 		return mtproto.ErrPhoneCodeInvalid
+ 	}
+-	return nil
++	expected := extraData
++	if extraData == InviteMarker || extraData == "" {
++		expected = m.code.Key
++		if expected == "" {
++			expected = "12345" // upstream default when no invite code is configured
++		}
++	}
++	if code != "" && subtle.ConstantTimeCompare([]byte(code), []byte(expected)) == 1 {
++		return nil
++	}
++	m.fail(codeHash)
++	return mtproto.ErrPhoneCodeInvalid
+ }

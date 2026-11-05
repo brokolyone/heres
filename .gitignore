@@ -5,3 +5,13 @@ out/
 *.iml
 .idea/
 *.blend1
+# Privetgram: secrets and build output never go to git
+*.key
+*.keystore
+privetgram/server/privetgram.env
+privetgram/server/.env
+privetgram/server/data/
+privetgram/server/logs/
+privetgram/server/teamgram-server/
+privetgram/android/work/
+privetgram/android/out/

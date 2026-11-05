@@ -1,0 +1,106 @@
+# Privetgram — приватный Telegram на своём сервере
+
+Клиент — **официальный Telegram для Android** (исходники [DrKLO/Telegram](https://github.com/DrKLO/Telegram)
+через форк [teamgram-android](https://github.com/teamgram/teamgram-android), Telegram 12.5.1).
+Интерфейс тот же, но приложение ходит **только на твой сервер**.
+
+Сервер — [teamgram-server](https://github.com/teamgram/teamgram-server): открытая реализация MTProto на Go
+(личные чаты, группы, контакты, фото/файлы). Каналы, звонки, боты, секретные чаты, стикеры и 2FA в открытой версии
+Teamgram не реализованы, а push-уведомлений нет (нет Firebase). Чтобы сообщения приходили в фоне, включи в приложении
+«Настройки → Уведомления → Keep-Alive Service».
+
+```
+privetgram/
+├── android/   сборка APK: патчи + apply.py (ключ, имя, пакет, иконка) + build.sh
+└── server/    сервер: setup.sh + docker-compose.yaml + патч на регистрацию по инвайту
+```
+
+## Что поменяно относительно оригинала
+
+**Клиент** (`android/patches`, `android/apply.py`)
+- Адрес сервера не зашит в APK: при первом нажатии «Начать общение» приложение спрашивает адрес
+  (`1.2.3.4`, `chat.example.com` или `host:port`, порт по умолчанию 10443).
+  Сменить адрес: **долгое нажатие** на «Начать общение» (на экране приветствия, до входа).
+- Вшит **твой** RSA-ключ сервера вместо общеизвестного ключа Teamgram. С чужим ключом подменить сервер нельзя.
+- Название Privetgram, пакет `org.privetgram.messenger` (ставится рядом с настоящим Telegram).
+- Иконка: самолётик в ч/б с глитчем (`android/branding/make_icon.py`).
+
+**Сервер** (`server/patches`)
+- В оригинале код из SMS всегда `12345`, то есть зарегистрироваться и **войти в любой аккаунт** мог любой.
+  Теперь:
+  - **новый номер** регистрируется только с **инвайт-кодом** сервера (вводится вместо кода из SMS);
+  - **вход в существующий аккаунт** — по случайному коду, который приходит на уже залогиненные устройства
+    (как в Telegram). Если все устройства потеряны, код есть в логе сервера (см. ниже);
+  - после 5 неверных кодов запрос кода блокируется.
+- `docker-compose.yaml`: наружу открыт только порт 10443. MySQL, Redis, etcd, Kafka и MinIO доступны только
+  внутри docker-сети, пароли генерируются (в апстриме они открыты наружу с паролями `root`/`miniostorage`).
+- MinIO больше не публикует docker-образы, поэтому он собирается из исходников (`server/minio/Dockerfile`).
+
+## 1. Ключ сервера
+
+APK и сервер должны иметь одну пару ключей. Публичный ключ вшивается в APK, приватный лежит на сервере.
+
+```bash
+openssl genrsa -traditional -out server_pkcs1.key 2048
+openssl rsa -in server_pkcs1.key -RSAPublicKey_out -out server_pkcs1.pub
+```
+
+**Никогда не коммить `server_pkcs1.key`** (репозиторий публичный).
+
+## 2. Сервер
+
+Нужен VPS с Linux: минимум 2 ядра, 4 ГБ RAM (MySQL + Kafka) и Docker.
+
+```bash
+curl -fsSL https://get.docker.com | sh          # если Docker ещё не стоит
+git clone https://github.com/brokolyone/heres && cd heres/privetgram/server
+sudo ./setup.sh /path/to/server_pkcs1.key
+```
+
+Скрипт скачает teamgram-server, наложит патч, сгенерирует пароли и **инвайт-код** (в `privetgram.env`),
+соберёт образы и запустит всё. В конце он покажет IP и инвайт-код. Первый запуск занимает 5–15 минут:
+собираются Go-сервер и MinIO, инициализируется MySQL.
+
+Открой в файрволе **TCP 10443**. Остальные порты открывать не нужно.
+
+```bash
+docker compose logs -f teamgram                              # логи
+docker compose logs teamgram | grep "login code for"         # код входа, если потерял все устройства
+docker compose down / up -d                                  # остановить / запустить
+```
+
+Проверить сервер с компьютера (Python 3):
+
+```bash
+pip install telethon
+python3 smoke_test.py --host <IP> --pubkey server_pkcs1.pub --invite <инвайт-код>
+```
+
+## 3. APK
+
+Готовый APK, собранный под конкретный ключ, вместе с ключом передаётся отдельно (не через git).
+Собрать самому (Linux, JDK 17–21, Android SDK):
+
+```bash
+sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;21.4.7075529" "cmake;3.10.2.4988404"
+export ANDROID_HOME=~/android-sdk
+# своя подпись (иначе используется публичный тестовый ключ из репозитория Telegram):
+export KEYSTORE=privetgram.keystore KEYSTORE_PASSWORD=... KEY_ALIAS=privetgram KEY_PASSWORD=...
+./android/build.sh server_pkcs1.pub      # → android/out/Privetgram.apk  (сборка ~30–60 мин)
+```
+
+Обновления APK ставятся поверх только с той же подписью, поэтому **сохрани keystore**.
+
+## 4. Вход
+
+1. Установи APK → «Начать общение» → введи IP/домен сервера.
+2. Введи номер телефона (любой, SMS не отправляются).
+3. Вместо кода из SMS введи **инвайт-код**. Задай имя, и аккаунт готов.
+4. Дай друзьям APK, адрес и инвайт-код. Найти друг друга можно по номеру (добавить контакт) или по @username.
+
+## Лицензии
+
+Клиент — GPL-2.0 (как Telegram), сервер — Apache-2.0 (Teamgram), MinIO — AGPL-3.0.
+Если распространяешь APK, публикуй исходники (этот каталог + апстрим-коммиты в `build.sh` / `setup.sh`).
+Telegram просит не выдавать сторонние приложения за официальные. Название и иконка здесь свои,
+но иконка основана на их самолётике, поэтому в публичные сторы с ней лучше не выкладывать.

@@ -1,0 +1,340 @@
+diff --git a/TMessagesProj/jni/TgNetWrapper.cpp b/TMessagesProj/jni/TgNetWrapper.cpp
+index 680874e8..c4be3d01 100644
+--- a/TMessagesProj/jni/TgNetWrapper.cpp
++++ b/TMessagesProj/jni/TgNetWrapper.cpp
+@@ -263,6 +263,16 @@ void switchBackend(JNIEnv *env, jclass c, jint instanceNum, jboolean restart) {
+     ConnectionsManager::getInstance(instanceNum).switchBackend(restart);
+ }
+ 
++void setDefaultServer(JNIEnv *env, jclass c, jstring host, jint port) {
++    const char *hostStr = env->GetStringUTFChars(host, 0);
++    ConnectionsManager::setDefaultServer(std::string(hostStr), port);
++    env->ReleaseStringUTFChars(host, hostStr);
++}
++
++void resetServer(JNIEnv *env, jclass c, jint instanceNum) {
++    ConnectionsManager::getInstance(instanceNum).resetServer();
++}
++
+ void pauseNetwork(JNIEnv *env, jclass c, jint instanceNum) {
+     ConnectionsManager::getInstance(instanceNum).pauseNetwork();
+ }
+@@ -548,6 +558,8 @@ static JNINativeMethod ConnectionsManagerMethods[] = {
+         {"native_setRegId", "(ILjava/lang/String;)V", (void *) setRegId},
+         {"native_setSystemLangCode", "(ILjava/lang/String;)V", (void *) setSystemLangCode},
+         {"native_switchBackend", "(IZ)V", (void *) switchBackend},
++        {"native_setDefaultServer", "(Ljava/lang/String;I)V", (void *) setDefaultServer},
++        {"native_resetServer", "(I)V", (void *) resetServer},
+         {"native_pauseNetwork", "(I)V", (void *) pauseNetwork},
+         {"native_resumeNetwork", "(IZ)V", (void *) resumeNetwork},
+         {"native_updateDcSettings", "(I)V", (void *) updateDcSettings},
+diff --git a/TMessagesProj/jni/tgnet/ConnectionsManager.cpp b/TMessagesProj/jni/tgnet/ConnectionsManager.cpp
+index bcbc66f9..0d024176 100644
+--- a/TMessagesProj/jni/tgnet/ConnectionsManager.cpp
++++ b/TMessagesProj/jni/tgnet/ConnectionsManager.cpp
+@@ -1812,12 +1812,30 @@ uint8_t ConnectionsManager::getIpStratagy() {
+     return ipStrategy;
+ }
+ 
++static std::string privetServerHost = "127.0.0.1";
++static int32_t privetServerPort = 10443;
++
++void ConnectionsManager::setDefaultServer(std::string host, int32_t port) {
++    privetServerHost = host;
++    privetServerPort = port;
++}
++
++void ConnectionsManager::resetServer() {
++    scheduleTask([&] {
++        currentDatacenterId = 1;
++        Handshake::cleanupServerKeys();
++        datacenters.clear();
++        initDatacenters();
++        saveConfig();
++    });
++}
++
+ void ConnectionsManager::initDatacenters() {
+     Datacenter *datacenter;
+     if (!testBackend) {
+         if (datacenters.find(1) == datacenters.end()) {
+             datacenter = new Datacenter(instanceNum, 1);
+-            datacenter->addAddressAndPort("43.155.11.190", 10443, 0, "");
++            datacenter->addAddressAndPort(privetServerHost, privetServerPort, privetServerHost.find(':') != std::string::npos ? 1 : 0, "");
+             // datacenter->addAddressAndPort("149.154.175.50", 443, 0, "");
+             // datacenter->addAddressAndPort("2001:b28:f23d:f001:0000:0000:0000:000a", 443, 1, "");
+             datacenters[1] = datacenter;
+@@ -1856,7 +1874,7 @@ void ConnectionsManager::initDatacenters() {
+     } else {
+         if (datacenters.find(1) == datacenters.end()) {
+             datacenter = new Datacenter(instanceNum, 1);
+-            datacenter->addAddressAndPort("43.155.11.190", 10443, 0, "");
++            datacenter->addAddressAndPort(privetServerHost, privetServerPort, privetServerHost.find(':') != std::string::npos ? 1 : 0, "");
+             // datacenter->addAddressAndPort("149.154.175.40", 443, 0, "");
+             // datacenter->addAddressAndPort("2001:b28:f23d:f001:0000:0000:0000:000e", 443, 1, "");
+             datacenters[1] = datacenter;
+diff --git a/TMessagesProj/jni/tgnet/ConnectionsManager.h b/TMessagesProj/jni/tgnet/ConnectionsManager.h
+index d5ab4bdd..e1146f4c 100644
+--- a/TMessagesProj/jni/tgnet/ConnectionsManager.h
++++ b/TMessagesProj/jni/tgnet/ConnectionsManager.h
+@@ -63,6 +63,9 @@ public:
+     void setUserId(int64_t userId);
+     void setUserPremium(bool premium);
+     void switchBackend(bool restart);
++    // Privetgram: the server is chosen in the app, not compiled in.
++    static void setDefaultServer(std::string host, int32_t port);
++    void resetServer();
+     void resumeNetwork(bool partial);
+     void pauseNetwork();
+     void setNetworkAvailable(bool value, int32_t type, bool slow);
+diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/PrivetServer.java b/TMessagesProj/src/main/java/org/telegram/messenger/PrivetServer.java
+new file mode 100644
+index 00000000..880ea537
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/messenger/PrivetServer.java
+@@ -0,0 +1,189 @@
++package org.telegram.messenger;
++
++import android.content.Context;
++import android.content.SharedPreferences;
++import android.text.InputType;
++import android.text.TextUtils;
++import android.util.TypedValue;
++import android.view.Gravity;
++import android.widget.EditText;
++import android.widget.FrameLayout;
++import android.widget.Toast;
++
++import org.telegram.tgnet.ConnectionsManager;
++import org.telegram.ui.ActionBar.AlertDialog;
++import org.telegram.ui.ActionBar.Theme;
++import org.telegram.ui.Components.LayoutHelper;
++
++import java.net.Inet4Address;
++import java.net.InetAddress;
++import java.util.Locale;
++
++/**
++ * Privetgram: the MTProto server is chosen in the app (host[:port]) instead of being compiled in.
++ * The host is resolved to an IP when it is saved and again in the background on every start.
++ */
++public class PrivetServer {
++
++    public static final int DEFAULT_PORT = 10443;
++    private static final String PREFS = "privetgram_server";
++
++    private static SharedPreferences prefs() {
++        return ApplicationLoader.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
++    }
++
++    public static boolean isConfigured() {
++        return !TextUtils.isEmpty(prefs().getString("ip", null));
++    }
++
++    public static String getIp() {
++        return prefs().getString("ip", "127.0.0.1");
++    }
++
++    public static int getPort() {
++        return prefs().getInt("port", DEFAULT_PORT);
++    }
++
++    public static String getDisplayAddress() {
++        String host = prefs().getString("host", "");
++        if (TextUtils.isEmpty(host)) {
++            return "";
++        }
++        return getPort() == DEFAULT_PORT ? host : host + ":" + getPort();
++    }
++
++    /** Must run before ConnectionsManager.native_init so a fresh config gets the right DC address. */
++    public static void applyDefault() {
++        ConnectionsManager.native_setDefaultServer(getIp(), getPort());
++    }
++
++    private static boolean isRu() {
++        return "ru".equals(Locale.getDefault().getLanguage()) || "uk".equals(Locale.getDefault().getLanguage());
++    }
++
++    private static String t(String ru, String en) {
++        return isRu() ? ru : en;
++    }
++
++    /** Returns {host, port} or null. Accepts host, host:port, [ipv6]:port and bare ipv6. */
++    static Object[] parse(String input) {
++        String s = input == null ? "" : input.trim();
++        s = s.replaceFirst("^[a-zA-Z]+://", "");
++        int slash = s.indexOf('/');
++        if (slash >= 0) {
++            s = s.substring(0, slash);
++        }
++        if (s.isEmpty()) {
++            return null;
++        }
++        String host = s;
++        int port = DEFAULT_PORT;
++        try {
++            if (s.startsWith("[")) {
++                int end = s.indexOf(']');
++                if (end < 0) return null;
++                host = s.substring(1, end);
++                if (s.length() > end + 2 && s.charAt(end + 1) == ':') {
++                    port = Integer.parseInt(s.substring(end + 2));
++                }
++            } else if (s.indexOf(':') == s.lastIndexOf(':') && s.indexOf(':') > 0) {
++                host = s.substring(0, s.indexOf(':'));
++                port = Integer.parseInt(s.substring(s.indexOf(':') + 1));
++            }
++        } catch (NumberFormatException e) {
++            return null;
++        }
++        if (port <= 0 || port > 65535 || host.isEmpty()) {
++            return null;
++        }
++        return new Object[]{host, port};
++    }
++
++    private static String resolve(String host) throws Exception {
++        InetAddress[] all = InetAddress.getAllByName(host);
++        for (InetAddress a : all) {
++            if (a instanceof Inet4Address) {
++                return a.getHostAddress();
++            }
++        }
++        String ip = all[0].getHostAddress();
++        int zone = ip.indexOf('%');
++        return zone >= 0 ? ip.substring(0, zone) : ip;
++    }
++
++    /** Re-resolve a DNS name in the background; if its IPv4 changed, point the connection there. */
++    public static void refreshDnsAsync(int account) {
++        String host = prefs().getString("host", "");
++        String oldIp = getIp();
++        if (TextUtils.isEmpty(host) || host.equals(oldIp)) {
++            return;
++        }
++        Utilities.globalQueue.postRunnable(() -> {
++            try {
++                String ip = resolve(host);
++                if (!ip.equals(oldIp) && ip.indexOf(':') < 0) {
++                    prefs().edit().putString("ip", ip).apply();
++                    ConnectionsManager.native_setDefaultServer(ip, getPort());
++                    ConnectionsManager.getInstance(account).applyDatacenterAddress(1, ip, getPort());
++                }
++            } catch (Exception e) {
++                FileLog.e(e);
++            }
++        });
++    }
++
++    public static void showDialog(Context context, int account, Runnable onSaved) {
++        if (context == null) {
++            return;
++        }
++        EditText input = new EditText(context);
++        input.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 18);
++        input.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
++        input.setHintTextColor(Theme.getColor(Theme.key_dialogTextHint));
++        input.setHint(t("ip или домен, напр. 1.2.3.4", "ip or domain, e.g. 1.2.3.4"));
++        input.setSingleLine(true);
++        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
++        input.setGravity(Gravity.LEFT);
++        input.setText(getDisplayAddress());
++        input.setSelection(input.getText().length());
++        FrameLayout frame = new FrameLayout(context);
++        frame.addView(input, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP, 24, 6, 24, 0));
++
++        AlertDialog.Builder builder = new AlertDialog.Builder(context);
++        builder.setTitle(t("Сервер", "Server"));
++        builder.setMessage(t("Адрес твоего сервера Privetgram. Порт по умолчанию " + DEFAULT_PORT + ".",
++                "Address of your Privetgram server. Default port is " + DEFAULT_PORT + "."));
++        builder.setView(frame);
++        builder.setPositiveButton(t("Сохранить", "Save"), (dialog, which) -> {
++            Object[] parsed = parse(input.getText().toString());
++            if (parsed == null) {
++                Toast.makeText(context, t("Неверный адрес", "Invalid address"), Toast.LENGTH_SHORT).show();
++                return;
++            }
++            String host = (String) parsed[0];
++            int port = (Integer) parsed[1];
++            Utilities.globalQueue.postRunnable(() -> {
++                String ip;
++                try {
++                    ip = resolve(host);
++                } catch (Exception e) {
++                    AndroidUtilities.runOnUIThread(() -> Toast.makeText(context, t("Не удалось найти " + host, "Can't resolve " + host), Toast.LENGTH_LONG).show());
++                    return;
++                }
++                prefs().edit().putString("host", host).putString("ip", ip).putInt("port", port).commit();
++                AndroidUtilities.runOnUIThread(() -> {
++                    ConnectionsManager.native_setDefaultServer(ip, port);
++                    ConnectionsManager.native_resetServer(account);
++                    if (onSaved != null) {
++                        onSaved.run();
++                    }
++                });
++            });
++        });
++        builder.setNegativeButton(t("Отмена", "Cancel"), null);
++        AlertDialog dialog = builder.create();
++        dialog.show();
++        input.requestFocus();
++        AndroidUtilities.showKeyboard(input);
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/tgnet/ConnectionsManager.java b/TMessagesProj/src/main/java/org/telegram/tgnet/ConnectionsManager.java
+index ba3aacd3..560f6136 100644
+--- a/TMessagesProj/src/main/java/org/telegram/tgnet/ConnectionsManager.java
++++ b/TMessagesProj/src/main/java/org/telegram/tgnet/ConnectionsManager.java
+@@ -648,7 +648,9 @@ public class ConnectionsManager extends BaseController {
+             packageId = "";
+         }
+ 
++        org.telegram.messenger.PrivetServer.applyDefault();
+         native_init(currentAccount, version, layer, apiId, deviceModel, systemVersion, appVersion, langCode, systemLangCode, configPath, logPath, regId, cFingerprint, installer, packageId, timezoneOffset, userId, userPremium, enablePushConnection, ApplicationLoader.isNetworkOnline(), ApplicationLoader.getCurrentNetworkType(), SharedConfig.measureDevicePerformanceClass());
++        org.telegram.messenger.PrivetServer.refreshDnsAsync(currentAccount);
+         checkConnection();
+     }
+ 
+@@ -956,6 +958,8 @@ public class ConnectionsManager extends BaseController {
+     }
+ 
+     public static native void native_switchBackend(int currentAccount, boolean restart);
++    public static native void native_setDefaultServer(String host, int port);
++    public static native void native_resetServer(int currentAccount);
+     public static native int native_isTestBackend(int currentAccount);
+     public static native void native_pauseNetwork(int currentAccount);
+     public static native void native_setIpStrategy(int currentAccount, byte value);
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/IntroActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/IntroActivity.java
+index c6f0775b..76c84c75 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/IntroActivity.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/IntroActivity.java
+@@ -64,6 +64,7 @@ import org.telegram.messenger.Intro;
+ import org.telegram.messenger.LocaleController;
+ import org.telegram.messenger.MessagesController;
+ import org.telegram.messenger.NotificationCenter;
++import org.telegram.messenger.PrivetServer;
+ import org.telegram.messenger.R;
+ import org.telegram.messenger.UserConfig;
+ import org.telegram.tgnet.ConnectionsManager;
+@@ -378,10 +379,20 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
+         startMessagingButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
+         startMessagingButton.setPadding(dp(34), 0, dp(34), 0);
+         frameContainerView.addView(startMessagingButton, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM, 16, 0, 16, 76));
++        startMessagingButton.setOnLongClickListener(view -> {
++            if (!startPressed) {
++                PrivetServer.showDialog(getParentActivity(), currentAccount, null);
++            }
++            return true;
++        });
+         startMessagingButton.setOnClickListener(view -> {
+             if (startPressed) {
+                 return;
+             }
++            if (!PrivetServer.isConfigured()) {
++                PrivetServer.showDialog(getParentActivity(), currentAccount, view::performClick);
++                return;
++            }
+             startPressed = true;
+ 
+             presentFragment(new LoginActivity().setIntroView(frameContainerView, startMessagingButton), true);
