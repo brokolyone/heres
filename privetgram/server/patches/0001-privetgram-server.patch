@@ -1,0 +1,251 @@
+diff --git a/app/bff/authorization/internal/core/auth.sendCode_handler.go b/app/bff/authorization/internal/core/auth.sendCode_handler.go
+index 89a6c84..515b612 100644
+--- a/app/bff/authorization/internal/core/auth.sendCode_handler.go
++++ b/app/bff/authorization/internal/core/auth.sendCode_handler.go
+@@ -29,6 +29,7 @@ import (
+ 	"github.com/teamgram/teamgram-server/app/service/authsession/authsession"
+ 	userpb "github.com/teamgram/teamgram-server/app/service/biz/user/user"
+ 	statuspb "github.com/teamgram/teamgram-server/app/service/status/status"
++	"github.com/teamgram/teamgram-server/pkg/code/none"
+ 
+ 	"google.golang.org/grpc/status"
+ )
+@@ -366,6 +367,10 @@ func (c *AuthorizationCore) authSendCode(authKeyId, sessionId int64, request *mt
+ 					// codeData2.SentCodeType = model.CodeTypeSms
+ 					codeData2.SentCodeType = model.SentCodeTypeSms
+ 					codeData2.PhoneCodeExtraData = extraData
++					if !phoneRegistered {
++						// Privetgram: new numbers sign up with the server's invite code.
++						codeData2.PhoneCodeExtraData = none.InviteMarker
++					}
+ 				}
+ 			}
+ 
+diff --git a/app/bff/contacts/internal/core/contacts.importContacts_handler.go b/app/bff/contacts/internal/core/contacts.importContacts_handler.go
+index faf3cbe..bb92279 100644
+--- a/app/bff/contacts/internal/core/contacts.importContacts_handler.go
++++ b/app/bff/contacts/internal/core/contacts.importContacts_handler.go
+@@ -19,19 +19,91 @@
+ package core
+ 
+ import (
++	"strings"
++
+ 	"github.com/teamgram/proto/mtproto"
++	userpb "github.com/teamgram/teamgram-server/app/service/biz/user/user"
++	"github.com/teamgram/teamgram-server/pkg/phonenumber"
+ )
+ 
++// maxImportContacts caps one request (the app sends the phone book in batches).
++const maxImportContacts = 500
++
+ // ContactsImportContacts
+ // contacts.importContacts#2c800be5 contacts:Vector<InputContact> = contacts.ImportedContacts;
++//
++// Privetgram: upstream community edition leaves this blocked, which means people can't add each
++// other by phone number. Implemented on top of the user service: look the number up, add the contact.
+ func (c *ContactsCore) ContactsImportContacts(in *mtproto.TLContactsImportContacts) (*mtproto.Contacts_ImportedContacts, error) {
+-	// TODO: not impl
+-	c.Logger.Errorf("contacts.importContacts blocked, License key from https://teamgram.net required to unlock enterprise features.")
++	var (
++		imported = make([]*mtproto.ImportedContact, 0, len(in.Contacts))
++		idList   = make([]int64, 0, len(in.Contacts))
++		region   string
++	)
++
++	// phone book numbers are often in local format ("8 999 ..."), so parse them in the user's own region
++	if me, err := c.svcCtx.Dao.UserClient.UserGetImmutableUser(c.ctx, &userpb.TLUserGetImmutableUser{Id: c.MD.UserId}); err == nil && me != nil {
++		if p, err := phonenumber.MakePhoneNumberHelper("+"+me.Phone(), ""); err == nil {
++			region = p.GetRegionCode()
++		}
++	}
++
++	for i, contact := range in.Contacts {
++		if i >= maxImportContacts {
++			break
++		}
++		phone := strings.ReplaceAll(contact.GetPhone(), " ", "")
++		if phone == "" {
++			continue
++		}
++		p, err := phonenumber.MakePhoneNumberHelper(phone, region)
++		if err != nil {
++			continue
++		}
++		id, err := c.svcCtx.Dao.UserClient.UserGetUserIdByPhone(c.ctx, &userpb.TLUserGetUserIdByPhone{Phone: p.GetNormalizeDigits()})
++		if err != nil || id.GetV() == 0 || id.GetV() == c.MD.UserId {
++			continue
++		}
++		if _, err = c.svcCtx.Dao.UserClient.UserAddContact(c.ctx, &userpb.TLUserAddContact{
++			UserId:    c.MD.UserId,
++			Id:        id.GetV(),
++			FirstName: contact.GetFirstName(),
++			LastName:  contact.GetLastName(),
++			Phone:     p.GetNormalizeDigits(),
++		}); err != nil {
++			c.Logger.Errorf("contacts.importContacts - addContact(%d) error: %v", id.GetV(), err)
++			continue
++		}
++		imported = append(imported, mtproto.MakeTLImportedContact(&mtproto.ImportedContact{
++			UserId:   id.GetV(),
++			ClientId: contact.GetClientId(),
++		}).To_ImportedContact())
++		idList = append(idList, id.GetV())
++	}
++
++	users := make([]*mtproto.User, 0, len(idList))
++	if len(idList) > 0 {
++		mUsers, err := c.svcCtx.Dao.UserClient.UserGetMutableUsersV2(c.ctx, &userpb.TLUserGetMutableUsersV2{
++			Id:      append([]int64{c.MD.UserId}, idList...),
++			Privacy: true,
++			HasTo:   true,
++			To:      []int64{c.MD.UserId},
++		})
++		if err != nil {
++			c.Logger.Errorf("contacts.importContacts - getMutableUsers error: %v", err)
++		} else {
++			for _, id := range idList {
++				if u, err := mUsers.GetUnsafeUser(c.MD.UserId, id); err == nil && u != nil {
++					users = append(users, u)
++				}
++			}
++		}
++	}
+ 
+ 	return mtproto.MakeTLContactsImportedContacts(&mtproto.Contacts_ImportedContacts{
+-		Imported:       []*mtproto.ImportedContact{},
++		Imported:       imported,
+ 		PopularInvites: []*mtproto.PopularContact{},
+ 		RetryContacts:  []int64{},
+-		Users:          []*mtproto.User{},
++		Users:          users,
+ 	}).To_Contacts_ImportedContacts(), nil
+ }
+diff --git a/app/interface/gnetway/internal/server/gnet/handshake.go b/app/interface/gnetway/internal/server/gnet/handshake.go
+index 63ed9ed..5f1aa8d 100644
+--- a/app/interface/gnetway/internal/server/gnet/handshake.go
++++ b/app/interface/gnetway/internal/server/gnet/handshake.go
+@@ -460,6 +460,10 @@ func (s *Server) onReqDHParams(c gnet.Conn, ctx *HandshakeStateCtx, request *mtp
+ 			//
+ 			// 1. 解密
+ 			innerData := rsa.Decrypt([]byte(request.EncryptedData))
++			if len(innerData) < 256 {
++				// Privetgram: big.Int drops leading zero bytes; restore the fixed 256-byte block
++				innerData = append(make([]byte, 256-len(innerData)), innerData...)
++			}
+ 			if len(innerData) != 256 {
+ 				logx.Error("need len(encryptedPQInnerData) < 256")
+ 				return fmt.Errorf("process Req_DHParams - len(encryptedPQInnerData) != 256")
+diff --git a/app/interface/gnetway/internal/server/gnet/server_http.go b/app/interface/gnetway/internal/server/gnet/server_http.go
+index f633461..0857b32 100644
+--- a/app/interface/gnetway/internal/server/gnet/server_http.go
++++ b/app/interface/gnetway/internal/server/gnet/server_http.go
+@@ -370,6 +370,10 @@ func (s *Server) httpOnReqDHParams(ctx *HandshakeStateCtx, request *mtproto.TLRe
+ 	}
+ 
+ 	innerData := rsa.Decrypt([]byte(request.EncryptedData))
++	if len(innerData) < 256 {
++		// Privetgram: big.Int drops leading zero bytes; restore the fixed 256-byte block
++		innerData = append(make([]byte, 256-len(innerData)), innerData...)
++	}
+ 	if len(innerData) != 256 {
+ 		return nil, fmt.Errorf("decrypted data length != 256")
+ 	}
+diff --git a/pkg/code/none/none_verify_code.go b/pkg/code/none/none_verify_code.go
+index 00c4845..b9545d8 100644
+--- a/pkg/code/none/none_verify_code.go
++++ b/pkg/code/none/none_verify_code.go
+@@ -18,30 +18,89 @@
+ 
+ package none
+ 
++// Privetgram: there is no SMS provider on a private server, so
++//   - a NEW phone number signs up with the server's invite code (Code.Key in bff.yaml);
++//   - an EXISTING account signs in with the random login code, which the server pushes
++//     to the account's logged-in devices and also writes to its log (for recovery).
++// Wrong codes are counted per code request; after maxFailures that request is dead.
++
+ import (
+ 	"context"
++	"crypto/subtle"
++	"sync"
++	"time"
+ 
+ 	"github.com/teamgram/proto/mtproto"
+ 	"github.com/teamgram/teamgram-server/pkg/code/conf"
++	"github.com/zeromicro/go-zero/core/logx"
+ )
+ 
++// InviteMarker is stored as the code's extra data when the phone is not registered yet.
++const InviteMarker = "privetgram:invite"
++
++const maxFailures = 5
++
+ func New(c *conf.SmsVerifyCodeConfig) *noneVerifyCode {
+ 	return &noneVerifyCode{
+-		code: c,
++		code:     c,
++		failures: map[string]*failure{},
+ 	}
+ }
+ 
++type failure struct {
++	n     int
++	first time.Time
++}
++
+ type noneVerifyCode struct {
+-	code *conf.SmsVerifyCodeConfig
++	code     *conf.SmsVerifyCodeConfig
++	mu       sync.Mutex
++	failures map[string]*failure
+ }
+ 
+ func (m *noneVerifyCode) SendSmsVerifyCode(ctx context.Context, phoneNumber, code, codeHash string) (string, error) {
++	logx.WithContext(ctx).Infof("privetgram: login code for %s: %s", phoneNumber, code)
+ 	return code, nil
+ }
+ 
++func (m *noneVerifyCode) blocked(codeHash string) bool {
++	m.mu.Lock()
++	defer m.mu.Unlock()
++	now := time.Now()
++	for k, v := range m.failures {
++		if now.Sub(v.first) > 10*time.Minute {
++			delete(m.failures, k)
++		}
++	}
++	f := m.failures[codeHash]
++	return f != nil && f.n >= maxFailures
++}
++
++func (m *noneVerifyCode) fail(codeHash string) {
++	m.mu.Lock()
++	defer m.mu.Unlock()
++	f := m.failures[codeHash]
++	if f == nil {
++		f = &failure{first: time.Now()}
++		m.failures[codeHash] = f
++	}
++	f.n++
++}
++
+ func (m *noneVerifyCode) VerifySmsCode(ctx context.Context, codeHash, code, extraData string) error {
+-	if code != "12345" {
++	if m.blocked(codeHash) {
+ 		return mtproto.ErrPhoneCodeInvalid
+ 	}
+-	return nil
++	expected := extraData
++	if extraData == InviteMarker || extraData == "" {
++		expected = m.code.Key
++		if expected == "" {
++			expected = "12345" // upstream default when no invite code is configured
++		}
++	}
++	if code != "" && subtle.ConstantTimeCompare([]byte(code), []byte(expected)) == 1 {
++		return nil
++	}
++	m.fail(codeHash)
++	return mtproto.ErrPhoneCodeInvalid
+ }

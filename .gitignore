@@ -15,3 +15,4 @@ privetgram/server/logs/
 privetgram/server/teamgram-server/
 privetgram/android/work/
 privetgram/android/out/
+__pycache__/
