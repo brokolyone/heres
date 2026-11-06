@@ -1,0 +1,1552 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Python по чертежам</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&family=Unbounded:wght@400;600;800&display=swap">
+<style>
+/* Layout: a stack of drawing sheets (ЛИСТ 00–13) on grid paper, each framed like a technical drawing with a title block. */
+:root{
+  --paper:#ffffff; --ink:#111111; --ink2:#5b5b5b; --ink3:#9a9a9a;
+  --grid:rgba(17,17,17,.045); --grid2:rgba(17,17,17,.09); --wash:#f3f3f1;
+  --f-display:"Unbounded","Arial Black",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#0c0d0e; --ink:#efefea; --ink2:#a3a39e; --ink3:#66665f;
+  --grid:rgba(239,239,234,.05); --grid2:rgba(239,239,234,.1); --wash:#17181a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#0c0d0e; --ink:#efefea; --ink2:#a3a39e; --ink3:#66665f;
+  --grid:rgba(239,239,234,.05); --grid2:rgba(239,239,234,.1); --wash:#17181a; color-scheme:dark}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.65 var(--f-body);
+  background-image:linear-gradient(var(--grid2) 1px,transparent 1px),linear-gradient(90deg,var(--grid2) 1px,transparent 1px),
+  linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:80px 80px,80px 80px,16px 16px,16px 16px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  -webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--paper)}
+::selection{background:var(--ink);color:var(--paper)}
+a{color:inherit}
+:focus-visible{outline:2px dashed var(--ink);outline-offset:3px}
+.wrap{max-width:1180px;margin:0 auto}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.1;letter-spacing:-.01em}
+p{margin:0}
+code,kbd,.mono{font-family:var(--f-mono);font-size:.92em}
+code,kbd,pre,textarea,input,.mono,.codeline,.codepanel,.console,.steps,.pg-out,svg text{font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+p code,li code,td code{background:var(--wash);border:1px solid var(--grid2);padding:0 .3em;border-radius:2px}
+.lbl{font:600 11px/1.2 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2)}
+
+/* header */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--paper);border-bottom:1px solid var(--ink);margin:0 calc(-1 * max(16px,env(safe-area-inset-left,0px)))}
+.top-in{max-width:1180px;margin:0 auto;display:flex;align-items:center;gap:16px;padding:10px max(16px,env(safe-area-inset-left,0px))}
+.brand{font:800 14px var(--f-display);text-decoration:none;display:flex;align-items:center;gap:10px;white-space:nowrap}
+.brand svg{width:22px;height:22px}
+.top .sp{flex:1}
+.sheetno{font:600 12px var(--f-mono);letter-spacing:.1em;white-space:nowrap;font-variant-numeric:tabular-nums}
+.tbtn{font:600 11px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;background:none;color:var(--ink);border:1px solid var(--ink);padding:6px 10px;cursor:pointer}
+.tbtn:hover{background:var(--ink);color:var(--paper)}
+.bar{height:3px;background:var(--ink);transform-origin:0 50%;transform:scaleX(0)}
+
+/* hero */
+.hero{position:relative;padding-block:56px 40px;display:grid;grid-template-columns:1fr 1.15fr;gap:40px;align-items:center}
+.hero h1{font-size:clamp(44px,7.2vw,92px);font-weight:800;line-height:.95;letter-spacing:-.03em}
+.hero h1 .o{-webkit-text-stroke:2px var(--ink);color:transparent}
+.hero .sub{font-size:19px;max-width:30em;margin-top:22px;color:var(--ink)}
+.hero .sub b{font-weight:600}
+.ctas{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
+.btn{font:600 13px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;text-decoration:none;padding:14px 20px;border:1.5px solid var(--ink);background:var(--paper);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:10px;transition:transform .15s,box-shadow .15s}
+.btn.solid{background:var(--ink);color:var(--paper)}
+.btn:hover{transform:translate(-2px,-2px);box-shadow:4px 4px 0 var(--ink)}
+.btn:active{transform:none;box-shadow:none}
+.hero-fig{position:relative;min-width:0}
+.hero-fig svg{width:100%;height:auto;display:block}
+.cross{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .3s}
+.hero:hover .cross{opacity:1}
+.cross::before,.cross::after{content:"";position:absolute;background:var(--ink);opacity:.25}
+.cross::before{left:0;right:0;height:1px;top:var(--my,50%)}
+.cross::after{top:0;bottom:0;width:1px;left:var(--mx,50%)}
+.coords{position:absolute;right:0;top:12px;font:600 11px var(--f-mono);letter-spacing:.1em;color:var(--ink2);font-variant-numeric:tabular-nums}
+.term{border:1.5px solid var(--ink);background:var(--paper);font:15px/1.5 var(--f-mono);padding:12px 14px;margin:8px 0 0 auto;max-width:360px;position:relative}
+.term::before{content:"ВЫВОД";position:absolute;top:-9px;left:10px;background:var(--paper);padding:0 6px;font:600 10px var(--f-mono);letter-spacing:.15em;color:var(--ink2)}
+.typed{display:inline-block;overflow:hidden;white-space:nowrap;vertical-align:bottom;width:7ch}
+html.anim .typed{animation:type .9s steps(7) 2.6s both}
+@keyframes type{from{width:0}}
+.caret{display:inline-block;width:.6em;height:1.1em;background:var(--ink);vertical-align:-3px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* age dimension */
+.range{padding-block:10px 40px}
+.range svg{width:100%;height:auto;display:block;overflow:visible}
+
+/* toc */
+.toc{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:0;border-top:1.5px solid var(--ink);border-left:1.5px solid var(--ink);margin-bottom:72px}
+.toc a{display:flex;flex-direction:column;gap:6px;text-decoration:none;padding:16px 16px 18px;border-right:1.5px solid var(--ink);border-bottom:1.5px solid var(--ink);background:var(--paper);position:relative;transition:background .2s,color .2s;min-height:112px}
+.toc a:hover{background:var(--ink);color:var(--paper)}
+.toc a:hover .lbl{color:var(--paper)}
+.toc .t{font:600 17px/1.2 var(--f-display)}
+.toc .d{font-size:13px;color:inherit;opacity:.75}
+.toc .ok{position:absolute;right:12px;top:12px;width:20px;height:20px;border:1.5px solid currentColor;border-radius:50%;display:grid;place-items:center;font:700 12px var(--f-mono);opacity:.3}
+.toc a.done .ok{opacity:1;background:var(--ink);color:var(--paper)}
+.toc a.done:hover .ok{background:var(--paper);color:var(--ink)}
+
+/* sheets */
+.sheet{border:2px solid var(--ink);background:var(--paper);margin-bottom:72px;position:relative;scroll-margin-top:70px}
+.sheet::after{content:"";position:absolute;inset:6px;border:1px solid var(--ink);pointer-events:none;opacity:.35}
+.shead{display:grid;grid-template-columns:auto 1fr auto;border-bottom:2px solid var(--ink)}
+.shead>*{padding:14px 18px;display:flex;align-items:center}
+.shead .no{font:800 30px var(--f-display);border-right:2px solid var(--ink);background:var(--ink);color:var(--paper);min-width:96px;justify-content:center}
+.shead h2{font-size:clamp(22px,3.2vw,34px);font-weight:600}
+.shead .meta{border-left:2px solid var(--ink);flex-direction:column;align-items:flex-end;justify-content:center;gap:2px}
+.sbody{padding:32px clamp(16px,3.2vw,40px) 36px;display:flex;flex-direction:column;gap:28px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:36px;align-items:start}
+.cols>*{min-width:0}
+.txt{display:flex;flex-direction:column;gap:14px;max-width:62ch}
+.lead{font-size:20px;line-height:1.5;font-weight:500}
+.txt ul{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px}
+.note{border:1.5px dashed var(--ink);padding:14px 16px 14px 16px;position:relative;display:flex;flex-direction:column;gap:6px}
+.note .lbl{color:var(--ink)}
+details.deep{border-top:1.5px solid var(--ink);border-bottom:1.5px solid var(--ink)}
+details.deep summary{cursor:pointer;list-style:none;padding:14px 0;display:flex;align-items:center;gap:12px;font:600 13px var(--f-mono);letter-spacing:.1em;text-transform:uppercase}
+details.deep summary::-webkit-details-marker{display:none}
+details.deep summary::before{content:"+";display:grid;place-items:center;width:22px;height:22px;border:1.5px solid var(--ink);font-size:15px;transition:transform .3s}
+details.deep[open] summary::before{transform:rotate(45deg)}
+details.deep .in{padding:0 0 18px;display:flex;flex-direction:column;gap:12px;max-width:70ch}
+table.t{border-collapse:collapse;width:100%;font-size:15px}
+.tscroll{overflow-x:auto}
+table.t th,table.t td{border:1px solid var(--ink);padding:8px 10px;text-align:left;vertical-align:top}
+table.t th{font:600 11px var(--f-mono);letter-spacing:.12em;text-transform:uppercase;background:var(--wash)}
+table.t td:first-child{font-family:var(--f-mono);white-space:nowrap}
+
+/* figures */
+.fig{margin:0;min-width:0}
+.fig svg{width:100%;height:auto;display:block;overflow:visible}
+.fig figcaption{margin-top:10px;display:flex;justify-content:space-between;gap:12px;border-top:1px solid var(--ink);padding-top:6px}
+svg .k{stroke:var(--ink);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+svg .k2{stroke:var(--ink);fill:none;stroke-width:3}
+svg .th{stroke:var(--ink);fill:none;stroke-width:.8}
+svg .dsh{stroke:var(--ink);fill:none;stroke-width:1;stroke-dasharray:5 4}
+svg .fl{fill:var(--ink)}
+svg .pf{fill:var(--paper)}
+svg text{fill:var(--ink);font-family:var(--f-mono);font-size:13px}
+svg .tx-s{font-size:10.5px;letter-spacing:.12em;fill:var(--ink2)}
+svg .tx-b{font-size:22px;font-weight:600}
+svg .tx-c{font-size:30px;font-weight:600}
+svg .inv{fill:var(--paper)}
+.mk{fill:var(--ink)}
+html.anim .fig .s{stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset 1.1s cubic-bezier(.65,0,.25,1) calc(var(--i,0) * 70ms)}
+html.anim .fig.on .s{stroke-dashoffset:0}
+html.anim .fig text, html.anim .fig .fade{opacity:0;transition:opacity .6s ease calc(400ms + var(--i,0) * 50ms)}
+html.anim .fig.on text, html.anim .fig.on .fade{opacity:1}
+
+/* playground */
+.pg{border:1.5px solid var(--ink);background:var(--paper)}
+.pg-head{display:flex;align-items:center;gap:10px;border-bottom:1.5px solid var(--ink);padding:6px 6px 6px 14px;flex-wrap:wrap}
+.pg-head .lbl{flex:1;color:var(--ink)}
+.pg-head button{font:600 11px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;border:1.5px solid var(--ink);background:var(--paper);color:var(--ink);padding:7px 12px;cursor:pointer}
+.pg-head button.run{background:var(--ink);color:var(--paper)}
+.pg-head button:hover{box-shadow:3px 3px 0 var(--ink);transform:translate(-1px,-1px)}
+.pg-head button:disabled{opacity:.5;cursor:wait}
+.ed-wrap{display:flex;overflow-x:auto;background:var(--wash)}
+.gut{font:14px/1.6 var(--f-mono);padding:14px 10px 14px 12px;text-align:right;color:var(--ink3);user-select:none;border-right:1px solid var(--grid2);font-variant-numeric:tabular-nums;white-space:pre}
+.gut .e{color:var(--paper);background:var(--ink)}
+.ed{display:grid;flex:1;min-width:max-content}
+.ed>*{grid-area:1/1;margin:0;font:14px/1.6 var(--f-mono);padding:14px 16px;white-space:pre;tab-size:4;letter-spacing:0;border:0;overflow:hidden}
+.ed textarea{background:transparent;color:transparent;caret-color:var(--ink);resize:none;outline:none;width:100%;height:100%}
+.ed textarea::selection{background:var(--ink);color:var(--paper)}
+.ed pre{pointer-events:none;color:var(--ink)}
+.hl-k{font-weight:700}
+.hl-s{font-style:italic;color:var(--ink2)}
+.hl-c{color:var(--ink3)}
+.hl-n{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+.hl-b{font-weight:600;border-bottom:1px dotted var(--ink2)}
+.pg-in{display:flex;align-items:center;gap:10px;border-top:1px solid var(--grid2);padding:8px 14px;flex-wrap:wrap}
+.pg-in input{flex:1;min-width:160px;font:14px var(--f-mono);border:1px solid var(--ink);background:var(--paper);color:var(--ink);padding:6px 8px}
+.pg-out{border-top:1.5px solid var(--ink);font:14px/1.55 var(--f-mono);padding:12px 16px;min-height:52px;white-space:pre-wrap;word-break:break-word;position:relative}
+.pg-out:empty::before{content:"Нажми «Запустить» или Ctrl+Enter";color:var(--ink3)}
+.pg-out .err{display:block;border:1.5px solid var(--ink);margin-top:8px;padding:10px 12px;font-family:var(--f-body);white-space:normal}
+.pg-out .err b{font-family:var(--f-mono)}
+.pg-out .sys{color:var(--ink3)}
+.task{display:flex;gap:10px;align-items:baseline;border-top:1px solid var(--grid2);padding:10px 14px;font-size:14.5px}
+.task .lbl{color:var(--ink);white-space:nowrap}
+
+/* quiz */
+.quiz{border:1.5px solid var(--ink);padding:18px;display:flex;flex-direction:column;gap:12px}
+.quiz .q{font-weight:600;font-size:17px}
+.quiz .q code{font-weight:400}
+.opts{display:flex;flex-wrap:wrap;gap:10px}
+.opts button{font:500 15px var(--f-body);border:1.5px solid var(--ink);background:var(--paper);color:var(--ink);padding:9px 14px;cursor:pointer;text-align:left}
+.opts button:hover{background:var(--wash)}
+.opts button.right{background:var(--ink);color:var(--paper)}
+.opts button.wrong{text-decoration:line-through;opacity:.5}
+.quiz .fb{min-height:1.5em;font-size:15px}
+.quiz.solved{border-style:double;border-width:4px}
+
+/* interactive widgets */
+.wid{border:1.5px solid var(--ink);padding:16px;display:flex;flex-direction:column;gap:14px;background:var(--paper)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.row input[type=text],.row select{font:14px var(--f-mono);border:1.5px solid var(--ink);background:var(--paper);color:var(--ink);padding:8px 10px;min-width:0}
+.chip{font:600 12px var(--f-mono);border:1.5px solid var(--ink);background:var(--paper);color:var(--ink);padding:7px 11px;cursor:pointer;letter-spacing:.04em}
+.chip:hover,.chip.on{background:var(--ink);color:var(--paper)}
+.codeline{font:14px var(--f-mono);background:var(--wash);border-left:3px solid var(--ink);padding:8px 12px;white-space:pre-wrap;word-break:break-word;min-height:38px}
+input[type=range]{accent-color:var(--ink);width:100%}
+
+/* memory (variables) */
+.mem{display:flex;flex-wrap:wrap;gap:22px 18px;align-items:flex-end;min-height:150px;padding:10px 4px 4px}
+.obj{display:flex;flex-direction:column;align-items:center;gap:0;transition:opacity .6s,filter .6s}
+.obj .tags{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;min-height:30px;align-items:flex-end}
+.tag{font:600 13px var(--f-mono);border:1.5px solid var(--ink);background:var(--paper);padding:3px 10px 3px 16px;position:relative;clip-path:polygon(8px 0,100% 0,100% 100%,8px 100%,0 50%)}
+.tag::before{content:"";position:absolute;left:5px;top:50%;width:4px;height:4px;border:1.5px solid var(--ink);border-radius:50%;transform:translateY(-50%)}
+.obj .str{width:1.5px;height:16px;background:var(--ink)}
+.box{border:2px solid var(--ink);min-width:78px;padding:14px 14px 10px;text-align:center;font:600 18px var(--f-mono);position:relative;background:var(--paper)}
+.box small{display:block;font:600 10px var(--f-mono);letter-spacing:.14em;color:var(--ink2);margin-top:6px;text-transform:uppercase}
+.obj.gc{opacity:.35;filter:grayscale(1)}
+.obj.gc .box{border-style:dashed}
+.obj.gc .box::after{content:"НИКОМУ НЕ НУЖЕН";position:absolute;left:50%;top:-12px;transform:translateX(-50%);font:600 9px var(--f-mono);letter-spacing:.1em;white-space:nowrap;background:var(--paper);padding:0 4px}
+.obj.new .box{animation:pop .45s cubic-bezier(.3,1.6,.5,1)}
+@keyframes pop{from{transform:scale(.4);opacity:0}}
+.msg{font-size:14px;min-height:1.4em}
+
+/* types */
+.type-out{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center;border-top:1px solid var(--ink);padding-top:14px}
+.type-badge{font:800 22px var(--f-display);border:2px solid var(--ink);padding:14px 16px;min-width:110px;text-align:center}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-left:1.5px solid var(--ink);border-top:1.5px solid var(--ink)}
+.tiles>div{border-right:1.5px solid var(--ink);border-bottom:1.5px solid var(--ink);padding:14px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.tiles .n{font:800 20px var(--f-display)}
+.tiles code{font-size:13px}
+
+/* math steps */
+.steps{display:flex;flex-direction:column;gap:6px;font:20px var(--f-mono)}
+.steps>div{padding:4px 0;border-bottom:1px dashed var(--grid2);animation:slide .4s ease both;overflow-x:auto;white-space:nowrap}
+.steps>div::before{content:attr(data-n);font:600 10px var(--f-mono);color:var(--ink3);margin-right:12px;letter-spacing:.1em}
+.steps .hl{background:var(--ink);color:var(--paper);padding:0 4px}
+.steps .res{font-weight:700}
+@keyframes slide{from{opacity:0;transform:translateY(-6px)}}
+
+/* string ruler */
+.ruler{overflow-x:auto;padding:4px 0}
+.cells{display:flex;width:max-content;margin:0 auto}
+.cell{width:42px;display:flex;flex-direction:column;align-items:center;cursor:pointer}
+.cell .i{font:600 11px var(--f-mono);color:var(--ink2);height:18px}
+.cell .c{width:42px;height:48px;border:1.5px solid var(--ink);margin-left:-1.5px;display:grid;place-items:center;font:600 22px var(--f-mono);transition:background .2s,color .2s}
+.cell:first-child .c{margin-left:0}
+.cell.sel .c{background:var(--ink);color:var(--paper)}
+.cell .j{font:11px var(--f-mono);color:var(--ink3);height:18px;padding-top:2px}
+
+/* flowchart */
+#flow .act{stroke-width:3.4}
+#flow .node.act rect,#flow .node.act path{fill:var(--ink)}
+#flow .node.act text{fill:var(--paper)}
+#flow .node rect,#flow .node path{fill:var(--paper);stroke:var(--ink);stroke-width:1.6;transition:fill .3s}
+#flow .edge{stroke:var(--ink);fill:none;stroke-width:1.4;transition:stroke-width .3s}
+#flow .edge.act{stroke-dasharray:6 5;animation:flow 0.6s linear infinite}
+@keyframes flow{to{stroke-dashoffset:-11}}
+.codepanel{font:14px/1.7 var(--f-mono);border:1.5px solid var(--ink);padding:10px 0;overflow-x:auto}
+.codepanel div{padding:0 14px;white-space:pre;transition:background .25s,color .25s}
+.codepanel div.on{background:var(--ink);color:var(--paper)}
+
+/* conveyor */
+.belt{display:flex;gap:8px;overflow-x:auto;padding:26px 4px 6px;position:relative}
+.belt .it{flex:0 0 52px;height:52px;border:2px solid var(--ink);display:grid;place-items:center;font:700 20px var(--f-mono);position:relative;transition:background .25s,color .25s,transform .25s}
+.belt .it.cur{background:var(--ink);color:var(--paper);transform:translateY(-6px)}
+.belt .it.cur::before{content:"i";position:absolute;top:-26px;font:700 14px var(--f-mono);color:var(--ink)}
+.belt .it.done{opacity:.35}
+.console{font:14px/1.6 var(--f-mono);background:var(--wash);border:1px solid var(--grid2);padding:10px 12px;min-height:90px;white-space:pre;overflow-x:auto}
+
+/* train */
+.train{display:flex;gap:0;overflow-x:auto;padding:8px 2px 4px;align-items:flex-end;min-height:120px}
+.wagon{display:flex;flex-direction:column;align-items:center;cursor:pointer;flex:0 0 auto}
+.wagon .ix{font:600 11px var(--f-mono);color:var(--ink2);margin-bottom:4px}
+.wagon .body{border:2px solid var(--ink);padding:14px 14px;font:600 15px var(--f-mono);min-width:76px;text-align:center;background:var(--paper);position:relative}
+.wagon .wh{display:flex;gap:22px;margin-top:-6px}
+.wagon .wh span{width:12px;height:12px;border:2px solid var(--ink);border-radius:50%;background:var(--paper)}
+.wagon + .wagon .body::before{content:"";position:absolute;left:-12px;top:50%;width:10px;height:2px;background:var(--ink)}
+.wagon{margin-left:12px}.wagon:first-child{margin-left:0}
+.wagon.in .body{animation:pop .45s cubic-bezier(.3,1.6,.5,1)}
+.wagon.pick .body{background:var(--ink);color:var(--paper)}
+.wagon.out{animation:leave .4s ease forwards}
+@keyframes leave{to{opacity:0;transform:translateX(40px)}}
+.loco{flex:0 0 auto;margin-right:12px;font:700 11px var(--f-mono);border:2px solid var(--ink);padding:10px 8px;align-self:flex-end;margin-bottom:6px;letter-spacing:.1em}
+
+/* drawers */
+.cab{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.drawer{border:2px solid var(--ink);padding:10px 12px;display:flex;flex-direction:column;gap:6px;position:relative;transition:transform .35s,background .3s}
+.drawer .key{font:600 15px var(--f-mono)}
+.drawer .hd{width:34px;height:7px;border:1.5px solid var(--ink);border-radius:4px;align-self:center}
+.drawer .val{font:14px var(--f-mono);border-top:1px dashed var(--ink);padding-top:6px;color:var(--ink2);max-height:0;overflow:hidden;opacity:0;transition:max-height .4s,opacity .4s}
+.drawer.open{transform:translateY(-6px);box-shadow:0 6px 0 var(--ink)}
+.drawer.open .val{max-height:60px;opacity:1;color:var(--ink)}
+
+/* machine */
+.mach{position:relative;height:190px;border-bottom:2px solid var(--ink)}
+.mach .body{position:absolute;left:32%;right:32%;top:18px;bottom:30px;border:2.5px solid var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:var(--paper);z-index:2;text-align:center;padding:6px}
+.mach .body code{font-size:12.5px}
+.mach .gear{width:44px;height:44px}
+.mach.busy .gear{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.mach .hopper{position:absolute;bottom:30px;font:600 10px var(--f-mono);letter-spacing:.12em;color:var(--ink2)}
+.mach .tok{position:absolute;top:70px;left:2%;font:700 15px var(--f-mono);border:2px solid var(--ink);background:var(--paper);padding:8px 12px;z-index:1;white-space:nowrap;max-width:30%;overflow:hidden;text-overflow:ellipsis}
+.mach .tok.res{background:var(--ink);color:var(--paper);z-index:3}
+.mach .belt-l{position:absolute;bottom:-2px;left:0;right:0;height:10px;background:repeating-linear-gradient(90deg,var(--ink) 0 2px,transparent 2px 14px)}
+.mach.busy .belt-l{animation:beltmv .5s linear infinite}
+@keyframes beltmv{to{background-position:14px 0}}
+
+/* traceback */
+.tb{display:grid;grid-template-columns:1.2fr 1fr;gap:0;border:1.5px solid var(--ink)}
+.tb pre{margin:0;padding:16px;font:14px/1.9 var(--f-mono);background:var(--wash);overflow-x:auto;border-right:1.5px solid var(--ink);min-width:0}
+.tb pre span{display:block}
+.tb ol{margin:0;padding:16px 16px 16px 36px;display:flex;flex-direction:column;gap:10px;font-size:15px}
+.tb pre span.mark{background:var(--ink);color:var(--paper);margin:0 -16px;padding:0 16px}
+
+/* roadmap */
+.roads{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0;border-left:1.5px solid var(--ink);border-top:1.5px solid var(--ink)}
+.roads>div{border-right:1.5px solid var(--ink);border-bottom:1.5px solid var(--ink);padding:16px;display:flex;flex-direction:column;gap:6px}
+.roads h3{font-size:16px;font-weight:600}
+.roads p{font-size:14.5px;color:var(--ink2)}
+
+/* stamp */
+.stamp{display:grid;grid-template-columns:repeat(6,1fr);border:2px solid var(--ink);margin-bottom:60px;font:13px var(--f-mono);background:var(--paper)}
+.stamp>div{border-right:1px solid var(--ink);border-bottom:1px solid var(--ink);padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+.stamp .big{grid-column:span 3;grid-row:span 2;font:800 clamp(18px,2.6vw,28px) var(--f-display);justify-content:center}
+.stamp .lbl{font-size:9.5px}
+.cert{display:none;border:4px double var(--ink);padding:24px;text-align:center;flex-direction:column;gap:10px;align-items:center}
+.cert.show{display:flex}
+.cert h3{font-size:26px}
+
+@media (max-width:880px){
+  .hero{grid-template-columns:1fr;padding-block:32px 24px;gap:24px}
+  .cols{grid-template-columns:1fr}
+  .tb{grid-template-columns:1fr}.tb pre{border-right:0;border-bottom:1.5px solid var(--ink)}
+  .tiles{grid-template-columns:repeat(2,1fr)}
+  .stamp{grid-template-columns:repeat(3,1fr)}.stamp .big{grid-column:span 3;grid-row:auto}
+}
+@media (max-width:560px){
+  .shead{grid-template-columns:auto 1fr}.shead .meta{display:none}
+  .shead .no{min-width:64px;font-size:22px}
+  .top .sheetno{display:none}
+  .mach .body{left:28%;right:28%}
+  .lead{font-size:18px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  html{scroll-behavior:auto}
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="mk" d="M0,1 L10,5 L0,9 z"/></marker>
+    <marker id="tk" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="10" markerHeight="10" orient="auto"><path d="M2,8 L8,2" stroke="currentColor" style="stroke:var(--ink)" stroke-width="1.6"/></marker>
+    <marker id="dt" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6"><circle class="mk" cx="5" cy="5" r="4"/></marker>
+  </defs>
+</svg>
+
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="#top">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="1.5" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 15 Q9 7 12 12 T18 9" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="9" r="1.6" fill="currentColor"/></svg>
+      Python по чертежам
+    </a>
+    <span class="sp"></span>
+    <span class="sheetno" id="sheetno">ЛИСТ — / 13</span>
+    <a class="tbtn" href="#toc">Листы</a>
+    <button class="tbtn" id="theme" type="button" aria-label="Сменить тему">◐</button>
+  </div>
+  <div class="bar" id="bar"></div>
+</header>
+
+<main class="wrap" id="top">
+
+<section class="hero" id="hero">
+  <div>
+    <div class="lbl">Учебный альбом чертежей · 14 листов</div>
+    <h1 style="margin-top:18px">Python<br><span class="o">по</span> чертежам</h1>
+    <p class="sub">Программирование с абсолютного нуля. Каждая идея нарисована как чертёж: стрелки, размеры, выноски. <b>Код запускается прямо здесь</b>, ничего устанавливать не надо.</p>
+    <div class="ctas">
+      <a class="btn solid" href="#s00">Начать с листа 00 →</a>
+      <a class="btn" href="#toc">Все листы</a>
+    </div>
+  </div>
+  <div class="hero-fig">
+    <div class="cross" id="cross"></div>
+    <div class="coords" id="coords">X 0000 · Y 0000</div>
+    <figure class="fig" id="heroFig">
+      <svg viewBox="0 0 640 330" role="img" aria-label="Чертёж команды print с выносками">
+        <path class="th" d="M20 20 h20 M20 20 v20 M620 20 h-20 M620 20 v20 M20 310 h20 M20 310 v-20 M620 310 h-20 M620 310 v-20"/>
+        <rect class="k" x="58" y="150" width="152" height="70"/>
+        <rect class="k" x="210" y="150" width="30" height="70"/>
+        <rect class="k" x="240" y="150" width="300" height="70"/>
+        <rect class="k" x="540" y="150" width="30" height="70"/>
+        <text x="70" y="198" class="tx-c" textLength="130">print</text>
+        <text x="216" y="198" class="tx-c">(</text>
+        <text x="252" y="198" class="tx-c" textLength="276">"Привет!"</text>
+        <text x="546" y="198" class="tx-c">)</text>
+        <path class="th" d="M58 145 v-50 M210 145 v-50 M240 145 v-80 M540 145 v-80"/>
+        <path class="k" d="M58 108 H210" marker-start="url(#tk)" marker-end="url(#tk)"/>
+        <path class="k" d="M240 78 H540" marker-start="url(#tk)" marker-end="url(#tk)"/>
+        <text x="66" y="100" class="tx-s">ФУНКЦИЯ</text>
+        <text x="66" y="84">«выведи на экран»</text>
+        <text x="250" y="70" class="tx-s">СТРОКА · ТЕКСТ В КАВЫЧКАХ</text>
+        <text x="250" y="54">то, что нужно вывести</text>
+        <path class="k" d="M225 225 V262 H300 M555 225 V262 H480"/>
+        <circle class="k" cx="225" cy="225" r="3"/><circle class="k" cx="555" cy="225" r="3"/>
+        <text x="306" y="266">скобки = вход</text>
+        <path class="dsh" d="M58 235 V290 M570 235 V290"/>
+        <path class="k" d="M58 284 H570" marker-start="url(#ar)" marker-end="url(#ar)"/>
+        <text x="245" y="304" class="tx-s">ВЫЗОВ ФУНКЦИИ · ОДНА СТРОКА КОДА</text>
+        <circle class="th" cx="600" cy="185" r="12"/><path class="th" d="M584 185 h32 M600 169 v32"/>
+      </svg>
+    </figure>
+    <div class="term">&gt;&gt;&gt; <span class="typed">Привет!</span><span class="caret"></span></div>
+  </div>
+</section>
+
+<section class="range" aria-label="Для кого">
+  <figure class="fig" id="ageFig">
+    <svg viewBox="0 0 1000 96" role="img" aria-label="Подходит людям от 10 до 50 лет и старше">
+      <path class="th" d="M40 20 V70 M960 20 V70"/>
+      <path class="k" d="M40 46 H960" marker-start="url(#ar)" marker-end="url(#ar)"/>
+      <g class="th"><path d="M132 40 v12 M224 40 v12 M316 40 v12 M408 40 v12 M500 40 v12 M592 40 v12 M684 40 v12 M776 40 v12 M868 40 v12"/></g>
+      <text x="40" y="88">10 лет · 4 класс</text>
+      <text x="960" y="88" text-anchor="end">50+ лет · «да я просто спросить»</text>
+      <rect class="pf" x="330" y="34" width="340" height="24"/>
+      <text x="500" y="51" text-anchor="middle" class="tx-s">ДОПУСТИМЫЙ ВОЗРАСТ ЧИТАТЕЛЯ · ОПЫТ: 0</text>
+    </svg>
+  </figure>
+</section>
+
+<nav class="toc" id="toc" aria-label="Оглавление"></nav>
+
+<!-- ================= 00 ================= -->
+<section class="sheet" id="s00" data-title="Что такое программа" data-min="4">
+  <div class="sbody">
+    <div class="cols">
+      <div class="txt">
+        <p class="lead">Программа — это список команд для компьютера. Компьютер очень быстрый, но совсем не догадливый: делает ровно то, что написано.</p>
+        <p>Python — язык, на котором эти команды удобно писать. Он похож на упрощённый английский. На нём пишут школьники, инженеры NASA, аналитики в банках, авторы нейросетей. Куски YouTube и Instagram тоже написаны на Python.</p>
+        <p>Ты пишешь текст программы. Python читает его строчка за строчкой, сверху вниз, и переводит на язык, который понимает железо. Компьютер выполняет.</p>
+        <div class="note"><span class="lbl">Аналогия</span><p>Рецепт блинов: «разбей 2 яйца, влей стакан молока, перемешай». Если в рецепте написано «влей стакан бензина», повар-компьютер нальёт. Он не спорит и не исправляет.</p></div>
+      </div>
+      <figure class="fig">
+        <svg viewBox="0 0 420 380" role="img" aria-label="Схема: ты пишешь код, Python переводит, компьютер выполняет">
+          <rect class="k" x="130" y="10" width="160" height="56"/><text x="210" y="34" text-anchor="middle" class="tx-s">ШАГ 1</text><text x="210" y="54" text-anchor="middle">ТЫ пишешь</text>
+          <path class="k" d="M210 66 V104" marker-end="url(#ar)"/>
+          <rect class="k" x="100" y="108" width="220" height="70"/>
+          <path class="th" d="M100 126 H320"/><text x="110" y="121" class="tx-s">ФАЙЛ program.py</text>
+          <text x="114" y="150">print("Привет")</text><text x="114" y="168">print(2 + 2)</text>
+          <path class="k" d="M210 178 V214" marker-end="url(#ar)"/>
+          <path class="k" d="M210 218 L300 252 L210 286 L120 252 Z"/>
+          <text x="210" y="249" text-anchor="middle" class="tx-s">ПЕРЕВОДЧИК</text><text x="210" y="266" text-anchor="middle">Python</text>
+          <path class="k" d="M210 286 V320" marker-end="url(#ar)"/>
+          <rect class="k" x="120" y="324" width="180" height="48"/><text x="210" y="346" text-anchor="middle">Привет</text><text x="210" y="363" text-anchor="middle">4</text>
+          <path class="dsh" d="M320 143 H380 V348 H300"/><text x="386" y="250" class="tx-s" transform="rotate(90 386 250)" text-anchor="middle">СВЕРХУ ВНИЗ</text>
+          <path class="dsh" d="M30 40 H130 M30 40 V252 H120"/><text x="22" y="150" class="tx-s" transform="rotate(-90 22 150)" text-anchor="middle">ПОСТРОЧНО</text>
+        </svg>
+        <figcaption><span class="lbl">Рис. 00.1</span><span class="lbl">Путь программы</span></figcaption>
+      </figure>
+    </div>
+    <div class="note"><span class="lbl">Как пользоваться альбомом</span><p>Читай лист, смотри чертёж, нажимай кнопки в схемах. Код в чёрно-белых окошках можно менять и запускать кнопкой «Запустить» (или <kbd>Ctrl</kbd>+<kbd>Enter</kbd>). Ломай смело: компьютер от этого не сломается. В конце листа проверочный вопрос; ответишь верно, лист отметится в оглавлении.</p></div>
+    <div class="pg"><textarea>print("Я начинаю учить Python!")
+print("Это моя первая программа")</textarea><div data-task>Замени текст в кавычках на своё имя и запусти.</div></div>
+    <details class="deep"><summary>Под капотом</summary><div class="in">
+      <p>Процессор понимает только машинные коды: числа, обозначающие крошечные операции вроде «сложи два регистра». Писать так долго и мучительно. Python — <b>интерпретируемый</b> язык: программа-интерпретатор читает твой текст и выполняет его сразу, без отдельного шага компиляции.</p>
+      <p>На этом сайте работает Brython: Python, переписанный так, чтобы жить в браузере. На компьютере ставят обычный CPython с python.org (лист 13).</p>
+    </div></details>
+    <div class="quiz" data-q="Что сделает компьютер, если в команде ошибка?" data-o="Сам догадается, что ты имел в виду|Остановится и сообщит об ошибке|Выключится от обиды" data-a="1" data-e="Python остановится и покажет, где и что не так. Догадываться он не умеет."></div>
+  </div>
+</section>
+
+<!-- ================= 01 ================= -->
+<section class="sheet" id="s01" data-title="print: первая команда" data-min="5">
+  <div class="sbody">
+    <div class="cols">
+      <div class="txt">
+        <p class="lead"><code>print()</code> выводит на экран то, что стоит в скобках. С неё начинают все программисты мира.</p>
+        <ul>
+          <li><b>Текст</b> пишут в кавычках: <code>"так"</code> или <code>'так'</code>. Текст в программировании называют <b>строкой</b>.</li>
+          <li><b>Числа</b> пишут без кавычек: <code>print(42)</code>.</li>
+          <li>Через запятую можно дать несколько значений. Python поставит между ними пробел.</li>
+          <li>Каждый <code>print</code> печатает с новой строки.</li>
+        </ul>
+        <p>Главная ловушка новичка: <code>print("2 + 2")</code> напечатает <code>2 + 2</code> буквально, а <code>print(2 + 2)</code> сначала посчитает и напечатает <code>4</code>. Кавычки означают «не думай, просто покажи».</p>
+      </div>
+      <figure class="fig">
+        <svg viewBox="0 0 420 300" role="img" aria-label="print с тремя значениями через запятую даёт строку с пробелами">
+          <text x="20" y="60" class="tx-b">print(</text><text x="104" y="60" class="tx-b">"Мне"</text><text x="174" y="60" class="tx-b">,</text><text x="192" y="60" class="tx-b">12</text><text x="222" y="60" class="tx-b">,</text><text x="240" y="60" class="tx-b">"лет"</text><text x="310" y="60" class="tx-b">)</text>
+          <path class="k" d="M104 72 H170 M192 72 H220 M240 72 H306"/>
+          <path class="k" d="M137 76 V150" marker-end="url(#ar)"/><path class="k" d="M206 76 V150" marker-end="url(#ar)"/><path class="k" d="M273 76 V150" marker-end="url(#ar)"/>
+          <text x="114" y="100" class="tx-s">СТРОКА</text><text x="186" y="118" class="tx-s">ЧИСЛО</text><text x="250" y="100" class="tx-s">СТРОКА</text>
+          <rect class="k" x="90" y="156" width="240" height="56"/>
+          <text x="110" y="192" class="tx-b">Мне</text><text x="180" y="192" class="tx-b">12</text><text x="232" y="192" class="tx-b">лет</text><text x="296" y="192" class="tx-b">↵</text>
+          <path class="dsh" d="M162 168 V204 M220 168 V204"/>
+          <path class="k" d="M162 230 V214 M220 230 V214"/><text x="128" y="248" class="tx-s">ПРОБЕЛЫ (sep)</text>
+          <path class="k" d="M305 214 V266"/><text x="250" y="282" class="tx-s">ПЕРЕНОС СТРОКИ (end)</text>
+          <text x="8" y="24" class="tx-s">КОД</text><text x="8" y="146" class="tx-s">ЭКРАН</text>
+        </svg>
+        <figcaption><span class="lbl">Рис. 01.1</span><span class="lbl">Анатомия print</span></figcaption>
+      </figure>
+    </div>
+    <div class="pg"><textarea>print("Привет, мир!")
+print("2 + 2")
+print(2 + 2)
+print("Мне", 12, "лет")
+print("Без пробелов", "через", "дефис", sep="-")</textarea><div data-task>Напиши программу, которая выводит три строки: твоё имя, твой город и результат 365 * 24.</div></div>
+    <details class="deep"><summary>Под капотом</summary><div class="in">
+      <p>У <code>print</code> есть необязательные настройки. <code>sep</code> задаёт, что ставить между значениями (по умолчанию пробел). <code>end</code> задаёт, чем закончить (по умолчанию перенос строки <code>\n</code>).</p>
+      <p><code>print("Загрузка", end="...")</code> напечатает и останется на той же строке. Внутри строки <code>\n</code> означает перенос, а <code>\t</code> табуляцию.</p>
+    </div></details>
+    <div class="quiz" data-q='Что выведет print("5 + 5")?' data-o="10|5 + 5|Ошибку" data-a="1" data-e="В кавычках это просто текст. Python его не считает, а показывает как есть."></div>
+  </div>
+</section>
+
+<!-- ================= 02 ================= -->
+<section class="sheet" id="s02" data-title="Переменные" data-min="7">
+  <div class="sbody">
+    <div class="cols">
+      <div class="txt">
+        <p class="lead">Переменная — это имя, которое ты вешаешь на значение, чтобы потом к нему обращаться.</p>
+        <p><code>age = 12</code> читается «пусть age будет 12». Знак <code>=</code> здесь означает не «равно», а <b>присвоить</b>: справа значение, слева имя. Сначала Python вычисляет правую часть, потом вешает на результат бирку с именем.</p>
+        <p>Правила имён:</p>
+        <ul>
+          <li>буквы, цифры и <code>_</code>; начинать с цифры нельзя: <code>2team</code> ошибка, <code>team2</code> можно;</li>
+          <li>большие и маленькие буквы различаются: <code>Name</code> и <code>name</code> разные;</li>
+          <li>русские имена Python понимает, но в мире принято латиницей: <code>user_name</code>, <code>score</code>.</li>
+        </ul>
+        <div class="note"><span class="lbl">Аналогия</span><p>Бирка на чемодане. Чемодан (значение) лежит на складе (в памяти), а бирка с надписью «age» привязана к нему верёвочкой. Перевесить бирку на другой чемодан можно в любой момент.</p></div>
+      </div>
+      <div class="wid" id="memW">
+        <div class="lbl">Память компьютера · поиграй</div>
+        <div class="mem" id="mem" aria-live="polite"></div>
+        <div class="row">
+          <input type="text" id="memName" value="age" aria-label="Имя переменной" style="width:120px">
+          <span class="mono">=</span>
+          <input type="text" id="memVal" value="13" aria-label="Значение" style="flex:1;min-width:110px">
+          <button class="chip on" id="memGo" type="button">Присвоить</button>
+        </div>
+        <div class="row">
+          <span class="lbl">Попробуй:</span>
+          <button class="chip" type="button" data-mem="age|age + 1">age = age + 1</button>
+          <button class="chip" type="button" data-mem="friend|name">friend = name</button>
+          <button class="chip" type="button" data-mem="name|&quot;Петя&quot;">name = "Петя"</button>
+        </div>
+        <div class="msg" id="memMsg"></div>
+      </div>
+    </div>
+    <div class="pg"><textarea>age = 12
+print(age)
+age = age + 1
+print("В следующем году мне будет", age)
+
+name = "Аня"
+greeting = "Привет, " + name
+print(greeting)</textarea><div data-task>Создай переменные a = 7 и b = 5, выведи их сумму и произведение.</div></div>
+    <details class="deep"><summary>Под капотом</summary><div class="in">
+      <p>В Python переменная не коробка, а ссылка. <code>friend = name</code> не копирует строку: на тот же объект вешается вторая бирка (на схеме это видно). Для чисел и строк разницы почти не заметно. Для списков (лист 09) это очень важно: изменишь список через одно имя, и через второе он тоже изменится.</p>
+      <p>Значение, на которое не смотрит ни одна бирка, Python выбрасывает сам. Это называется сборкой мусора.</p>
+    </div></details>
+    <div class="quiz" data-q="x = 5, потом x = x + 3. Что выведет print(x)?" data-o="5|8|53|x + 3" data-a="1" data-e="Справа x + 3 = 8, и бирка x перевешивается на 8."></div>
+  </div>
+</section>
+
+<!-- ================= 03 ================= -->
+<section class="sheet" id="s03" data-title="Типы данных" data-min="6">
+  <div class="sbody">
+    <div class="txt">
+      <p class="lead">У каждого значения есть тип. От типа зависит, что с ним можно делать.</p>
+    </div>
+    <div class="tiles">
+      <div><span class="lbl">Целое число</span><span class="n">int</span><code>12  -5  2026</code></div>
+      <div><span class="lbl">Дробное число</span><span class="n">float</span><code>3.14  -0.5  2.0</code></div>
+      <div><span class="lbl">Строка / текст</span><span class="n">str</span><code>"кот"  '12'  ""</code></div>
+      <div><span class="lbl">Логический</span><span class="n">bool</span><code>True  False</code></div>
+    </div>
+    <div class="cols">
+      <div class="txt">
+        <p>Почему это важно: <code>2 + 2</code> равно <code>4</code>, а <code>"2" + "2"</code> равно <code>"22"</code>. Строки при сложении склеиваются, числа складываются.</p>
+        <p>Дробные числа пишут через <b>точку</b>, не через запятую: <code>3.5</code>. Запись <code>3,5</code> Python поймёт как два отдельных числа.</p>
+        <p>Узнать тип: <code>type(x)</code>. Превратить один тип в другой: <code>int("12")</code> даёт число 12, <code>str(12)</code> даёт текст "12", <code>float("3.5")</code> даёт 3.5.</p>
+      </div>
+      <div class="wid">
+        <div class="lbl">Детектор типов · впиши значение как в коде</div>
+        <div class="row"><input type="text" id="typeIn" value='"12"' aria-label="Значение" style="flex:1"></div>
+        <div class="row">
+          <button class="chip" type="button" data-ty="12">12</button>
+          <button class="chip" type="button" data-ty="12.0">12.0</button>
+          <button class="chip" type="button" data-ty='"12"'>"12"</button>
+          <button class="chip" type="button" data-ty="True">True</button>
+          <button class="chip" type="button" data-ty="3,5">3,5</button>
+          <button class="chip" type="button" data-ty="привет">привет</button>
+        </div>
+        <div class="type-out"><div class="type-badge" id="typeBadge">str</div><p id="typeTxt"></p></div>
+      </div>
+    </div>
+    <div class="pg"><textarea>print(type(12))
+print(type(3.14))
+print(type("12"))
+print(type(True))
+
+print("2" + "2")
+print(2 + 2)
+print(int("2") + int("2"))
+print("Ура! " * 3)</textarea><div data-task>Попробуй print("5" + 5). Прочитай ошибку. Потом почини через int() или str().</div></div>
+    <details class="deep"><summary>Под капотом</summary><div class="in">
+      <p>Python — язык с <b>динамической типизацией</b>: тип принадлежит значению, а не переменной. Бирку <code>x</code> можно повесить сначала на число, потом на строку.</p>
+      <p><code>bool</code> на самом деле разновидность <code>int</code>: <code>True + True</code> даёт 2. Пустые значения (<code>0</code>, <code>""</code>, <code>[]</code>) считаются ложью в условиях.</p>
+    </div></details>
+    <div class="quiz" data-q='Какой тип у значения "3.14" (в кавычках)?' data-o="float|int|str|bool" data-a="2" data-e="Кавычки всегда делают строку, даже если внутри цифры."></div>
+  </div>
+</section>
+
+<!-- ================= 04 ================= -->
+<section class="sheet" id="s04" data-title="Математика" data-min="7">
+  <div class="sbody">
+    <div class="cols">
+      <div class="txt">
+        <p class="lead">Python — очень мощный калькулятор. Порядок действий как в школе: сначала скобки, потом степень, потом умножение и деление, в конце сложение и вычитание.</p>
+        <div class="tscroll"><table class="t">
+          <tr><th>Знак</th><th>Что делает</th><th>Пример</th></tr>
+          <tr><td>+ -</td><td>сложение, вычитание</td><td><code>7 - 2</code> → 5</td></tr>
+          <tr><td>*</td><td>умножение</td><td><code>6 * 7</code> → 42</td></tr>
+          <tr><td>/</td><td>деление, всегда дробь</td><td><code>7 / 2</code> → 3.5</td></tr>
+          <tr><td>//</td><td>целая часть от деления</td><td><code>7 // 2</code> → 3</td></tr>
+          <tr><td>%</td><td>остаток от деления</td><td><code>7 % 2</code> → 1</td></tr>
+          <tr><td>**</td><td>степень</td><td><code>2 ** 10</code> → 1024</td></tr>
+        </table></div>
+      </div>
+      <div class="wid">
+        <div class="lbl">Разбор выражения по шагам</div>
+        <div class="row"><input type="text" id="exIn" value="2 + 3 * (10 - 4) ** 2" aria-label="Выражение" style="flex:1"><button class="chip on" id="exStep" type="button">Шаг →</button><button class="chip" id="exAll" type="button">Всё</button></div>
+        <div class="row">
+          <button class="chip" type="button" data-ex="2 + 3 * 4">2 + 3 * 4</button>
+          <button class="chip" type="button" data-ex="(2 + 3) * 4">(2 + 3) * 4</button>
+          <button class="chip" type="button" data-ex="17 // 5 + 17 % 5">17 // 5 + 17 % 5</button>
+          <button class="chip" type="button" data-ex="10 / 4 * 2">10 / 4 * 2</button>
+        </div>
+        <div class="steps" id="exSteps"></div>
+        <div class="msg" id="exMsg"></div>
+      </div>
+    </div>
+    <div class="pg"><textarea>pizza = 899     # цена пиццы
+friends = 4
+
+print("Каждый платит:", pizza / friends)
+print("Целых рублей:", pizza // friends)
+print("Остаток:", pizza % friends)
+print("2 в 10 степени:", 2 ** 10)
+print("Секунд в году:", 60 * 60 * 24 * 365)</textarea><div data-task>Посчитай, сколько тебе дней (лет × 365). А сколько это часов?</div></div>
+    <details class="deep"><summary>Под капотом</summary><div class="in">
+      <p>Остаток <code>%</code> полезнее, чем кажется. <code>n % 2 == 0</code> проверяет, чётное ли число. <code>минуты % 60</code> даёт минуты сверх целых часов.</p>
+      <p><code>0.1 + 0.2</code> в Python даёт <code>0.30000000000000004</code>. Это не баг Python: компьютер хранит дроби в двоичном виде, и 0.1 в двоичной системе бесконечная дробь, как 1/3 в десятичной. Для денег используют модуль <code>decimal</code> или считают в копейках.</p>
+      <p>Целые числа в Python не ограничены по размеру: попробуй <code>print(2 ** 1000)</code>.</p>
+    </div></details>
+    <div class="quiz" data-q="Сколько будет 2 + 3 * 4?" data-o="20|14|24" data-a="1" data-e="Сначала умножение 3 * 4 = 12, потом 2 + 12 = 14."></div>
+  </div>
+</section>
+
+<!-- ================= 05 ================= -->
+<section class="sheet" id="s05" data-title="Строки" data-min="8">
+  <div class="sbody">
+    <div class="txt">
+      <p class="lead">Строка — это цепочка символов, и у каждого символа есть номер (индекс). Счёт идёт <b>с нуля</b>.</p>
+    </div>
+    <div class="wid">
+      <div class="row"><span class="lbl">s =</span><input type="text" id="strIn" value="ПРИВЕТ, МИР" maxlength="16" aria-label="Строка" style="flex:1;max-width:320px"></div>
+      <div class="ruler"><div class="cells" id="cells"></div></div>
+      <div class="row" style="gap:18px">
+        <label class="lbl" for="sa" style="flex:1;min-width:160px">начало <span id="saV">0</span><input type="range" id="sa" min="0" max="11" value="0"></label>
+        <label class="lbl" for="sb" style="flex:1;min-width:160px">конец (не включая) <span id="sbV">6</span><input type="range" id="sb" min="0" max="11" value="6"></label>
+      </div>
+      <div class="codeline" id="strCode"></div>
+    </div>
+    <div class="cols">
+      <div class="txt">
+        <ul>
+          <li><code>s[0]</code> первый символ, <code>s[-1]</code> последний.</li>
+          <li><code>s[0:6]</code> срез: символы с 0 по 5. Конец в срез не входит, как в линейке: от 0 до 6 сантиметров — это 6 сантиметров.</li>
+          <li><code>len(s)</code> длина строки.</li>
+          <li><code>s.upper()</code> большими буквами, <code>s.lower()</code> маленькими, <code>s.replace("а", "о")</code> замена.</li>
+        </ul>
+      </div>
+      <div class="txt">
+        <p><b>f-строки</b> — самый удобный способ вставить значения в текст. Ставишь <code>f</code> перед кавычками и пишешь переменные в фигурных скобках:</p>
+        <p><code>f"Мне {age} лет"</code></p>
+        <p>Внутри скобок можно даже считать: <code>f"Через год {age + 1}"</code>.</p>
+      </div>
+    </div>
+    <div class="pg"><textarea>s = "Python"
+print(s[0], s[-1])
+print(s[0:3])
+print(len(s))
+print(s.upper())
+
+name = "Аня"
+age = 12
+print(f"{name}, тебе {age}. Через 10 лет будет {age + 10}.")</textarea><div data-task>Выведи своё имя задом наперёд. Подсказка: срез s[::-1].</div></div>
+    <details class="deep"><summary>Под капотом</summary><div class="in">
+      <p>Строки <b>неизменяемы</b>: <code>s[0] = "Ж"</code> выдаст ошибку. Методы вроде <code>upper()</code> не меняют строку, а возвращают новую.</p>
+      <p>У среза есть третье число, шаг: <code>s[::2]</code> берёт каждый второй символ, <code>s[::-1]</code> идёт с конца.</p>
+    </div></details>
+    <div class="quiz" data-q='s = "КОТ". Что такое s[1]?' data-o='"К"|"О"|"Т"|ошибка' data-a="1" data-e="Индексы с нуля: К — 0, О — 1, Т — 2."></div>
+  </div>
+</section>
+
+<!-- ================= 06 ================= -->
+<section class="sheet" id="s06" data-title="input: разговор" data-min="5">
+  <div class="sbody">
+    <div class="cols">
+      <div class="txt">
+        <p class="lead"><code>input()</code> останавливает программу и ждёт, пока человек что-нибудь напечатает и нажмёт Enter.</p>
+        <p>То, что напечатал человек, возвращается как <b>строка</b>. Всегда строка, даже если там цифры. Поэтому для чисел пишут <code>int(input())</code>.</p>
+        <p>В скобках можно написать вопрос: <code>input("Как тебя зовут? ")</code>.</p>
+        <div class="note"><span class="lbl">Как это работает здесь</span><p>На сайте у окошек с <code>input</code> есть поле «Ввод». Это ответы человека, разделённые знаком <code>|</code>: первый <code>input</code> получит первый ответ, второй — второй.</p></div>
+      </div>
+      <figure class="fig">
+        <svg viewBox="0 0 420 330" role="img" aria-label="Диаграмма диалога между программой и человеком">
+          <rect class="k" x="40" y="10" width="120" height="40"/><text x="100" y="35" text-anchor="middle">ПРОГРАММА</text>
+          <rect class="k" x="260" y="10" width="120" height="40"/><text x="320" y="35" text-anchor="middle">ЧЕЛОВЕК</text>
+          <path class="dsh" d="M100 50 V320 M320 50 V320"/>
+          <rect class="k" x="94" y="76" width="12" height="112"/>
+          <path class="k" d="M106 90 H316" marker-end="url(#ar)"/><text x="116" y="82">"Как тебя зовут? "</text>
+          <path class="k" d="M316 130 H110" marker-end="url(#ar)"/><text x="200" y="122">"Аня"</text>
+          <text x="116" y="152" class="tx-s">input() ВЕРНУЛ СТРОКУ</text>
+          <path class="k" d="M106 178 H316" marker-end="url(#ar)"/><text x="116" y="170">"Привет, Аня!"</text>
+          <rect class="k" x="94" y="214" width="12" height="90"/>
+          <path class="k" d="M106 228 H316" marker-end="url(#ar)"/><text x="116" y="220">"Сколько лет? "</text>
+          <path class="k" d="M316 262 H110" marker-end="url(#ar)"/><text x="210" y="254">"12"</text>
+          <text x="116" y="290" class="tx-s">"12" → int() → 12</text>
+          <text x="10" y="134" class="tx-s" transform="rotate(-90 10 134)" text-anchor="middle">ВРЕМЯ ↓</text>
+        </svg>
+        <figcaption><span class="lbl">Рис. 06.1</span><span class="lbl">Диаграмма диалога</span></figcaption>
+      </figure>
+    </div>
+    <div class="pg" data-in="Аня|12"><textarea>name = input("Как тебя зовут? ")
+age = int(input("Сколько тебе лет? "))
+
+print(f"Привет, {name}!")
+print(f"Через 10 лет тебе будет {age + 10}")</textarea><div data-task>Убери int() вокруг input и запусти. Почему сломалось?</div></div>
+    <div class="quiz" data-q="Что возвращает input(), если человек ввёл 42?" data-o="Число 42|Строку &quot;42&quot;|Ничего" data-a="1" data-e="input всегда возвращает строку. Чтобы получить число, оберни в int()."></div>
+  </div>
+</section>
+
+<!-- ================= 07 ================= -->
+<section class="sheet" id="s07" data-title="Условия: if" data-min="8">
+  <div class="sbody">
+    <div class="cols">
+      <div class="txt">
+        <p class="lead">Условие — развилка. Если верно, программа идёт по одной дороге, иначе по другой.</p>
+        <ul>
+          <li><code>if</code> «если», <code>elif</code> «а иначе если», <code>else</code> «иначе».</li>
+          <li>После условия ставится <b>двоеточие</b> <code>:</code>.</li>
+          <li>Строки внутри сдвигаются на <b>4 пробела</b>. Отступ показывает, что относится к условию.</li>
+          <li>Сравнения: <code>==</code> равно, <code>!=</code> не равно, <code>&gt;</code> <code>&lt;</code> <code>&gt;=</code> <code>&lt;=</code>.</li>
+          <li>Соединять: <code>and</code> (и), <code>or</code> (или), <code>not</code> (не).</li>
+        </ul>
+        <p>Одно <code>=</code> вешает бирку, два <code>==</code> сравнивают. Перепутать их — классика.</p>
+      </div>
+      <div class="wid">
+        <div class="row"><span class="lbl" style="flex:1">temp = <b id="tV" style="font-size:18px;color:var(--ink)">18</b> °C</span></div>
+        <input type="range" id="tR" min="-20" max="40" value="18" aria-label="Температура">
+        <svg id="flow" viewBox="0 0 400 300" role="img" aria-label="Блок-схема условия">
+          <path class="edge" id="e0" d="M200 34 V58" marker-end="url(#ar)"/>
+          <g class="node" id="n1"><path d="M200 60 L290 95 L200 130 L110 95 Z"/><text x="200" y="100" text-anchor="middle">temp &gt; 25 ?</text></g>
+          <path class="edge" id="e1y" d="M110 95 H50 V196" marker-end="url(#ar)"/><text x="64" y="88" class="tx-s">ДА</text>
+          <path class="edge" id="e1n" d="M200 130 V158" marker-end="url(#ar)"/><text x="208" y="150" class="tx-s">НЕТ</text>
+          <g class="node" id="n2"><path d="M200 160 L290 195 L200 230 L110 195 Z"/><text x="200" y="200" text-anchor="middle">temp &gt; 10 ?</text></g>
+          <path class="edge" id="e2y" d="M290 195 H350 V236" marker-end="url(#ar)"/><text x="300" y="188" class="tx-s">ДА</text>
+          <path class="edge" id="e2n" d="M200 230 V256" marker-end="url(#ar)"/><text x="208" y="250" class="tx-s">НЕТ</text>
+          <g class="node" id="r1"><rect x="6" y="200" width="88" height="40"/><text x="50" y="225" text-anchor="middle">Жарко</text></g>
+          <g class="node" id="r2"><rect x="306" y="240" width="88" height="40"/><text x="350" y="265" text-anchor="middle">Норм</text></g>
+          <g class="node" id="r3"><rect x="156" y="258" width="88" height="40"/><text x="200" y="283" text-anchor="middle">Холодно</text></g>
+          <g class="node act"><rect x="150" y="4" width="100" height="30" rx="15"/><text x="200" y="24" text-anchor="middle">старт</text></g>
+        </svg>
+        <div class="codepanel" id="flowCode"><div data-l="0">temp = 18</div><div data-l="1">if temp &gt; 25:</div><div data-l="2">    print("Жарко, бери кепку")</div><div data-l="3">elif temp &gt; 10:</div><div data-l="4">    print("Нормально, лёгкая куртка")</div><div data-l="5">else:</div><div data-l="6">    print("Холодно, надень шапку!")</div></div>
+      </div>
+    </div>
+    <div class="pg" data-in="17"><textarea>password = input("Пароль: ")
+
+if password == "python123":
+    print("Доступ разрешён")
+elif password == "":
+    print("Ты ничего не ввёл")
+else:
+    print("Неверный пароль")
+
+age = 14
+if age >= 12 and age < 18:
+    print("Подросток")</textarea><div data-task>Напиши программу: спроси число и скажи, чётное оно или нет. Подсказка: число % 2 == 0.</div></div>
+    <details class="deep"><summary>Под капотом</summary><div class="in">
+      <p>Python проверяет ветки по очереди сверху вниз и выполняет <b>только первую</b> подходящую. Поэтому при температуре 30 программа скажет «Жарко», хотя 30 больше и 10 тоже.</p>
+      <p>Результат сравнения — значение типа <code>bool</code>: <code>print(5 &gt; 3)</code> напечатает <code>True</code>. Можно записать в переменную: <code>is_adult = age &gt;= 18</code>.</p>
+    </div></details>
+    <div class="quiz" data-q="Чем == отличается от = ?" data-o="Ничем, можно писать как угодно|== сравнивает, = присваивает|= сравнивает, == присваивает" data-a="1" data-e="= вешает бирку на значение, == спрашивает «равны ли?» и отвечает True или False."></div>
+  </div>
+</section>
+
+<!-- ================= 08 ================= -->
+<section class="sheet" id="s08" data-title="Циклы: for и while" data-min="8">
+  <div class="sbody">
+    <div class="cols">
+      <div class="txt">
+        <p class="lead">Цикл повторяет действия. Компьютер не устаёт: повторить миллион раз ему так же легко, как один.</p>
+        <p><code>for</code> проходит по очереди по каждому элементу. <code>range(1, 6)</code> выдаёт числа 1, 2, 3, 4, 5 (шестёрка не входит, как и в срезах). <code>range(5)</code> выдаёт 0, 1, 2, 3, 4.</p>
+        <p><code>while</code> повторяет, <b>пока</b> условие верно. Если условие никогда не станет ложным, цикл будет крутиться вечно. Это называется бесконечный цикл, и вкладка браузера тогда зависнет.</p>
+        <p><code>break</code> выходит из цикла досрочно, <code>continue</code> пропускает остаток шага.</p>
+        <div class="note"><span class="lbl">Аналогия</span><p>Конвейер на заводе: детали едут одна за другой, а робот над лентой делает с каждой одно и то же. Деталь — это <code>i</code>, действие робота — тело цикла с отступом.</p></div>
+      </div>
+      <div class="wid">
+        <div class="lbl">Конвейер for</div>
+        <div class="codepanel" id="loopCode"><div data-l="0">for i in range(1, <span id="lN">6</span>):</div><div data-l="1">    print(i, "×", i, "=", i * i)</div></div>
+        <div class="belt" id="belt"></div>
+        <div class="row">
+          <button class="chip on" id="lStep" type="button">Шаг</button>
+          <button class="chip" id="lAuto" type="button">Авто ▶</button>
+          <button class="chip" id="lReset" type="button">Сброс</button>
+          <label class="lbl" for="lEnd" style="flex:1;min-width:140px">конец range <input type="range" id="lEnd" min="2" max="10" value="6"></label>
+        </div>
+        <div class="console" id="lOut"></div>
+      </div>
+    </div>
+    <div class="pg"><textarea># таблица умножения на 7
+for i in range(1, 11):
+    print(f"7 × {i} = {7 * i}")
+
+# обратный отсчёт
+n = 5
+while n > 0:
+    print(n, "...")
+    n = n - 1
+print("Пуск!")</textarea><div data-task>Выведи все чётные числа от 2 до 20. Подсказка: range(2, 21, 2).</div></div>
+    <details class="deep"><summary>Под капотом</summary><div class="in">
+      <p>У <code>range</code> бывает третье число, шаг: <code>range(10, 0, -1)</code> считает назад.</p>
+      <p>Частый приём: накопитель. Перед циклом <code>total = 0</code>, внутри <code>total = total + i</code> (или короче <code>total += i</code>). После цикла в <code>total</code> сумма.</p>
+    </div></details>
+    <div class="quiz" data-q="Сколько раз выполнится тело цикла for i in range(3)?" data-o="2|3|4" data-a="1" data-e="range(3) даёт 0, 1, 2. Три числа, три повтора."></div>
+  </div>
+</section>
+
+<!-- ================= 09 ================= -->
+<section class="sheet" id="s09" data-title="Списки" data-min="8">
+  <div class="sbody">
+    <div class="txt">
+      <p class="lead">Список — много значений под одним именем, по порядку. Как поезд: у каждого вагона номер, первый вагон под номером 0.</p>
+    </div>
+    <div class="wid">
+      <div class="train" id="train"></div>
+      <div class="row">
+        <input type="text" id="trIn" value="яйца" aria-label="Новый элемент" style="width:140px">
+        <button class="chip" type="button" data-tr="append">.append(x)</button>
+        <button class="chip" type="button" data-tr="insert">.insert(0, x)</button>
+        <button class="chip" type="button" data-tr="pop">.pop()</button>
+        <button class="chip" type="button" data-tr="sort">.sort()</button>
+        <button class="chip" type="button" data-tr="reverse">.reverse()</button>
+      </div>
+      <div class="codeline" id="trCode">Нажми на вагон, чтобы узнать его индекс</div>
+    </div>
+    <div class="cols">
+      <div class="txt">
+        <ul>
+          <li>Создать: <code>shop = ["хлеб", "молоко", "сыр"]</code></li>
+          <li>Взять элемент: <code>shop[0]</code>, последний: <code>shop[-1]</code></li>
+          <li>Заменить: <code>shop[1] = "кефир"</code></li>
+          <li>Добавить в конец: <code>shop.append("яйца")</code></li>
+          <li>Убрать последний: <code>shop.pop()</code></li>
+          <li>Длина: <code>len(shop)</code>, проверка: <code>"сыр" in shop</code></li>
+        </ul>
+      </div>
+      <div class="txt">
+        <p>Списки и циклы созданы друг для друга:</p>
+        <p><code>for item in shop:</code><br><code>&nbsp;&nbsp;&nbsp;&nbsp;print("Купить:", item)</code></p>
+        <p>В списке может лежать что угодно: числа, строки, даже другие списки. Таблица — это список строк, где каждая строка тоже список.</p>
+      </div>
+    </div>
+    <div class="pg"><textarea>scores = [5, 3, 4, 5, 2]
+print("Все оценки:", scores)
+print("Первая:", scores[0], "последняя:", scores[-1])
+print("Сколько:", len(scores))
+print("Средняя:", sum(scores) / len(scores))
+print("Лучшая:", max(scores))
+
+scores.append(5)
+for s in scores:
+    print("★" * s)</textarea><div data-task>Сделай список из 5 любимых фильмов и выведи каждый с номером. Подсказка: for i, film in enumerate(films, 1).</div></div>
+    <details class="deep"><summary>Под капотом</summary><div class="in">
+      <p>Помнишь бирки из листа 02? <code>b = a</code> для списка не копирует его. <code>b.append(1)</code> изменит и <code>a</code>, потому что это один и тот же поезд. Копия: <code>b = a.copy()</code>.</p>
+      <p>Генератор списка — короткая запись цикла: <code>[x * x for x in range(5)]</code> даёт <code>[0, 1, 4, 9, 16]</code>.</p>
+    </div></details>
+    <div class="quiz" data-q="В списке 5 элементов. Какой индекс у последнего?" data-o="5|4|-5" data-a="1" data-e="Счёт с нуля: 0, 1, 2, 3, 4. Ещё последний можно взять как [-1]."></div>
+  </div>
+</section>
+
+<!-- ================= 10 ================= -->
+<section class="sheet" id="s10" data-title="Словари" data-min="6">
+  <div class="sbody">
+    <div class="cols">
+      <div class="txt">
+        <p class="lead">Словарь хранит пары «ключ → значение». Ищешь не по номеру, а по названию.</p>
+        <p><code>phone = {"Аня": "111-22", "Петя": "333-44"}</code></p>
+        <ul>
+          <li>Взять: <code>phone["Аня"]</code></li>
+          <li>Добавить или заменить: <code>phone["Вова"] = "555-66"</code></li>
+          <li>Безопасно взять: <code>phone.get("Кто-то", "нет")</code> не упадёт, если ключа нет</li>
+          <li>Все ключи: <code>phone.keys()</code>, все значения: <code>phone.values()</code></li>
+        </ul>
+        <div class="note"><span class="lbl">Аналогия</span><p>Картотека с ящиками. На каждом ящике надпись (ключ), внутри карточка (значение). Ящиков с одинаковой надписью не бывает.</p></div>
+      </div>
+      <div class="wid">
+        <div class="lbl">Картотека phone</div>
+        <div class="cab" id="cab"></div>
+        <div class="row"><input type="text" id="dKey" value="Петя" aria-label="Ключ" style="width:120px"><input type="text" id="dVal" value="" placeholder="значение" aria-label="Значение" style="flex:1;min-width:100px"></div>
+        <div class="row"><button class="chip on" id="dGet" type="button">phone[ключ]</button><button class="chip" id="dSet" type="button">phone[ключ] = значение</button><button class="chip" id="dDel" type="button">del phone[ключ]</button></div>
+        <div class="codeline" id="dCode"></div>
+      </div>
+    </div>
+    <div class="pg"><textarea>prices = {"хлеб": 50, "молоко": 90, "сыр": 400}
+
+print("Сыр стоит", prices["сыр"])
+prices["кофе"] = 350
+
+total = 0
+for item, price in prices.items():
+    print(f"{item:>8}: {price} ₽")
+    total += price
+print("Итого:", total)</textarea><div data-task>Сделай словарь «слово → перевод» на 3 слова и выведи перевод слова "cat".</div></div>
+    <div class="quiz" data-q='d = {"кот": "мяу"}. Что будет при d["пёс"]?' data-o="None|&quot;мяу&quot;|Ошибка KeyError" data-a="2" data-e="Такого ключа нет, Python ругнётся KeyError. Чтобы не падать, используй d.get(&quot;пёс&quot;)."></div>
+  </div>
+</section>
+
+<!-- ================= 11 ================= -->
+<section class="sheet" id="s11" data-title="Функции" data-min="9">
+  <div class="sbody">
+    <div class="cols">
+      <div class="txt">
+        <p class="lead">Функция — именованный кусок кода, который можно запускать много раз. Кладёшь что-то на вход, получаешь результат на выходе.</p>
+        <p><code>def</code> создаёт функцию. В скобках <b>параметры</b>: то, что функция получает. <code>return</code> отдаёт результат обратно.</p>
+        <p><code>print</code>, <code>len</code>, <code>input</code> — тоже функции, просто их уже написали за тебя.</p>
+        <p>Правило программистов: если копируешь один и тот же код третий раз, пора делать функцию.</p>
+      </div>
+      <div class="wid">
+        <div class="lbl">Станок def</div>
+        <div class="row">
+          <select id="fSel" aria-label="Функция">
+            <option value="double">double(n)</option>
+            <option value="square">square(n)</option>
+            <option value="hello">hello(name)</option>
+            <option value="length">length(text)</option>
+          </select>
+          <input type="text" id="fArg" value="5" aria-label="Аргумент" style="width:120px">
+          <button class="chip on" id="fGo" type="button">Вызвать</button>
+        </div>
+        <div class="mach" id="mach">
+          <span class="hopper" style="left:2%">ВХОД</span><span class="hopper" style="right:2%">ВЫХОД</span>
+          <div class="body">
+            <svg class="gear" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="13" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="22" cy="22" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M22 2v8M22 34v8M2 22h8M34 22h8M8 8l5.5 5.5M30.5 30.5L36 36M8 36l5.5-5.5M30.5 13.5L36 8" stroke="currentColor" stroke-width="3"/></svg>
+            <code id="fBody">return n * 2</code>
+          </div>
+          <div class="belt-l"></div>
+        </div>
+        <div class="codeline" id="fCode"></div>
+      </div>
+    </div>
+    <div class="pg"><textarea>def greet(name):
+    return f"Привет, {name}!"
+
+def area(width, height):
+    return width * height
+
+print(greet("Аня"))
+print(greet("мир"))
+print("Площадь комнаты:", area(4, 5), "м²")
+
+def is_even(n):
+    return n % 2 == 0
+
+for x in range(1, 6):
+    print(x, "чётное?", is_even(x))</textarea><div data-task>Напиши функцию max_of_three(a, b, c), которая возвращает наибольшее из трёх чисел, не используя max().</div></div>
+    <details class="deep"><summary>Под капотом</summary><div class="in">
+      <p>Переменные, созданные внутри функции, живут только внутри неё (локальная область видимости). Снаружи их не видно.</p>
+      <p>У параметров бывают значения по умолчанию: <code>def greet(name="друг")</code>. Тогда <code>greet()</code> сработает и без аргумента.</p>
+      <p>Функция без <code>return</code> возвращает специальное значение <code>None</code> — «ничего».</p>
+    </div></details>
+    <div class="quiz" data-q="Что вернёт функция, в которой нет return?" data-o="0|Пустую строку|None|Ошибку" data-a="2" data-e="Без return функция возвращает None, то есть «ничего»."></div>
+  </div>
+</section>
+
+<!-- ================= 12 ================= -->
+<section class="sheet" id="s12" data-title="Ошибки и как их читать" data-min="6">
+  <div class="sbody">
+    <div class="txt">
+      <p class="lead">Ошибки — нормальная часть работы. Опытный программист ошибается не реже новичка, просто быстрее читает сообщение.</p>
+    </div>
+    <div class="tb">
+<pre><span>Traceback (most recent call last):</span><span>  File "main.py", line 3, in &lt;module&gt;</span><span>    print("Мне " + age + " лет")</span><span class="mark">TypeError: can only concatenate str (not "int") to str</span></pre>
+      <ol>
+        <li><b>Traceback</b> — «путь до места аварии». Читать снизу вверх.</li>
+        <li><b>line 3</b> — номер строки, где упало.</li>
+        <li>Сама строка с ошибкой.</li>
+        <li><b>Последняя строка — главное</b>: тип ошибки и что случилось. Здесь: нельзя склеить строку с числом. Почини: <code>str(age)</code> или f-строка.</li>
+      </ol>
+    </div>
+    <div class="tscroll"><table class="t">
+      <tr><th>Ошибка</th><th>Что значит по-человечески</th><th>Частая причина</th></tr>
+      <tr><td>SyntaxError</td><td>нарушена грамматика языка</td><td>забыто двоеточие, скобка или кавычка</td></tr>
+      <tr><td>IndentationError</td><td>сбились отступы</td><td>внутри if/for/def нет 4 пробелов</td></tr>
+      <tr><td>NameError</td><td>Python не знает такого имени</td><td>опечатка или текст без кавычек</td></tr>
+      <tr><td>TypeError</td><td>не тот тип</td><td>строка + число</td></tr>
+      <tr><td>ValueError</td><td>тип верный, значение нет</td><td><code>int("привет")</code></td></tr>
+      <tr><td>IndexError</td><td>нет элемента с таким номером</td><td>забыли, что счёт с 0</td></tr>
+      <tr><td>KeyError</td><td>нет такого ключа в словаре</td><td>опечатка в ключе</td></tr>
+      <tr><td>ZeroDivisionError</td><td>деление на ноль</td><td>ну тут без комментариев</td></tr>
+    </table></div>
+    <div class="pg"><textarea># В этой программе 3 ошибки. Запускай, читай, чини по одной.
+name = "Аня"
+age = 12
+print("Меня зовут " + nmae)
+if age > 10
+    print("Мне " + age + " лет")</textarea><div data-task>Почини все три ошибки, пока программа не напечатает обе строки. Сайт подскажет, что значит каждая ошибка.</div></div>
+    <details class="deep"><summary>Под капотом</summary><div class="in">
+      <p>Ошибки можно перехватывать, чтобы программа не падала:</p>
+      <p><code>try:</code><br><code>&nbsp;&nbsp;&nbsp;&nbsp;n = int(input())</code><br><code>except ValueError:</code><br><code>&nbsp;&nbsp;&nbsp;&nbsp;print("Это не число")</code></p>
+      <p>Совет на всю жизнь: скопируй последнюю строку ошибки в поисковик. Кто-то уже спрашивал то же самое.</p>
+    </div></details>
+    <div class="quiz" data-q="Где в сообщении об ошибке самое важное?" data-o="В первой строке Traceback|В последней строке|В названии файла" data-a="1" data-e="Последняя строка говорит тип ошибки и причину. Строкой выше — номер строки кода."></div>
+  </div>
+</section>
+
+<!-- ================= 13 ================= -->
+<section class="sheet" id="s13" data-title="Модули и что дальше" data-min="10">
+  <div class="sbody">
+    <div class="cols">
+      <div class="txt">
+        <p class="lead">Модуль — готовый набор функций, который можно подключить словом <code>import</code>. Python поставляется с сотнями модулей.</p>
+        <ul>
+          <li><code>import random</code> — случайности: <code>random.randint(1, 6)</code> бросает кубик, <code>random.choice(list)</code> выбирает из списка.</li>
+          <li><code>import math</code> — математика: <code>math.sqrt(16)</code>, <code>math.pi</code>.</li>
+          <li><code>import datetime</code> — даты и время.</li>
+        </ul>
+        <p>Миллионы модулей, написанных другими людьми, ставятся командой <code>pip install имя</code>.</p>
+      </div>
+      <div class="txt">
+        <p><b>Как поставить Python к себе на компьютер:</b></p>
+        <ol style="margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:6px">
+          <li>Открой <a href="https://www.python.org/downloads/" target="_blank" rel="noopener">python.org/downloads</a> и скачай последнюю версию.</li>
+          <li>На Windows при установке поставь галочку <b>«Add python.exe to PATH»</b>. Это самое частое, что забывают.</li>
+          <li>Запусти IDLE (идёт в комплекте) или поставь редактор <a href="https://code.visualstudio.com/" target="_blank" rel="noopener">VS Code</a> с расширением Python.</li>
+          <li>Создай файл <code>hello.py</code>, напиши <code>print("Привет")</code> и запусти.</li>
+        </ol>
+      </div>
+    </div>
+    <div class="txt"><p class="lead">Итоговый проект: игра «Угадай число». Здесь всё, что было в альбоме: переменные, ввод, условия, цикл, модуль.</p></div>
+    <div class="pg" data-in="50|25|37|31|34|33|32"><textarea>import random
+
+secret = random.randint(1, 50)
+tries = 0
+print("Я загадал число от 1 до 50. Угадай!")
+
+while True:
+    guess = int(input("Твой вариант: "))
+    tries += 1
+    if guess < secret:
+        print("Больше")
+    elif guess > secret:
+        print("Меньше")
+    else:
+        print(f"Угадал за {tries} попыток! Это было {secret}")
+        break
+    if tries >= 7:
+        print("Попытки кончились. Число было", secret)
+        break</textarea><div data-task>Меняй ответы в поле «Ввод», как будто играешь. Потом добавь в игру выбор сложности: до 10, до 50 или до 100.</div></div>
+    <div class="roads">
+      <div><span class="lbl">Ты здесь</span><h3>Основы</h3><p>Переменные, условия, циклы, функции. Это фундамент для всего остального.</p></div>
+      <div><span class="lbl">Игры</span><h3>pygame</h3><p>2D-игры с графикой и звуком. Отличный следующий шаг для школьника.</p></div>
+      <div><span class="lbl">Боты</span><h3>aiogram</h3><p>Телеграм-боты: напоминалки, викторины, помощники.</p></div>
+      <div><span class="lbl">Работа и данные</span><h3>pandas</h3><p>Таблицы на миллионы строк, отчёты, графики. Убийца рутины в Excel.</p></div>
+      <div><span class="lbl">Сайты</span><h3>Flask · Django</h3><p>Серверная часть сайтов и веб-сервисов.</p></div>
+      <div><span class="lbl">Автоматизация</span><h3>скрипты</h3><p>Переименовать 1000 файлов, разобрать почту, скачать данные. То, ради чего Python учат взрослые.</p></div>
+    </div>
+    <div class="quiz" data-q="Как подключить модуль random?" data-o="include random|import random|using random" data-a="1" data-e="В Python модули подключают словом import."></div>
+    <div class="cert" id="cert"><span class="lbl">Акт приёмки</span><h3>Все 14 листов приняты</h3><p>Ты прошёл альбом целиком. Основы Python теперь твои. Дальше выбирай дорогу из таблицы выше и пиши свой первый настоящий проект.</p></div>
+  </div>
+</section>
+
+<footer class="stamp" aria-label="Штамп чертежа">
+  <div class="big">Python по чертежам</div>
+  <div><span class="lbl">Лит.</span>У (учебный)</div>
+  <div><span class="lbl">Масштаб</span>1 : 1</div>
+  <div><span class="lbl">Листов</span>14</div>
+  <div><span class="lbl">Разраб.</span>ты</div>
+  <div><span class="lbl">Пров.</span>Python</div>
+  <div><span class="lbl">Пройдено</span><span id="doneCount">0 / 14</span></div>
+</footer>
+</main>
+
+<script>
+(function(){
+"use strict";
+var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function store(k,v){try{if(v===undefined)return JSON.parse(localStorage.getItem(k));localStorage.setItem(k,JSON.stringify(v))}catch(e){return null}}
+var reduce=window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ---------- theme ---------- */
+var th=store("pbp.theme"); if(th)document.documentElement.setAttribute("data-theme",th);
+$("#theme").addEventListener("click",function(){
+  var cur=document.documentElement.getAttribute("data-theme");
+  var dark=cur?cur==="dark":matchMedia("(prefers-color-scheme: dark)").matches;
+  var n=dark?"light":"dark"; document.documentElement.setAttribute("data-theme",n); store("pbp.theme",n);
+});
+
+/* ---------- sheets: headers + toc ---------- */
+var sheets=$$(".sheet"), done=store("pbp.done")||{};
+sheets.forEach(function(s,i){
+  var no=String(i).padStart(2,"0");
+  var h=document.createElement("div"); h.className="shead";
+  h.innerHTML='<div class="no">'+no+'</div><div><h2>'+s.dataset.title+'</h2></div><div class="meta"><span class="lbl">Лист '+no+' из 13</span><span class="lbl">≈ '+s.dataset.min+' мин</span></div>';
+  s.insertBefore(h,s.firstChild);
+});
+var descs={s00:"Рецепт для компьютера",s01:"Вывод на экран",s02:"Бирки на значениях",s03:"int, float, str, bool",s04:"Калькулятор и порядок действий",s05:"Индексы, срезы, f-строки",s06:"Программа спрашивает",s07:"Развилки и сравнения",s08:"Повторять без устали",s09:"Поезд из значений",s10:"Картотека ключей",s11:"Станок: вход и выход",s12:"Читаем сообщения",s13:"import и первый проект"};
+var toc=$("#toc");
+sheets.forEach(function(s,i){
+  var a=document.createElement("a"); a.href="#"+s.id; a.id="toc-"+s.id;
+  a.innerHTML='<span class="lbl">Лист '+String(i).padStart(2,"0")+'</span><span class="t">'+s.dataset.title+'</span><span class="d">'+descs[s.id]+'</span><span class="ok">✓</span>';
+  toc.appendChild(a);
+});
+function refreshDone(){
+  var n=0; sheets.forEach(function(s){var d=!!done[s.id]; if(d)n++; $("#toc-"+s.id).classList.toggle("done",d)});
+  $("#doneCount").textContent=n+" / 14"; $("#cert").classList.toggle("show",n===14);
+}
+refreshDone();
+
+/* ---------- scroll progress + current sheet ---------- */
+var bar=$("#bar"), sn=$("#sheetno");
+function onScroll(){
+  var h=document.documentElement, max=h.scrollHeight-h.clientHeight;
+  bar.style.transform="scaleX("+(max>0?h.scrollTop/max:0)+")";
+  var cur="—"; sheets.forEach(function(s,i){ if(s.getBoundingClientRect().top<window.innerHeight*.4) cur=String(i).padStart(2,"0") });
+  sn.textContent="ЛИСТ "+cur+" / 13";
+}
+window.addEventListener("scroll",onScroll,{passive:true}); onScroll();
+
+/* ---------- hero crosshair ---------- */
+var hero=$("#hero"), cross=$("#cross"), coords=$("#coords");
+hero.addEventListener("mousemove",function(e){
+  var r=cross.getBoundingClientRect(), x=e.clientX-r.left, y=e.clientY-r.top;
+  cross.style.setProperty("--mx",x+"px"); cross.style.setProperty("--my",y+"px");
+  coords.textContent="X "+String(Math.max(0,Math.round(x))).padStart(4,"0")+" · Y "+String(Math.max(0,Math.round(y))).padStart(4,"0");
+});
+
+/* ---------- drawing animation ---------- */
+if(!reduce && "IntersectionObserver" in window){
+  document.documentElement.classList.add("anim");
+  $$(".fig").forEach(function(f){
+    var i=0;
+    $$("path,line,rect,circle,polyline",f).forEach(function(el){
+      if(el.closest("marker")||el.classList.contains("dsh")||el.classList.contains("pf"))return;
+      el.setAttribute("pathLength","1"); el.classList.add("s"); el.style.setProperty("--i",i++);
+    });
+    $$("text",f).forEach(function(t,j){t.style.setProperty("--i",j)});
+  });
+  var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add("on");io.unobserve(e.target)}})},{threshold:.2});
+  $$(".fig").forEach(function(f){io.observe(f)});
+}
+
+/* ---------- quizzes ---------- */
+$$(".quiz").forEach(function(q){
+  var sid=q.closest(".sheet").id, opts=q.dataset.o.split("|"), ans=+q.dataset.a;
+  q.innerHTML='<span class="lbl">Проверка</span><div class="q">'+esc(q.dataset.q)+'</div><div class="opts"></div><div class="fb" aria-live="polite"></div>';
+  var box=$(".opts",q), fb=$(".fb",q);
+  opts.forEach(function(o,i){
+    var b=document.createElement("button"); b.type="button"; b.textContent=o;
+    b.addEventListener("click",function(){
+      if(i===ans){b.classList.add("right");q.classList.add("solved");fb.textContent="Верно. "+q.dataset.e;done[sid]=1;store("pbp.done",done);refreshDone();}
+      else{b.classList.add("wrong");fb.textContent="Не совсем. Попробуй ещё раз.";}
+    });
+    box.appendChild(b);
+  });
+  if(done[sid]){q.classList.add("solved");box.children[ans].classList.add("right");fb.textContent="Лист пройден. "+q.dataset.e;}
+});
+
+/* ================= PYTHON RUNTIME (Brython, lazy) ================= */
+var BRY="https://cdnjs.cloudflare.com/ajax/libs/brython/3.12.4/";
+var pyPromise=null;
+function loadScript(src){return new Promise(function(res,rej){var s=document.createElement("script");s.src=src;s.onload=res;s.onerror=function(){rej(new Error("load "+src))};document.head.appendChild(s)})}
+var RUNNER=[
+"from browser import window",
+"import sys",
+"class _W:",
+"    def __init__(self, cb): self.cb = cb",
+"    def write(self, s): self.cb(str(s))",
+"    def flush(self): pass",
+"def _run(src, inputs, out, err):",
+"    feed = list(inputs)",
+"    def _inp(prompt=''):",
+"        out(str(prompt))",
+"        if not feed:",
+"            raise EOFError('input() ждёт ответ, а поле «Ввод» пустое')",
+"        v = feed.pop(0)",
+"        out(v + '\\n')",
+"        return v",
+"    o, e = sys.stdout, sys.stderr",
+"    sys.stdout = _W(out); sys.stderr = _W(err)",
+"    ns = {'__name__': '__main__', 'input': _inp}",
+"    try:",
+"        code = compile(src, '<код>', 'exec')",
+"        exec(code, ns)",
+"        return ''",
+"    except BaseException as ex:",
+"        line = getattr(ex, 'lineno', None) if isinstance(ex, SyntaxError) else None",
+"        if line is None:",
+"            try:",
+"                tb = ex.__traceback__",
+"                while tb is not None:",
+"                    if tb.tb_frame.f_code.co_filename == '<код>':",
+"                        line = tb.tb_lineno",
+"                    tb = tb.tb_next",
+"            except BaseException:",
+"                pass",
+"        return type(ex).__name__ + '\\u0001' + str(ex) + '\\u0001' + str(line or '')",
+"    finally:",
+"        sys.stdout, sys.stderr = o, e",
+"window.pyRun = _run",
+"window.pyReady = True"].join("\n");
+function ensurePy(){
+  if(pyPromise)return pyPromise;
+  pyPromise=loadScript(BRY+"brython.min.js").then(function(){return loadScript(BRY+"brython_stdlib.min.js")}).then(function(){
+    var s=document.createElement("script"); s.type="text/python"; s.id="pyrunner"; s.textContent=RUNNER; document.body.appendChild(s);
+    window.brython({debug:0,ids:["pyrunner"]});
+    return new Promise(function(res,rej){var t=0;(function w(){if(window.pyReady)return res();if(++t>200)return rej(new Error("timeout"));setTimeout(w,50)})()});
+  });
+  pyPromise.catch(function(){pyPromise=null});
+  return pyPromise;
+}
+var EXPL={
+  SyntaxError:"Нарушена грамматика Python. Проверь: двоеточие в конце строки с if / for / while / def, закрыты ли все скобки и кавычки.",
+  IndentationError:"Сбились отступы. Строки внутри if / for / def сдвигаются на 4 пробела, и у всех строк блока сдвиг одинаковый.",
+  NameError:"Python не знает такого имени. Скорее всего опечатка, или переменная ещё не создана выше, или ты забыл кавычки вокруг текста.",
+  TypeError:"Смешаны несовместимые типы, например строка + число. Превращай: str(число) в текст или int(текст) в число.",
+  ValueError:"Тип подходит, а значение нет. Например, int(\"привет\"): из слова число не получится.",
+  ZeroDivisionError:"Деление на ноль. Так не умеет даже Python.",
+  IndexError:"Нет элемента с таким номером. Помни: счёт с 0, последний индекс равен len() - 1.",
+  KeyError:"В словаре нет такого ключа. Проверь написание или используй .get().",
+  EOFError:"Программа вызвала input(), а ответы в поле «Ввод» закончились. Допиши ещё ответ через |.",
+  AttributeError:"У этого значения нет такого метода или свойства. Проверь написание после точки.",
+  ModuleNotFoundError:"Такого модуля нет. Проверь имя после import.",
+  ImportError:"Не получилось импортировать. Проверь имя модуля.",
+  RecursionError:"Функция вызывает сама себя бесконечно. Нужна точка остановки."
+};
+
+var KW="False None True and as assert break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield".split(" ");
+var BI="print input int str float bool len range type list dict set tuple sum max min abs round sorted enumerate zip open".split(" ");
+function hl(code){
+  var re=/(#[^\n]*)|([fFrRbB]{0,2}"(?:\\.|[^"\\\n])*"?|[fFrRbB]{0,2}'(?:\\.|[^'\\\n])*'?)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_Ѐ-ӿ][\wЀ-ӿ]*)/g;
+  var out="",last=0,m;
+  while((m=re.exec(code))){
+    out+=esc(code.slice(last,m.index)); last=re.lastIndex;
+    if(m[1])out+='<span class="hl-c">'+esc(m[1])+'</span>';
+    else if(m[2])out+='<span class="hl-s">'+esc(m[2])+'</span>';
+    else if(m[3])out+='<span class="hl-n">'+m[3]+'</span>';
+    else if(KW.indexOf(m[4])>=0)out+='<span class="hl-k">'+m[4]+'</span>';
+    else if(BI.indexOf(m[4])>=0)out+='<span class="hl-b">'+m[4]+'</span>';
+    else out+=esc(m[4]);
+  }
+  return out+esc(code.slice(last));
+}
+
+var pgIO="IntersectionObserver" in window?new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){ensurePy().catch(function(){});pgIO.disconnect()}})},{rootMargin:"300px"}):null;
+
+$$(".pg").forEach(function(pg,idx){
+  var ta0=$("textarea",pg), initial=ta0.value, taskEl=$("[data-task]",pg), task=taskEl?taskEl.textContent:"";
+  var hasIn=pg.hasAttribute("data-in");
+  pg.innerHTML='<div class="pg-head"><span class="lbl">Код · можно менять</span><button type="button" class="reset">Сброс</button><button type="button" class="run">▶ Запустить</button></div>'+
+    '<div class="ed-wrap"><div class="gut" aria-hidden="true"></div><div class="ed"><pre aria-hidden="true"></pre><textarea spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" id="code'+idx+'" aria-label="Редактор кода"></textarea></div></div>'+
+    (hasIn?'<div class="pg-in"><label class="lbl" for="in'+idx+'">Ввод</label><input type="text" id="in'+idx+'" value="'+esc(pg.dataset.in)+'"><span class="lbl">ответы через |</span></div>':'')+
+    '<div class="pg-out" aria-live="polite"></div>'+(task?'<div class="task"><span class="lbl">Задание</span><span>'+esc(task)+'</span></div>':'');
+  var ta=$("textarea",pg), pre=$("pre",pg), gut=$(".gut",pg), out=$(".pg-out",pg), run=$(".run",pg), inp=$("input",pg);
+  var errLine=0;
+  function paint(){
+    var v=ta.value; pre.innerHTML=hl(v)+"\n ";
+    var n=v.split("\n").length, g=""; for(var i=1;i<=n;i++){g+=(i===errLine?'<span class="e">'+i+'</span>':i)+"\n"} gut.innerHTML=g;
+  }
+  ta.value=initial; paint();
+  ta.addEventListener("input",function(){errLine=0;paint()});
+  ta.addEventListener("keydown",function(e){
+    if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();go();return}
+    if(e.key==="Tab"&&!e.shiftKey){e.preventDefault();document.execCommand("insertText",false,"    ")||ins("    ");return}
+    if(e.key==="Enter"){
+      var s=ta.selectionStart, before=ta.value.slice(0,s), line=before.slice(before.lastIndexOf("\n")+1);
+      var ind=(line.match(/^ */)||[""])[0]; if(/:\s*$/.test(line))ind+="    ";
+      e.preventDefault(); if(!document.execCommand("insertText",false,"\n"+ind))ins("\n"+ind);
+    }
+  });
+  function ins(t){var s=ta.selectionStart,e=ta.selectionEnd;ta.value=ta.value.slice(0,s)+t+ta.value.slice(e);ta.selectionStart=ta.selectionEnd=s+t.length;paint()}
+  $(".reset",pg).addEventListener("click",function(){ta.value=initial;errLine=0;paint();out.textContent=""});
+  run.addEventListener("click",go);
+  if(pgIO)pgIO.observe(pg);
+  function go(){
+    run.disabled=true; out.innerHTML='<span class="sys">Загружаю Python в браузер (один раз, ≈5 МБ)…</span>';
+    ensurePy().then(function(){
+      out.textContent=""; var buf="";
+      var inputs=hasIn?inp.value.split("|").map(function(x){return x.trim()}):[];
+      var t0=performance.now();
+      var res;try{res=window.pyRun(ta.value,inputs,function(s){buf+=s},function(s){buf+=s})}catch(jsErr){res="Error\u0001"+(jsErr&&jsErr.message||jsErr)+"\u0001"}
+      out.textContent=buf;
+      if(res){
+        var p=String(res).split("\u0001"), name=p[0], msg=p[1], ln=+p[2]||0;
+        errLine=ln; paint();
+        var d=document.createElement("div"); d.className="err";
+        d.innerHTML='<b>'+esc(name)+'</b>'+(ln?' · строка '+ln:'')+'<br><span class="mono" style="font-size:13px">'+esc(msg)+'</span><br><br>'+esc(EXPL[name]||"Python остановился на ошибке. Прочитай последнюю строку сообщения и номер строки.");
+        out.appendChild(d);
+      } else {
+        errLine=0; paint();
+        if(!buf){var sp=document.createElement("span");sp.className="sys";sp.textContent="Программа выполнилась и ничего не напечатала.";out.appendChild(sp)}
+        else{var sp2=document.createElement("span");sp2.className="sys";sp2.textContent="\n— готово за "+Math.max(1,Math.round(performance.now()-t0))+" мс";out.appendChild(sp2)}
+      }
+    }).catch(function(){
+      out.innerHTML='<div class="err"><b>Python не загрузился.</b><br>Нужен интернет, чтобы скачать интерпретатор с cdnjs. Если сайт открыт внутри просмотрщика, который запрещает выполнять код, скачай папку python-guide и открой index.html в браузере.</div>';
+    }).then(function(){run.disabled=false});
+  }
+});
+
+/* ================= 02 memory ================= */
+(function(){
+  var mem=$("#mem"), msg=$("#memMsg"), objs=[], names={}, nid=1;
+  var KWS=KW;
+  function mk(v,t){var o={id:nid++,v:v,t:t,fresh:true};objs.push(o);return o.id}
+  names.name=mk('"Аня"',"str"); names.age=mk("12","int");
+  function find(id){for(var i=0;i<objs.length;i++)if(objs[i].id===id)return objs[i]}
+  function render(){
+    var before={}; $$(".tag",mem).forEach(function(t){before[t.dataset.n]=t.getBoundingClientRect()});
+    mem.innerHTML="";
+    objs.forEach(function(o){
+      var tags=Object.keys(names).filter(function(n){return names[n]===o.id});
+      var el=document.createElement("div"); el.className="obj"+(tags.length?"":" gc")+(o.fresh?" new":"");
+      el.innerHTML='<div class="tags">'+tags.map(function(n){return '<span class="tag" data-n="'+esc(n)+'">'+esc(n)+'</span>'}).join("")+'</div>'+(tags.length?'<div class="str"></div>':'<div class="str" style="opacity:0"></div>')+'<div class="box">'+esc(o.v)+'<small>'+o.t+'</small></div>';
+      mem.appendChild(el); o.fresh=false;
+    });
+    if(!reduce)$$(".tag",mem).forEach(function(t){var b=before[t.dataset.n];if(!b)return;var a=t.getBoundingClientRect();var dx=b.left-a.left,dy=b.top-a.top;if(dx||dy)t.animate([{transform:"translate("+dx+"px,"+dy+"px)"},{transform:"none"}],{duration:600,easing:"cubic-bezier(.6,0,.2,1)"})});
+    var dead=objs.filter(function(o){return !Object.keys(names).some(function(n){return names[n]===o.id})});
+    if(dead.length)setTimeout(function(){objs=objs.filter(function(o){return dead.indexOf(o)<0||Object.keys(names).some(function(n){return names[n]===o.id})});render()},1800);
+  }
+  function num(o){return o&&(o.t==="int"||o.t==="float")?parseFloat(o.v):null}
+  function fmt(v,f){return f?(Number.isInteger(v)?v+".0":String(v)):String(v)}
+  function assign(n,raw){
+    n=n.trim(); raw=raw.trim();
+    if(!/^[A-Za-z_Ѐ-ӿ][\wЀ-ӿ]*$/.test(n)){msg.textContent="Имя «"+n+"» не подходит: только буквы, цифры, _ и не с цифры.";return}
+    if(KWS.indexOf(n)>=0){msg.textContent="«"+n+"» — служебное слово Python, так переменную назвать нельзя.";return}
+    var m, id;
+    if(/^-?\d+$/.test(raw))id=mk(String(parseInt(raw,10)),"int");
+    else if(/^-?\d+\.\d+$/.test(raw))id=mk(raw,"float");
+    else if(/^(["']).*\1$/.test(raw))id=mk('"'+raw.slice(1,-1)+'"',"str");
+    else if(raw==="True"||raw==="False")id=mk(raw,"bool");
+    else if(names[raw]!==undefined)id=names[raw];
+    else if((m=raw.match(/^([A-Za-z_Ѐ-ӿ][\wЀ-ӿ]*)\s*([+\-*])\s*(-?\d+(?:\.\d+)?)$/))){
+      var src=find(names[m[1]]); if(!src){msg.textContent="NameError: имени «"+m[1]+"» ещё нет.";return}
+      var a=num(src), b=parseFloat(m[3]);
+      if(a===null){ if(src.t==="str"&&m[2]==="*"&&/^\d+$/.test(m[3])){id=mk('"'+src.v.slice(1,-1).repeat(+m[3])+'"',"str")} else {msg.textContent="TypeError: так со строкой нельзя.";return} }
+      else {var r=m[2]==="+"?a+b:m[2]==="-"?a-b:a*b; var f=src.t==="float"||m[3].indexOf(".")>=0; id=mk(fmt(r,f),f?"float":"int")}
+    }
+    else if(/^[A-Za-z_Ѐ-ӿ][\wЀ-ӿ]*$/.test(raw)){msg.textContent="NameError: имени «"+raw+"» нет. Если это текст, возьми его в кавычки.";return}
+    else {msg.textContent="Эта игрушка понимает числа, текст в кавычках, True/False, другое имя или выражение вида age + 1.";return}
+    var had=names[n]!==undefined; names[n]=id;
+    msg.textContent=n+" = "+raw+(had?"  → бирка «"+n+"» перевешена":"  → новая бирка «"+n+"»")+(names[raw]===id&&raw!==n?". Теперь на одном значении две бирки.":"");
+    render();
+  }
+  $("#memGo").addEventListener("click",function(){assign($("#memName").value,$("#memVal").value)});
+  $("#memVal").addEventListener("keydown",function(e){if(e.key==="Enter")assign($("#memName").value,$("#memVal").value)});
+  $$("[data-mem]").forEach(function(b){b.addEventListener("click",function(){var p=b.dataset.mem.split("|");$("#memName").value=p[0];$("#memVal").value=p[1];assign(p[0],p[1])})});
+  render(); msg.textContent='Сейчас в памяти: name = "Аня", age = 12. Поменяй что-нибудь.';
+})();
+
+/* ================= 03 types ================= */
+(function(){
+  var inp=$("#typeIn"), badge=$("#typeBadge"), txt=$("#typeTxt");
+  function check(){
+    var v=inp.value.trim(), t, d;
+    if(/^-?\d+$/.test(v)){t="int";d="Целое число. С ним можно считать: "+v+" + 1 = "+(parseInt(v,10)+1)+"."}
+    else if(/^-?\d+\.\d*$|^-?\d*\.\d+$/.test(v)){t="float";d="Дробное число, хватило точки. Даже 12.0 — это float, а не int."}
+    else if(/^(["']).*\1$/.test(v)&&v.length>=2){t="str";d="Строка: всё, что в кавычках, — текст. Цифры внутри не считаются числом. "+v+" + "+v+" = "+v[0]+v.slice(1,-1)+v.slice(1,-1)+v[0]+"."}
+    else if(v==="True"||v==="False"){t="bool";d="Логическое значение: истина или ложь. Пишется с большой буквы."}
+    else if(/^-?\d+,\d+$/.test(v)){t="tuple";d="Сюрприз: запятая не делает дробь. Python увидит ДВА числа ("+v.replace(","," и ")+") и соберёт кортеж. Дроби пишут через точку."}
+    else if(v==="true"||v==="false"){t="?";d="NameError: в Python пишут True и False с большой буквы."}
+    else if(/^[A-Za-z_Ѐ-ӿ][\wЀ-ӿ]*$/.test(v)){t="имя";d="Без кавычек это не текст, а имя переменной. Если такой переменной нет, будет NameError. Хотел текст? Возьми в кавычки."}
+    else if(v===""){t="—";d="Впиши что-нибудь."}
+    else {t="?";d="Такое Python, скорее всего, не поймёт. Попробуй число, текст в кавычках или True."}
+    badge.textContent=t; txt.textContent=d;
+  }
+  inp.addEventListener("input",check);
+  $$("[data-ty]").forEach(function(b){b.addEventListener("click",function(){inp.value=b.dataset.ty;check()})});
+  check();
+})();
+
+/* ================= 04 expression steps ================= */
+(function(){
+  var inp=$("#exIn"), box=$("#exSteps"), msg=$("#exMsg"), ast=null, n=0;
+  function tok(s){var re=/\s*(\d+\.\d+|\d+|\*\*|\/\/|[-+*\/%()])/y,t=[],m;re.lastIndex=0;while(re.lastIndex<s.length){var i=re.lastIndex;m=re.exec(s);if(!m){if(/^\s*$/.test(s.slice(i)))break;throw new Error("Непонятный символ: «"+s.slice(i).trim()[0]+"»")}t.push(m[1])}return t}
+  function parse(s){
+    var t=tok(s),p=0;
+    function peek(){return t[p]} function nx(){return t[p++]}
+    function atom(){var x=nx();if(x===undefined)throw new Error("Выражение оборвалось");
+      if(x==="("){var e=expr();if(nx()!==")")throw new Error("Не закрыта скобка");e.p=true;return e}
+      if(/^\d/.test(x))return{t:"n",v:parseFloat(x),f:x.indexOf(".")>=0};
+      throw new Error("Неожиданно: «"+x+"»")}
+    function power(){var b=atom();if(peek()==="**"){nx();return{t:"b",op:"**",l:b,r:unary()}}return b}
+    function unary(){if(peek()==="-"){nx();var e=unary();if(e.t==="n"&&!e.p){e.v=-e.v;return e}return{t:"neg",e:e}}return power()}
+    function term(){var l=unary();while(["*","/","//","%"].indexOf(peek())>=0){l={t:"b",op:nx(),l:l,r:unary()}}return l}
+    function expr(){var l=term();while(peek()==="+"||peek()==="-"){l={t:"b",op:nx(),l:l,r:term()}}return l}
+    var r=expr(); if(p<t.length)throw new Error("Лишнее: «"+t[p]+"»"); return r;
+  }
+  function fmt(x){return x.f?(Number.isInteger(x.v)&&Math.abs(x.v)<1e16?x.v+".0":String(x.v)):String(x.v)}
+  function findR(x){if(x.t==="n")return null;if(x.t==="neg")return findR(x.e)||(x.e.t==="n"?x:null);return findR(x.l)||findR(x.r)||(x.l.t==="n"&&x.r.t==="n"?x:null)}
+  function show(x,tg){var s;if(x.t==="n")s=esc(fmt(x));else if(x.t==="neg")s="-"+show(x.e,tg);else s=show(x.l,tg)+" "+x.op+" "+show(x.r,tg);
+    if(x.p&&x.t!=="n")s="("+s+")"; if(x===tg)s='<span class="hl">'+s+'</span>'; return s}
+  function calc(x){
+    if(x.t==="neg"){return{v:-x.e.v,f:x.e.f}}
+    var a=x.l.v,b=x.r.v,f=x.l.f||x.r.f,op=x.op;
+    if((op==="/"||op==="//"||op==="%")&&b===0)throw new Error("ZeroDivisionError: деление на ноль");
+    if(op==="+")return{v:a+b,f:f};if(op==="-")return{v:a-b,f:f};if(op==="*")return{v:a*b,f:f};
+    if(op==="/")return{v:a/b,f:true};if(op==="//")return{v:Math.floor(a/b),f:f};if(op==="%")return{v:a-b*Math.floor(a/b),f:f};
+    if(op==="**")return{v:Math.pow(a,b),f:f||b<0};
+  }
+  var expl={"**":"степень делается раньше всех","*":"умножение раньше сложения","/":"деление всегда даёт дробь","//":"целая часть от деления","%":"остаток от деления","+":"сложение","-":"вычитание",neg:"минус перед числом"};
+  function start(){box.innerHTML="";msg.textContent="";n=0;try{ast=parse(inp.value);line()}catch(e){ast=null;msg.textContent=e.message}}
+  function line(){var tg=findR(ast);var d=document.createElement("div");d.dataset.n=String(n++).padStart(2,"0");d.innerHTML=show(ast,tg);if(!tg){d.classList.add("res");d.innerHTML+='  <span style="font-size:13px;color:var(--ink2)">← ответ</span>'}box.appendChild(d);
+    msg.textContent=tg?"Следующим считается выделенное: "+expl[tg.t==="neg"?"neg":tg.op]+(tg.p?" (скобки раньше всего)":"")+".":"Готово. Проверь в Python: print("+inp.value+")";return tg}
+  function step(){if(!ast){start();return}var tg=findR(ast);if(!tg){start();return}try{var r=calc(tg);for(var k in tg)delete tg[k];tg.t="n";tg.v=r.v;tg.f=r.f;line()}catch(e){msg.textContent=e.message;ast=null}}
+  $("#exStep").addEventListener("click",step);
+  $("#exAll").addEventListener("click",function(){if(!ast)start();var g=0;while(ast&&findR(ast)&&g++<50)step()});
+  inp.addEventListener("input",start);
+  $$("[data-ex]").forEach(function(b){b.addEventListener("click",function(){inp.value=b.dataset.ex;start()})});
+  start();
+})();
+
+/* ================= 05 string ruler ================= */
+(function(){
+  var inp=$("#strIn"), cells=$("#cells"), sa=$("#sa"), sb=$("#sb"), code=$("#strCode"), pick=null;
+  function render(){
+    var s=inp.value, L=s.length; sa.max=L; sb.max=L;
+    var a=+sa.value,b=+sb.value; $("#saV").textContent=a; $("#sbV").textContent=b;
+    cells.innerHTML="";
+    for(var i=0;i<L;i++){(function(i){
+      var c=document.createElement("div"); c.className="cell"+((pick===null?(i>=a&&i<b):i===pick)?" sel":"");
+      c.innerHTML='<span class="i">'+i+'</span><span class="c">'+(s[i]===" "?"␣":esc(s[i]))+'</span><span class="j">'+(i-L)+'</span>';
+      c.addEventListener("click",function(){pick=i;render()}); cells.appendChild(c);})(i)}
+    if(pick!==null&&pick<L)code.textContent="s["+pick+"]  →  '"+s[pick]+"'      s["+(pick-L)+"] тоже даёт '"+s[pick]+"'      len(s) = "+L;
+    else code.textContent="s["+a+":"+b+"]  →  '"+s.slice(a,b)+"'      длина среза = "+Math.max(0,b-a)+"      len(s) = "+L;
+  }
+  inp.addEventListener("input",function(){pick=null;render()});
+  [sa,sb].forEach(function(r){r.addEventListener("input",function(){pick=null;render()})});
+  render();
+})();
+
+/* ================= 07 flowchart ================= */
+(function(){
+  var r=$("#tR"), v=$("#tV"), code=$("#flowCode");
+  var paths={hot:["e0","n1","e1y","r1"],ok:["e0","n1","e1n","n2","e2y","r2"],cold:["e0","n1","e1n","n2","e2n","r3"]};
+  var lines={hot:[0,1,2],ok:[0,1,3,4],cold:[0,1,3,5,6]};
+  function upd(){
+    var t=+r.value; v.textContent=t; var k=t>25?"hot":t>10?"ok":"cold";
+    ["e0","n1","e1y","e1n","n2","e2y","e2n","r1","r2","r3"].forEach(function(id){$("#"+id).classList.toggle("act",paths[k].indexOf(id)>=0)});
+    $$("div",code).forEach(function(d){d.classList.toggle("on",lines[k].indexOf(+d.dataset.l)>=0)});
+    code.firstChild.textContent="temp = "+t;
+  }
+  r.addEventListener("input",upd); upd();
+})();
+
+/* ================= 08 conveyor ================= */
+(function(){
+  var belt=$("#belt"), out=$("#lOut"), end=$("#lEnd"), cur=-1, timer=null, code=$("#loopCode");
+  function vals(){var a=[];for(var i=1;i<+end.value;i++)a.push(i);return a}
+  function render(){
+    $("#lN").textContent=end.value; var vs=vals(); belt.innerHTML="";
+    vs.forEach(function(x,i){var d=document.createElement("div");d.className="it"+(i===cur?" cur":i<cur?" done":"");d.textContent=x;belt.appendChild(d)});
+    $$("div",code).forEach(function(d){d.classList.toggle("on",cur>=0&&cur<vs.length)});
+  }
+  function reset(){cur=-1;out.textContent="";stop();render()}
+  function step(){var vs=vals();cur++;if(cur<vs.length){var i=vs[cur];out.textContent+=i+" × "+i+" = "+(i*i)+"\n";render();var c=belt.children[cur];if(c&&c.scrollIntoView)belt.scrollLeft=c.offsetLeft-belt.clientWidth/2}else{out.textContent+="# range закончился → цикл завершён\n";stop();render();cur=vs.length;}out.scrollTop=out.scrollHeight}
+  function stop(){if(timer){clearInterval(timer);timer=null;$("#lAuto").textContent="Авто ▶"}}
+  $("#lStep").addEventListener("click",function(){if(cur>=vals().length)reset();step()});
+  $("#lAuto").addEventListener("click",function(){if(timer){stop();return}if(cur>=vals().length)reset();this.textContent="Пауза ❚❚";timer=setInterval(function(){step();if(cur>=vals().length)stop()},750)});
+  $("#lReset").addEventListener("click",reset);
+  end.addEventListener("input",reset);
+  render();
+})();
+
+/* ================= 09 train ================= */
+(function(){
+  var list=["хлеб","молоко","сыр"], train=$("#train"), code=$("#trCode"), inp=$("#trIn");
+  function render(mark,pick){
+    train.innerHTML='<div class="loco">shop</div>';
+    list.forEach(function(x,i){var w=document.createElement("div");w.className="wagon"+(i===mark?" in":"")+(i===pick?" pick":"");
+      w.innerHTML='<span class="ix">['+i+'] · ['+(i-list.length)+']</span><div class="body">'+esc(x)+'</div><div class="wh"><span></span><span></span></div>';
+      w.addEventListener("click",function(){render(null,i);code.textContent="shop["+i+"]  →  '"+x+"'      то же самое: shop["+(i-list.length)+"]"});
+      train.appendChild(w)});
+    if(!list.length)train.innerHTML+='<span class="lbl" style="align-self:center">пустой список []</span>';
+  }
+  function show(c){code.textContent=c+"\n# shop = ["+list.map(function(x){return "'"+x+"'"}).join(", ")+"]   len(shop) = "+list.length}
+  $$("[data-tr]").forEach(function(b){b.addEventListener("click",function(){
+    var a=b.dataset.tr, x=inp.value.trim()||"что-то";
+    if(a==="append"){list.push(x);render(list.length-1);show('shop.append("'+x+'")')}
+    else if(a==="insert"){list.unshift(x);render(0);show('shop.insert(0, "'+x+'")')}
+    else if(a==="pop"){if(!list.length){code.textContent="shop.pop()  →  IndexError: pop from empty list";return}
+      var last=train.lastChild; last.classList.add("out"); setTimeout(function(){var y=list.pop();render();show("shop.pop()  →  вернул '"+y+"'")},reduce?0:380)}
+    else if(a==="sort"){list.sort(function(p,q){return p.localeCompare(q,"ru")});render();show("shop.sort()  # по алфавиту")}
+    else if(a==="reverse"){list.reverse();render();show("shop.reverse()")}
+  })});
+  render();
+})();
+
+/* ================= 10 drawers ================= */
+(function(){
+  var d={"Аня":"111-22-33","Петя":"222-33-44","Мама":"333-44-55"}, cab=$("#cab"), code=$("#dCode"), kI=$("#dKey"), vI=$("#dVal");
+  function render(open){cab.innerHTML="";Object.keys(d).forEach(function(k){var el=document.createElement("div");el.className="drawer"+(k===open?" open":"");el.innerHTML='<span class="hd"></span><span class="key">"'+esc(k)+'"</span><span class="val">"'+esc(d[k])+'"</span>';el.addEventListener("click",function(){kI.value=k;get()});cab.appendChild(el)})}
+  function get(){var k=kI.value.trim();if(k in d){render(k);code.textContent='phone["'+k+'"]  →  "'+d[k]+'"'}else{render();code.textContent='phone["'+k+'"]  →  KeyError: \''+k+"'\n# безопасно: phone.get(\""+k+'", "нет такого")  →  "нет такого"'}}
+  $("#dGet").addEventListener("click",get);
+  $("#dSet").addEventListener("click",function(){var k=kI.value.trim(),v=vI.value.trim()||"000-00-00";if(!k)return;var had=k in d;d[k]=v;render(k);code.textContent='phone["'+k+'"] = "'+v+'"   # '+(had?"ящик был, карточка заменена":"новый ящик")});
+  $("#dDel").addEventListener("click",function(){var k=kI.value.trim();if(k in d){delete d[k];render();code.textContent='del phone["'+k+'"]   # ящик выброшен'}else{code.textContent='del phone["'+k+'"]  →  KeyError'}});
+  render(); code.textContent="Нажми на ящик или введи ключ";
+})();
+
+/* ================= 11 machine ================= */
+(function(){
+  var F={double:{p:"n",body:"return n * 2",f:function(a){var n=parseFloat(a);if(isNaN(n))return{e:"TypeError: ожидалось число"};return{v:String(n*2)}},def:"5"},
+         square:{p:"n",body:"return n ** 2",f:function(a){var n=parseFloat(a);if(isNaN(n))return{e:"TypeError: ожидалось число"};return{v:String(n*n)}},def:"7"},
+         hello:{p:"name",body:'return "Привет, " + name + "!"',f:function(a){return{v:'"Привет, '+a+'!"'}},def:"Аня"},
+         length:{p:"text",body:"return len(text)",f:function(a){return{v:String(a.length)}},def:"Python"}};
+  var sel=$("#fSel"), arg=$("#fArg"), mach=$("#mach"), code=$("#fCode"), body=$("#fBody"), busy=false;
+  function setF(){var f=F[sel.value];body.textContent=f.body;arg.value=f.def;code.textContent="def "+sel.value+"("+f.p+"):\n    "+f.body}
+  sel.addEventListener("change",setF); setF();
+  function lit(f,a){return f.p==="n"?a:'"'+a+'"'}
+  $("#fGo").addEventListener("click",function(){
+    if(busy)return; busy=true; var f=F[sel.value], a=arg.value, r=f.f(a);
+    $$(".tok",mach).forEach(function(t){t.remove()});
+    var t=document.createElement("div"); t.className="tok"; t.textContent=lit(f,a); mach.appendChild(t);
+    var W=mach.clientWidth, call=sel.value+"("+lit(f,a)+")";
+    code.textContent="result = "+call+"   # …";
+    var dur=reduce?1:700;
+    var a1=t.animate([{transform:"translateX(0)"},{transform:"translateX("+(W*.36)+"px)",opacity:1},{transform:"translateX("+(W*.42)+"px)",opacity:0}],{duration:dur,easing:"ease-in",fill:"forwards"});
+    a1.onfinish=function(){
+      t.remove(); mach.classList.add("busy");
+      setTimeout(function(){
+        mach.classList.remove("busy");
+        var o=document.createElement("div"); o.className="tok res"; o.textContent=r.e?"Ошибка":r.v; o.style.left="56%"; mach.appendChild(o);
+        o.animate([{transform:"translateX(0)",opacity:0},{opacity:1,offset:.2},{transform:"translateX("+(W*.24)+"px)",opacity:1}],{duration:dur,easing:"ease-out",fill:"forwards"});
+        code.textContent=r.e?"result = "+call+"  →  "+r.e:"result = "+call+"\nprint(result)  →  "+r.v;
+        busy=false;
+      },reduce?1:900);
+    };
+  });
+})();
+
+})();
+</script>
+</body>
+</html>
