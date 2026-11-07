@@ -106,14 +106,14 @@ p code,li code,td code{background:var(--wash);border:1px solid var(--grid2);padd
 ::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
 ::view-transition-new(root){z-index:2}
 html.theming,html.theming *:not(.theme):not(.theme *){transition:background-color .5s ease,color .5s ease,border-color .5s ease,fill .5s ease,stroke .5s ease!important}
-.hero-fig{position:relative;min-width:0}
+.hero-fig{position:relative;min-width:0;padding-top:22px}
 .hero-fig svg{width:100%;height:auto;display:block}
 .cross{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .3s}
 .hero:hover .cross{opacity:1}
 .cross::before,.cross::after{content:"";position:absolute;background:var(--ink);opacity:.25}
 .cross::before{left:0;right:0;height:1px;top:var(--my,50%)}
 .cross::after{top:0;bottom:0;width:1px;left:var(--mx,50%)}
-.coords{position:absolute;right:0;top:12px;font:600 11px var(--f-mono);letter-spacing:.1em;color:var(--ink2);font-variant-numeric:tabular-nums}
+.coords{position:absolute;right:0;top:0;font:600 11px var(--f-mono);letter-spacing:.1em;color:var(--ink2);font-variant-numeric:tabular-nums}
 .term{border:1.5px solid var(--ink);background:var(--paper);font:15px/1.5 var(--f-mono);padding:12px 14px;margin:8px 0 0 auto;max-width:360px;position:relative}
 .term::before{content:"ВЫВОД";position:absolute;top:-9px;left:10px;background:var(--paper);padding:0 6px;font:600 10px var(--f-mono);letter-spacing:.15em;color:var(--ink2)}
 .typed{display:inline-block;overflow:hidden;white-space:nowrap;vertical-align:bottom;width:7ch}
@@ -373,6 +373,13 @@ input[type=range]{accent-color:var(--ink);width:100%}
   .top .sheetno{display:none}
   .mach .body{left:28%;right:28%}
   .lead{font-size:18px}
+  .hero-fig{margin:0 -8px}
+  #heroFig text{font-size:17px}
+  #heroFig .tx-s{font-size:13px}
+  #heroFig .tx-c{font-size:30px}
+  #ageFig text{font-size:34px!important}
+  #ageFig .tx-s{font-size:18px}
+  #ageFig .t-mid{display:none}
 }
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
@@ -436,30 +443,34 @@ input[type=range]{accent-color:var(--ink);width:100%}
     <div class="cross" id="cross"></div>
     <div class="coords" id="coords">X 0000 · Y 0000</div>
     <figure class="fig" id="heroFig">
-      <svg viewBox="0 0 640 330" role="img" aria-label="Чертёж команды print с выносками">
-        <path class="th" d="M20 20 h20 M20 20 v20 M620 20 h-20 M620 20 v20 M20 310 h20 M20 310 v-20 M620 310 h-20 M620 310 v-20"/>
-        <rect class="k" x="58" y="150" width="152" height="70"/>
-        <rect class="k" x="210" y="150" width="30" height="70"/>
-        <rect class="k" x="240" y="150" width="300" height="70"/>
-        <rect class="k" x="540" y="150" width="30" height="70"/>
-        <text x="70" y="198" class="tx-c" textLength="130">print</text>
-        <text x="216" y="198" class="tx-c">(</text>
-        <text x="252" y="198" class="tx-c" textLength="276">"Привет!"</text>
-        <text x="546" y="198" class="tx-c">)</text>
-        <path class="th" d="M58 145 v-50 M210 145 v-50 M240 145 v-80 M540 145 v-80"/>
-        <path class="k" d="M58 108 H210" marker-start="url(#tk)" marker-end="url(#tk)"/>
-        <path class="k" d="M240 78 H540" marker-start="url(#tk)" marker-end="url(#tk)"/>
-        <text x="66" y="100" class="tx-s">ФУНКЦИЯ</text>
-        <text x="66" y="84">«выведи на экран»</text>
-        <text x="250" y="70" class="tx-s">СТРОКА · ТЕКСТ В КАВЫЧКАХ</text>
-        <text x="250" y="54">то, что нужно вывести</text>
-        <path class="k" d="M225 225 V262 H300 M555 225 V262 H480"/>
-        <circle class="k" cx="225" cy="225" r="3"/><circle class="k" cx="555" cy="225" r="3"/>
-        <text x="306" y="266">скобки = вход</text>
-        <path class="dsh" d="M58 235 V290 M570 235 V290"/>
-        <path class="k" d="M58 284 H570" marker-start="url(#ar)" marker-end="url(#ar)"/>
-        <text x="245" y="304" class="tx-s">ВЫЗОВ ФУНКЦИИ · ОДНА СТРОКА КОДА</text>
-        <circle class="th" cx="600" cy="185" r="12"/><path class="th" d="M584 185 h32 M600 169 v32"/>
+      <svg viewBox="0 0 640 350" role="img" aria-label="Чертёж команды print с выносками">
+        <path class="th" d="M16 16 h18 M16 16 v18 M624 16 h-18 M624 16 v18 M16 334 h18 M16 334 v-18 M624 334 h-18 M624 334 v-18"/>
+        <!-- extension lines up -->
+        <path class="th" d="M110 146 V104 M240 146 V104 M276 146 V104 M492 146 V104"/>
+        <!-- dimension: function -->
+        <path class="k" d="M110 112 H240" marker-start="url(#ar)" marker-end="url(#ar)"/>
+        <text x="175" y="78" text-anchor="middle" class="tx-s">ФУНКЦИЯ</text>
+        <text x="175" y="98" text-anchor="middle">команда «выведи»</text>
+        <!-- dimension: string -->
+        <path class="k" d="M276 112 H492" marker-start="url(#ar)" marker-end="url(#ar)"/>
+        <text x="384" y="78" text-anchor="middle" class="tx-s">СТРОКА · В КАВЫЧКАХ</text>
+        <text x="384" y="98" text-anchor="middle">что показать на экране</text>
+        <!-- code row -->
+        <rect class="k2" x="110" y="150" width="418" height="62"/>
+        <path class="k" d="M240 150 V212 M276 150 V212 M492 150 V212"/>
+        <text x="120" y="192" class="tx-c" textLength="110" lengthAdjust="spacing">print</text>
+        <text x="258" y="192" class="tx-c" text-anchor="middle">(</text>
+        <text x="285" y="192" class="tx-c" textLength="198" lengthAdjust="spacing">"Привет!"</text>
+        <text x="510" y="192" class="tx-c" text-anchor="middle">)</text>
+        <!-- parentheses bracket -->
+        <circle class="fl" cx="258" cy="212" r="3"/><circle class="fl" cx="510" cy="212" r="3"/>
+        <path class="k" d="M258 212 V238 H510 V212 M384 238 V250"/>
+        <text x="384" y="268" text-anchor="middle" class="tx-s">СКОБКИ · ВХОД ФУНКЦИИ</text>
+        <!-- overall dimension -->
+        <path class="dsh" d="M110 216 V306 M528 216 V306"/>
+        <path class="k" d="M110 298 H528" marker-start="url(#ar)" marker-end="url(#ar)"/>
+        <rect class="pf" x="184" y="286" width="270" height="24"/>
+        <text x="319" y="302" text-anchor="middle" class="tx-s">ВЫЗОВ ФУНКЦИИ · 1 СТРОКА</text>
       </svg>
     </figure>
     <div class="term">&gt;&gt;&gt; <span class="typed">Привет!</span><span class="caret"></span></div>
@@ -468,14 +479,18 @@ input[type=range]{accent-color:var(--ink);width:100%}
 
 <section class="range" aria-label="Для кого">
   <figure class="fig" id="ageFig">
-    <svg viewBox="0 0 1000 96" role="img" aria-label="Подходит людям от 10 до 50 лет и старше">
-      <path class="th" d="M40 20 V70 M960 20 V70"/>
+    <svg viewBox="0 0 1000 112" role="img" aria-label="Подходит людям от 10 до 50 лет и старше">
+      <text x="500" y="20" text-anchor="middle" class="tx-s">ДИАПАЗОН ЧИТАТЕЛЕЙ · НУЖНЫЙ ОПЫТ: 0</text>
+      <path class="th" d="M40 30 V62 M960 30 V62"/>
       <path class="k" d="M40 46 H960" marker-start="url(#ar)" marker-end="url(#ar)"/>
-      <g class="th"><path d="M132 40 v12 M224 40 v12 M316 40 v12 M408 40 v12 M500 40 v12 M592 40 v12 M684 40 v12 M776 40 v12 M868 40 v12"/></g>
-      <text x="40" y="88">10 лет · 4 класс</text>
-      <text x="960" y="88" text-anchor="end">50+ лет · «да я просто спросить»</text>
-      <rect class="pf" x="330" y="34" width="340" height="24"/>
-      <text x="500" y="51" text-anchor="middle" class="tx-s">ДОПУСТИМЫЙ ВОЗРАСТ ЧИТАТЕЛЯ · ОПЫТ: 0</text>
+      <path class="k" d="M270 40 V52 M500 40 V52 M730 40 V52"/>
+      <text x="40" y="82" text-anchor="start" class="tx-b" style="font-size:15px">10</text>
+      <text x="270" y="80" text-anchor="middle" class="t-mid" style="font-size:15px">20</text>
+      <text x="500" y="80" text-anchor="middle" class="t-mid" style="font-size:15px">30</text>
+      <text x="730" y="80" text-anchor="middle" class="t-mid" style="font-size:15px">40</text>
+      <text x="960" y="82" text-anchor="end" class="tx-b" style="font-size:15px">50+</text>
+      <text x="40" y="108" class="tx-s">4 КЛАСС</text>
+      <text x="960" y="108" text-anchor="end" class="tx-s">«ДА Я ПРОСТО СПРОСИТЬ»</text>
     </svg>
   </figure>
 </section>
