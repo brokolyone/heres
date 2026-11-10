@@ -10,13 +10,17 @@
 <div id="app">
   <canvas id="gl"></canvas>
   <div id="tags">
-    <div class="tag tag-squad" id="squadTag" hidden><span id="squadNum">1</span></div>
-    <div class="tag tag-boss" id="bossTag" hidden>
-      <div class="boss-name">ГРОМИЛА</div>
-      <div class="hp"><i id="bossHp"></i></div>
-    </div>
+    <div class="tag tag-squad" id="squadTag" hidden><svg viewBox="0 0 24 24"><circle cx="12" cy="7" r="4.5"/><path d="M3.5 22c0-5.5 3.8-8.5 8.5-8.5s8.5 3 8.5 8.5z"/></svg><span id="squadNum">1</span></div>
   </div>
   <div id="fx"></div>
+  <div class="bossbar" id="bossBar" hidden>
+    <div class="bb-head stroke">
+      <span class="bb-icon"><svg viewBox="0 0 24 24"><path d="M12 2C7 2 3.5 5.6 3.5 10.2c0 2.6 1.1 4.6 2.8 5.9V19a1 1 0 0 0 1 1h1.6v-2h1.4v2h3.4v-2h1.4v2h1.6a1 1 0 0 0 1-1v-2.9c1.7-1.3 2.8-3.3 2.8-5.9C20.5 5.6 17 2 12 2z" fill="#fff" stroke="#0f2343" stroke-width="1.6"/><circle cx="8.6" cy="11" r="2.1" fill="#0f2343"/><circle cx="15.4" cy="11" r="2.1" fill="#0f2343"/></svg></span>
+      <span class="bb-name">ГРОМИЛА</span>
+      <span class="bb-num"><span id="bossNum">0</span> <small>/ <span id="bossMax">0</span></small></span>
+    </div>
+    <div class="bb-track"><i class="bb-trail" id="bossTrail"></i><i class="bb-fill" id="bossFill"></i><div class="bb-ticks"></div></div>
+  </div>
 
   <header class="hud" id="hud" hidden>
     <button class="icon-btn" id="pauseBtn" aria-label="Пауза">
@@ -39,12 +43,12 @@
     </div>
     <div class="logo" aria-label="Отряд на мосту">
       <span class="logo-1">ОТРЯД</span>
-      <span class="logo-2">НА МОСТУ</span>
+      <span class="logo-2"><span>НА МОСТУ</span></span>
     </div>
     <div class="menu-mid">
-      <div class="level-badge"><small>Уровень</small><b id="menuLv">1</b></div>
+      <div class="level-badge"><span>Уровень</span><b id="menuLv">1</b></div>
       <button class="btn btn-go" id="playBtn">Играть</button>
-      <div class="hint">Веди отряд пальцем</div>
+      <div class="hint stroke"><svg viewBox="0 0 24 24"><path d="M9 3.5a1.8 1.8 0 0 1 3.6 0V11l4.6.9a2.4 2.4 0 0 1 1.9 2.7l-.9 5.6A2.4 2.4 0 0 1 15.8 22H11a2.4 2.4 0 0 1-1.9-1l-4.4-5.9a1.7 1.7 0 0 1 2.6-2.2L9 14.6z"/></svg>Тяни пальцем влево-вправо</div>
     </div>
     <div class="shop" id="shop"></div>
   </section>
@@ -80,7 +84,7 @@
   </section>
 
   <section class="screen" id="loading">
-    <div class="logo small"><span class="logo-1">ОТРЯД</span><span class="logo-2">НА МОСТУ</span></div>
+    <div class="logo small"><span class="logo-1">ОТРЯД</span><span class="logo-2"><span>НА МОСТУ</span></span></div>
     <div class="load-bar"><i id="loadBar"></i></div>
   </section>
 </div>

@@ -43,7 +43,7 @@ function vib(ms) {
   try { if (window.Android && window.Android.vibrate) window.Android.vibrate(ms); else if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {}
 }
 function rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
-const FONT = "'Russo One','Arial Black',sans-serif";
+const FONT = "'Rubik',system-ui,sans-serif";
 
 // ---------------------------------------------------------------- renderer
 const canvas = $('gl');
@@ -146,7 +146,7 @@ const ui = {
       const el = document.createElement('button');
       el.className = 'card' + (max ? ' max' : save.coins < cost ? ' poor' : '');
       el.innerHTML = `<span class="ic" style="background:${it.color}">${it.icon}</span><span class="nm">${it.name}</span>` +
-        `<span class="lvl">Ур. ${lv + 1}</span><span class="price">${max ? 'МАКС' : `<i class="coin"></i>${cost}`}</span>`;
+        `<span class="lvl">${lv + 1}</span><span class="price">${max ? 'МАКС' : `<i class="coin"></i>${cost}`}</span>`;
       el.addEventListener('click', () => {
         unlock();
         if (max) return;
@@ -185,6 +185,7 @@ function clearLevel() {
       if (o.isInstancedMesh) o.dispose();
     });
   }
+  for (const o of obstacles) o.el.root.remove();
   levelGroup = new THREE.Group(); scene.add(levelGroup);
 }
 const own = m => { m.userData.own = true; return m; };
@@ -230,10 +231,20 @@ function drawGate(g) {
   else { gr.addColorStop(0, 'rgba(255,110,100,0.62)'); gr.addColorStop(1, 'rgba(220,40,35,0.42)'); }
   ctx.fillStyle = gr; ctx.fillRect(0, 0, w, h);
   ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(0, 0, w, 10);
-  const txt = g.kind === 'mul' ? '×' + g.mul : (Math.round(g.val) >= 0 ? '+' : '−') + Math.abs(Math.round(g.val));
-  ctx.font = `84px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.lineJoin = 'round'; ctx.lineWidth = 14; ctx.strokeStyle = '#112544'; ctx.strokeText(txt, w / 2, h / 2 + 4);
-  ctx.fillStyle = '#ffffff'; ctx.fillText(txt, w / 2, h / 2 + 4);
+  const sign = g.kind === 'mul' ? '×' : (Math.round(g.val) >= 0 ? '+' : '−');
+  const num = String(g.kind === 'mul' ? g.mul : Math.abs(Math.round(g.val)));
+  const big = `italic 900 92px ${FONT}`, small = `italic 900 60px ${FONT}`;
+  ctx.font = small; const sw = ctx.measureText(sign).width + 4;
+  ctx.font = big; const nw = ctx.measureText(num).width;
+  let x = (w - sw - nw) / 2; const y = h / 2 + 6;
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+  const draw = (t, font, xx, yy) => {
+    ctx.font = font;
+    ctx.fillStyle = 'rgba(15,35,67,0.55)'; ctx.fillText(t, xx + 2, yy + 6);
+    ctx.lineWidth = 9; ctx.strokeStyle = '#0f2343'; ctx.strokeText(t, xx, yy);
+    ctx.fillStyle = '#ffffff'; ctx.fillText(t, xx, yy);
+  };
+  draw(sign, small, x, y + 4); draw(num, big, x + sw, y);
   g.tex.needsUpdate = true;
   const col = good ? 0x2f7bff : 0xef4a43;
   for (const m of g.accents) { m.color.setHex(col); if (m.emissive) { m.emissive.setHex(col); m.emissiveIntensity = 0.6; } }
@@ -273,29 +284,28 @@ function gateOpt(rng, good, lv) {
   return { kind: 'add', val: -(3 + Math.floor(rng() * (5 + lv * 3))) };
 }
 
+const SHIELD = '<svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z" fill="#ff4d45" stroke="#0f2343" stroke-width="2.2" stroke-linejoin="round"/><path d="M12 6v12" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".6"/></svg>';
+const PERSON = '<svg viewBox="0 0 24 24"><circle cx="12" cy="7" r="4.5"/><path d="M3.5 22c0-5.5 3.8-8.5 8.5-8.5s8.5 3 8.5 8.5z"/></svg>';
 function drawObs(o) {
-  const ctx = o.ctx; ctx.clearRect(0, 0, 256, 176);
-  ctx.fillStyle = '#112544'; rr(ctx, 26, 6, 204, 104, 26); ctx.fill();
-  ctx.fillStyle = '#ffffff'; rr(ctx, 34, 12, 188, 88, 20); ctx.fill();
-  ctx.font = `66px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#112544'; ctx.fillText(String(Math.max(0, Math.ceil(o.hp))), 128, 58);
-  ctx.fillStyle = '#112544'; rr(ctx, 58, 112, 140, 56, 18); ctx.fill();
-  ctx.fillStyle = '#ffcb2e'; rr(ctx, 64, 116, 128, 46, 14); ctx.fill();
-  ctx.font = `32px ${FONT}`; ctx.fillStyle = '#112544'; ctx.fillText('+' + o.reward, 128, 140);
-  o.tex.needsUpdate = true;
+  const hp = Math.max(0, Math.ceil(o.hp));
+  o.el.num.textContent = hp;
+  o.el.bar.style.width = (hp / o.max * 100) + '%';
+  o.el.root.classList.remove('hit'); void o.el.root.offsetWidth; o.el.root.classList.add('hit');
 }
 function addObstacle(kind, x, z, hp, reward) {
   const grp = new THREE.Group(); grp.position.set(x, 0, z);
   const model = (kind === 'crate' ? M.crate : M.tires).clone(true);
   model.rotation.y = rand(-0.3, 0.3);
   grp.add(model);
-  const c = document.createElement('canvas'); c.width = 256; c.height = 176;
-  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
-  const spr = new THREE.Sprite(own(new THREE.SpriteMaterial({ map: tex, depthWrite: false, toneMapped: false })));
-  spr.scale.set(2.5, 1.72, 1); spr.position.y = 3.2; grp.add(spr);
   levelGroup.add(grp);
-  const o = { x, z, hp, max: hp, reward, grp, model, ctx: c.getContext('2d'), tex, alive: true, punch: 0, shownHp: -1 };
-  drawObs(o); obstacles.push(o);
+  const root = document.createElement('div');
+  root.className = 'tag otag'; root.hidden = true;
+  root.innerHTML = `<div class="o-plate">${SHIELD}<div class="o-col"><b>${hp}</b><div class="o-bar"><i></i></div></div></div>` +
+    `<div class="o-rew">+${reward}${PERSON}</div>`;
+  $('tags').appendChild(root);
+  const el = { root, num: root.querySelector('b'), bar: root.querySelector('.o-bar i') };
+  const o = { x, z, hp, max: hp, reward, grp, model, el, alive: true, punch: 0, shownHp: hp };
+  obstacles.push(o);
 }
 function addEnemyGroup(rng, x0, z0, n) {
   const cols = Math.min(7, Math.max(3, Math.ceil(Math.sqrt(n * 1.6))));
@@ -669,7 +679,7 @@ function update(dt) {
 
 function breakObstacle(o) {
   if (!o.alive) return;
-  o.alive = false; o.grp.visible = false;
+  o.alive = false; o.grp.visible = false; o.el.root.hidden = true;
   burst(o.x, 1, o.z, 0x2f3540, 16, 1.3); burst(o.x, 1.4, o.z, 0xef4a43, 8); burst(o.x, 1.4, o.z, 0xffcb2e, 8);
   addUnits(o.reward, o.x, o.z, true);
   floatText('+' + o.reward, o.x, 3, o.z, 'good');
@@ -687,7 +697,8 @@ function killBoss() {
 }
 
 // ---------------------------------------------------------------- render
-const camPos = new THREE.Vector3(), camLook = new THREE.Vector3();
+const camPos = new THREE.Vector3(), camLook = new THREE.Vector3(), _w = new THREE.Vector3();
+let bossTrail = 0, bossShown = -1;
 const _m4 = new THREE.Matrix4(), _col = new THREE.Color(), _qx = new THREE.Quaternion(), _ax = new THREE.Vector3(1, 0, 0);
 function camTarget() {
   const R = SP * Math.sqrt(Math.max(units.length, 1));
@@ -715,7 +726,8 @@ function render() {
     const hs = boss.hit > 0 ? 1.05 : 1; bossObj.scale.setScalar(hs);
     for (const m of bossObj.userData.mats) {
       if (!m.emissive) continue;
-      if (boss.hit > 0) { m.emissive.setRGB(1, 1, 1); m.emissiveIntensity = 0.5; }
+      if (boss.hit > 0.1) { m.emissive.setRGB(1, 0.85, 0.8); m.emissiveIntensity = 0.35; }
+      else if (boss.hit > 0) { m.emissive.setRGB(1, 0.6, 0.5); m.emissiveIntensity = 0.08; }
       else if (m.userData.baseEmissive) { m.emissive.copy(m.userData.baseEmissive); m.emissiveIntensity = m.userData.baseEI; }
     }
     boss.hit = Math.max(0, boss.hit - 1 / 60);
@@ -747,19 +759,36 @@ function render() {
     const sc = tagBumpT > 0 ? 1.25 : 1;
     sq.style.transform = `translate(${(_v.x * 0.5 + 0.5) * W}px, ${(-_v.y * 0.5 + 0.5) * H}px) translate(-50%,-100%) scale(${sc})`;
   } else sq.hidden = true;
-  const bt = $('bossTag');
-  if (boss && boss.alive && boss.active && state === 'play') {
-    _v.set(boss.x, 4.6, boss.z).project(camera);
-    bt.hidden = false;
-    bt.style.transform = `translate(${(_v.x * 0.5 + 0.5) * W}px, ${(-_v.y * 0.5 + 0.5) * H}px) translate(-50%,-100%)`;
-    $('bossHp').style.width = (Math.max(0, boss.hp) / boss.max * 100) + '%';
-  } else bt.hidden = true;
+  const bb = $('bossBar');
+  if (boss && boss.alive && boss.active && (state === 'play' || state === 'pause')) {
+    if (bb.hidden) { bb.hidden = false; $('bossMax').textContent = Math.round(boss.max); bossTrail = boss.hp; }
+    const hp = Math.max(0, boss.hp);
+    if (Math.ceil(hp) !== bossShown) {
+      if (hp < bossShown) { bb.classList.remove('hit'); void bb.offsetWidth; bb.classList.add('hit'); }
+      bossShown = Math.ceil(hp); $('bossNum').textContent = bossShown;
+    }
+    bossTrail = Math.max(hp, bossTrail - boss.max * 0.35 * (1 / 60));
+    $('bossFill').style.width = (hp / boss.max * 100) + '%';
+    $('bossTrail').style.width = (bossTrail / boss.max * 100) + '%';
+  } else { bb.hidden = true; bossShown = -1; }
+  // obstacle HP plates, scaled by distance
+  for (const o of obstacles) {
+    if (!o.alive) continue;
+    const ahead = cz - o.z;
+    if (state === 'menu' || ahead < -2 || ahead > 46) { o.el.root.hidden = true; continue; }
+    _v.set(o.x, 2.55, o.z).project(camera);
+    if (_v.z > 1) { o.el.root.hidden = true; continue; }
+    o.el.root.hidden = false;
+    const d = camera.position.distanceTo(_w.set(o.x, 2.5, o.z));
+    const sc = clamp(22 / d, 0.72, 1.2);
+    o.el.root.style.transform = `translate(${(_v.x * 0.5 + 0.5) * W}px, ${(-_v.y * 0.5 + 0.5) * H}px) translate(-50%,-100%) scale(${sc})`;
+  }
   $('prog').style.width = clamp(-cz / runLen * 100, 0, 100) + '%';
 
   // fade bridge towers the camera is flying through
   for (const tw of towers) {
-    const d = Math.abs(camera.position.z - tw.z);
-    const op = clamp((d - 1.5) / 6, 0.12, 1);
+    const a = camera.position.z - tw.z;           // >0: tower is ahead of the camera
+    const op = a > 12 ? clamp((a - 12) / 8, 0.15, 1) : a < -1 ? clamp((-1 - a) / 3, 0.15, 1) : 0.15;
     const fade = op < 1;
     if (fade !== tw.faded) { tw.faded = fade; for (const m of tw.mats) { m.transparent = fade; m.depthWrite = !fade; m.needsUpdate = true; } tw.obj.traverse(o => { if (o.isMesh) o.castShadow = !fade; }); }
     if (fade) for (const m of tw.mats) m.opacity = op;
@@ -785,7 +814,7 @@ function frame(now) {
 (async function boot() {
   ui.show('loading'); ui.sound();
   requestAnimationFrame(frame);
-  try { await document.fonts.load(`20px ${FONT}`); } catch (e) {}
+  try { await Promise.all([document.fonts.load(`900 20px ${FONT}`), document.fonts.load(`italic 900 20px ${FONT}`), document.fonts.load(`800 20px ${FONT}`)]); } catch (e) {}
   M = await loadModels(p => { $('loadBar').style.width = (5 + p * 95) + '%'; });
   for (const k of Object.keys(M)) tuneMaterials(M[k]);
   blue = new Crowd(scene, bakeCharacter(M.soldierBlue), MAXU + 130);
@@ -795,5 +824,5 @@ function frame(now) {
   ui.shop(); ui.coins(); ui.level();
   ui.show('menu');
   window.__game = { get state() { return state; }, get units() { return units.length; }, get cz() { return cz; }, get boss() { return boss; },
-    setX(x) { targetX = x; }, warp(z) { const d = z - cz; cz = z; for (const u of units) u.z += d; }, cheat(n) { addUnits(n, cx, cz, true); } };
+    setX(x) { targetX = x; }, get obstacles() { return obstacles.map(o => o.z); }, warp(z) { const d = z - cz; cz = z; for (const u of units) u.z += d; snapCamera(); }, cheat(n) { addUnits(n, cx, cz, true); } };
 })();
