@@ -10,82 +10,105 @@
 <div id="app">
   <canvas id="gl"></canvas>
   <div id="tags">
-    <div class="tag tag-squad" id="squadTag" hidden><svg viewBox="0 0 24 24"><circle cx="12" cy="7" r="4.5"/><path d="M3.5 22c0-5.5 3.8-8.5 8.5-8.5s8.5 3 8.5 8.5z"/></svg><span id="squadNum">1</span></div>
+    <div class="tag tag-squad" id="squadTag" hidden><span id="squadNum">1</span></div>
   </div>
   <div id="fx"></div>
-  <div class="bossbar" id="bossBar" hidden>
-    <div class="bb-head stroke">
-      <span class="bb-icon"><svg viewBox="0 0 24 24"><path d="M12 2C7 2 3.5 5.6 3.5 10.2c0 2.6 1.1 4.6 2.8 5.9V19a1 1 0 0 0 1 1h1.6v-2h1.4v2h3.4v-2h1.4v2h1.6a1 1 0 0 0 1-1v-2.9c1.7-1.3 2.8-3.3 2.8-5.9C20.5 5.6 17 2 12 2z" fill="#fff" stroke="#0f2343" stroke-width="1.6"/><circle cx="8.6" cy="11" r="2.1" fill="#0f2343"/><circle cx="15.4" cy="11" r="2.1" fill="#0f2343"/></svg></span>
-      <span class="bb-name">ГРОМИЛА</span>
-      <span class="bb-num"><span id="bossNum">0</span> <small>/ <span id="bossMax">0</span></small></span>
-    </div>
-    <div class="bb-track"><i class="bb-trail" id="bossTrail"></i><i class="bb-fill" id="bossFill"></i><div class="bb-ticks"></div></div>
-  </div>
 
+  <!-- ===== HUD ===== -->
   <header class="hud" id="hud" hidden>
-    <button class="icon-btn" id="pauseBtn" aria-label="Пауза">
-      <svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1.5"/><rect x="14" y="5" width="4" height="14" rx="1.5"/></svg>
-    </button>
-    <div class="track">
-      <span class="lv-dot" id="lvA">1</span>
-      <div class="track-bar"><i id="prog"></i><b id="progBoss"></b></div>
-      <span class="lv-dot next" id="lvB">2</span>
+    <div class="hud-row">
+      <button class="sq-btn" id="pauseBtn" aria-label="Пауза"><svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg></button>
+      <div class="route">
+        <div class="route-top"><span class="mono" id="hudOp">ОП-01</span><span class="mono dim" id="hudDist">0 м</span></div>
+        <div class="route-bar"><i id="prog"></i><b id="progBoss"></b></div>
+      </div>
+      <div class="tokens"><i class="tok"></i><span class="mono" id="hudCoins">0</span></div>
     </div>
-    <div class="chip coin-chip"><i class="coin"></i><span id="hudCoins">0</span></div>
+    <div class="bossbar" id="bossBar" hidden>
+      <div class="bb-head"><span class="bb-tag">ЦЕЛЬ</span><span class="bb-name">ГРОМИЛА</span><span class="mono bb-num"><span id="bossNum">0</span><span class="dim">/<span id="bossMax">0</span></span></span></div>
+      <div class="bb-track"><i class="bb-trail" id="bossTrail"></i><i class="bb-fill" id="bossFill"></i></div>
+    </div>
   </header>
 
+  <!-- ===== MENU ===== -->
   <section class="screen" id="menu">
-    <div class="menu-top">
-      <button class="icon-btn" id="soundBtn" aria-label="Звук">
-        <svg viewBox="0 0 24 24" id="soundOn"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke-width="2.2" stroke-linecap="round"/></svg>
-      </button>
-      <div class="chip coin-chip"><i class="coin"></i><span id="menuCoins">0</span></div>
-    </div>
-    <div class="logo" aria-label="Отряд на мосту">
-      <span class="logo-1">ОТРЯД</span>
-      <span class="logo-2"><span>НА МОСТУ</span></span>
-    </div>
-    <div class="menu-mid">
-      <div class="level-badge"><span>Уровень</span><b id="menuLv">1</b></div>
-      <button class="btn btn-go" id="playBtn">Играть</button>
-      <div class="hint stroke"><svg viewBox="0 0 24 24"><path d="M9 3.5a1.8 1.8 0 0 1 3.6 0V11l4.6.9a2.4 2.4 0 0 1 1.9 2.7l-.9 5.6A2.4 2.4 0 0 1 15.8 22H11a2.4 2.4 0 0 1-1.9-1l-4.4-5.9a1.7 1.7 0 0 1 2.6-2.2L9 14.6z"/></svg>Тяни пальцем влево-вправо</div>
-    </div>
-    <div class="shop" id="shop"></div>
-  </section>
-
-  <section class="screen dim" id="pause" hidden>
-    <div class="panel">
-      <div class="ribbon blue">Пауза</div>
-      <button class="btn btn-go" id="resumeBtn">Продолжить</button>
-      <button class="btn btn-ghost" id="quitBtn">В меню</button>
-    </div>
-  </section>
-
-  <section class="screen dim" id="win" hidden>
-    <div class="panel">
-      <div class="ribbon">Победа!</div>
-      <div class="stars"><i></i><i></i><i></i></div>
-      <div class="stats">
-        <div><small>Дошли до финиша</small><b id="winSquad">0</b></div>
-        <div><small>Награда</small><b class="coin-line"><i class="coin"></i>+<span id="winCoins">0</span></b></div>
+    <div class="m-top">
+      <div class="op-chip"><span class="mono dim">ОПЕРАЦИЯ</span><b class="mono" id="menuLv">01</b></div>
+      <div class="m-top-r">
+        <div class="tokens"><i class="tok"></i><span class="mono" id="menuCoins">0</span></div>
+        <button class="sq-btn" id="soundBtn" aria-label="Звук"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke-width="2.2"/></svg></button>
       </div>
-      <button class="btn btn-go" id="nextBtn">Дальше</button>
+    </div>
+
+    <div class="title">
+      <div class="title-kicker mono">// МОСТ ДОЛЖЕН БЫТЬ ВЗЯТ</div>
+      <h1 class="title-main">ОТРЯД</h1>
+      <div class="tape"><span>НА МОСТУ</span></div>
+    </div>
+
+    <div class="m-bottom">
+      <div class="arsenal">
+        <div class="sec-head"><span>АРСЕНАЛ</span><span class="mono dim">улучшения навсегда</span></div>
+        <div id="shop"></div>
+      </div>
+      <button class="go" id="playBtn"><span>В БОЙ</span><svg viewBox="0 0 24 24"><path d="M7 4l11 8-11 8z"/></svg></button>
     </div>
   </section>
 
-  <section class="screen dim" id="lose" hidden>
-    <div class="panel">
-      <div class="ribbon red">Отряд разбит</div>
-      <p class="tip" id="loseTip">Проходи через синие ворота и стреляй по красным заранее.</p>
-      <div class="stats one"><div><small>Монеты за забег</small><b class="coin-line"><i class="coin"></i>+<span id="loseCoins">0</span></b></div></div>
-      <button class="btn btn-go" id="retryBtn">Ещё раз</button>
-      <button class="btn btn-ghost" id="loseMenuBtn">В меню</button>
+  <!-- ===== PAUSE ===== -->
+  <section class="screen band-screen" id="pause" hidden>
+    <div class="band">
+      <div class="band-kicker mono">// СВЯЗЬ ПРЕРВАНА</div>
+      <div class="band-title">ПАУЗА</div>
+      <div class="band-actions">
+        <button class="go" id="resumeBtn"><span>ПРОДОЛЖИТЬ</span><svg viewBox="0 0 24 24"><path d="M7 4l11 8-11 8z"/></svg></button>
+        <button class="ghost" id="quitBtn">ОТСТУПИТЬ В МЕНЮ</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== WIN ===== -->
+  <section class="screen band-screen" id="win" hidden>
+    <div class="band">
+      <div class="stamp ok">ВЫПОЛНЕНО</div>
+      <div class="band-kicker mono" id="winOp">// ОПЕРАЦИЯ 01</div>
+      <div class="band-title">МОСТ ВЗЯТ</div>
+      <div class="medals"><i></i><i></i><i></i></div>
+      <dl class="report">
+        <div><dt>Дошли до финиша</dt><dd class="mono" id="winSquad">0</dd></div>
+        <div><dt>Пиковая численность</dt><dd class="mono" id="winPeak">0</dd></div>
+        <div class="gold"><dt>Жетоны</dt><dd class="mono">+<span id="winCoins">0</span></dd></div>
+      </dl>
+      <div class="band-actions">
+        <button class="go" id="nextBtn"><span>ДАЛЬШЕ</span><svg viewBox="0 0 24 24"><path d="M7 4l11 8-11 8z"/></svg></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== LOSE ===== -->
+  <section class="screen band-screen" id="lose" hidden>
+    <div class="band red">
+      <div class="stamp fail">ПРОВАЛ</div>
+      <div class="band-kicker mono" id="loseOp">// ОПЕРАЦИЯ 01</div>
+      <div class="band-title">ОТРЯД РАЗБИТ</div>
+      <p class="intel"><b class="mono">РАЗВЕДКА:</b> <span id="loseTip"></span></p>
+      <dl class="report">
+        <div class="gold"><dt>Жетоны за вылазку</dt><dd class="mono">+<span id="loseCoins">0</span></dd></div>
+      </dl>
+      <div class="band-actions">
+        <button class="go" id="retryBtn"><span>ЕЩЁ РАЗ</span><svg viewBox="0 0 24 24"><path d="M7 4l11 8-11 8z"/></svg></button>
+        <button class="ghost" id="loseMenuBtn">В МЕНЮ</button>
+      </div>
     </div>
   </section>
 
   <section class="screen" id="loading">
-    <div class="logo small"><span class="logo-1">ОТРЯД</span><span class="logo-2"><span>НА МОСТУ</span></span></div>
-    <div class="load-bar"><i id="loadBar"></i></div>
+    <div class="title center">
+      <h1 class="title-main">ОТРЯД</h1>
+      <div class="tape"><span>НА МОСТУ</span></div>
+    </div>
+    <div class="load"><i id="loadBar"></i></div>
+    <div class="mono dim load-txt">ЗАГРУЗКА СНАРЯЖЕНИЯ</div>
   </section>
 </div>
 <script>/*__JS__*/</script>

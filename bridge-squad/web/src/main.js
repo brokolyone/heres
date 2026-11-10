@@ -22,12 +22,15 @@ function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save));
 setSound(save.sound);
 
 const SHOP = [
-  { id: 'squad', name: 'Стартовый отряд', color: '#2f7bff', max: 25, cost: l => Math.round(40 * Math.pow(1.42, l)),
-    icon: '<svg viewBox="0 0 32 32"><circle cx="11" cy="10" r="5" fill="#fff" stroke="#112544" stroke-width="2.5"/><circle cx="22" cy="12" r="4.2" fill="#fff" stroke="#112544" stroke-width="2.5"/><path d="M3 27c0-6 4-9 8-9s8 3 8 9z" fill="#fff" stroke="#112544" stroke-width="2.5" stroke-linejoin="round"/><path d="M19 27c0-4.5 1.5-7.5 4-7.5s6 2 6 7.5z" fill="#fff" stroke="#112544" stroke-width="2.5" stroke-linejoin="round"/></svg>' },
-  { id: 'fire', name: 'Скоро&shy;стрельность', color: '#ffcb2e', max: 20, cost: l => Math.round(55 * Math.pow(1.45, l)),
-    icon: '<svg viewBox="0 0 32 32"><path d="M18 3 6 18h8l-2 11 13-16h-8z" fill="#fff" stroke="#112544" stroke-width="2.5" stroke-linejoin="round"/></svg>' },
-  { id: 'power', name: 'Мощь пуль', color: '#ef4a43', max: 20, cost: l => Math.round(65 * Math.pow(1.48, l)),
-    icon: '<svg viewBox="0 0 32 32"><path d="M8 24 20 6l5 3-12 18z" fill="#fff" stroke="#112544" stroke-width="2.5" stroke-linejoin="round"/><path d="M20 6c2-3 6-2 6 0l-1 3" fill="#ffcb2e" stroke="#112544" stroke-width="2.5" stroke-linejoin="round"/><path d="M5 27l3-3 5 3-3 2z" fill="#fff" stroke="#112544" stroke-width="2.5" stroke-linejoin="round"/></svg>' },
+  { id: 'squad', name: 'СТАРТОВЫЙ ОТРЯД', max: 25, cost: l => Math.round(40 * Math.pow(1.42, l)),
+    desc: l => `бойцов на старте: ${1 + l}`,
+    icon: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19.5c0-3.6 2.4-5.8 5.5-5.8s5.5 2.2 5.5 5.8"/><circle cx="17" cy="9" r="2.5"/><path d="M16 13.8c2.6 0 4.5 1.9 4.5 5"/></svg>' },
+  { id: 'fire', name: 'СКОРОСТРЕЛЬНОСТЬ', max: 20, cost: l => Math.round(55 * Math.pow(1.45, l)),
+    desc: l => `темп огня: +${l * 12}%`,
+    icon: '<svg viewBox="0 0 24 24"><path d="M3 10h11l2-3h3v6h-3l-2-2"/><path d="M6 10v6h3l1-6"/><path d="M19 8.5h2M19 11.5h2"/></svg>' },
+  { id: 'power', name: 'БРОНЕБОЙНЫЕ ПУЛИ', max: 20, cost: l => Math.round(65 * Math.pow(1.48, l)),
+    desc: l => `урон: ×${(1 + l * 0.25).toFixed(2)}`,
+    icon: '<svg viewBox="0 0 24 24"><path d="M9 21V10c0-3 1.3-5.6 3-7 1.7 1.4 3 4 3 7v11z"/><path d="M9 16h6M7 21h10"/></svg>' },
 ];
 const stat = {
   startUnits: () => 1 + save.up.squad,
@@ -43,7 +46,7 @@ function vib(ms) {
   try { if (window.Android && window.Android.vibrate) window.Android.vibrate(ms); else if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {}
 }
 function rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
-const FONT = "'Rubik',system-ui,sans-serif";
+const FONT = "'Oswald','Arial Narrow',sans-serif";
 
 // ---------------------------------------------------------------- renderer
 const canvas = $('gl');
@@ -138,15 +141,21 @@ let endTimer = 0, runCoins = 0, peak = 1, shake = 0, levelGroup = null, bossObj 
 const ui = {
   show(id) { for (const s of ['menu', 'pause', 'win', 'lose', 'loading']) $(s).hidden = s !== id; $('hud').hidden = !(id === null || id === 'pause'); },
   coins() { $('menuCoins').textContent = save.coins; $('hudCoins').textContent = save.coins + runCoins; },
-  level() { $('menuLv').textContent = save.level; $('lvA').textContent = save.level; $('lvB').textContent = save.level + 1; },
+  level() {
+    const op = String(save.level).padStart(2, '0');
+    $('menuLv').textContent = op; $('hudOp').textContent = 'ОП-' + op;
+    $('winOp').textContent = '// ОПЕРАЦИЯ ' + op; $('loseOp').textContent = '// ОПЕРАЦИЯ ' + op;
+  },
   shop() {
     const box = $('shop'); box.innerHTML = '';
     for (const it of SHOP) {
       const lv = save.up[it.id], max = lv >= it.max, cost = it.cost(lv);
       const el = document.createElement('button');
-      el.className = 'card' + (max ? ' max' : save.coins < cost ? ' poor' : '');
-      el.innerHTML = `<span class="ic" style="background:${it.color}">${it.icon}</span><span class="nm">${it.name}</span>` +
-        `<span class="lvl">${lv + 1}</span><span class="price">${max ? 'МАКС' : `<i class="coin"></i>${cost}`}</span>`;
+      el.className = 'arm' + (max ? ' max' : save.coins < cost ? ' poor' : '');
+      const pipsOn = Math.round(lv / it.max * 10);
+      el.innerHTML = `<span class="arm-ic">${it.icon}</span><span class="arm-txt"><b>${it.name}</b><small>УР.${lv + 1} · ${it.desc(lv)}</small>` +
+        `<span class="pips">${Array.from({ length: 10 }, (_, k) => `<i${k < pipsOn ? ' class="on"' : ''}></i>`).join('')}</span></span>` +
+        `<span class="arm-buy">${max ? 'МАКС' : `<i class="tok"></i>${cost}`}</span>`;
       el.addEventListener('click', () => {
         unlock();
         if (max) return;
@@ -233,15 +242,14 @@ function drawGate(g) {
   ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(0, 0, w, 10);
   const sign = g.kind === 'mul' ? '×' : (Math.round(g.val) >= 0 ? '+' : '−');
   const num = String(g.kind === 'mul' ? g.mul : Math.abs(Math.round(g.val)));
-  const big = `italic 900 92px ${FONT}`, small = `italic 900 60px ${FONT}`;
+  const big = `700 104px ${FONT}`, small = `700 66px ${FONT}`;
   ctx.font = small; const sw = ctx.measureText(sign).width + 4;
   ctx.font = big; const nw = ctx.measureText(num).width;
   let x = (w - sw - nw) / 2; const y = h / 2 + 6;
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
   const draw = (t, font, xx, yy) => {
     ctx.font = font;
-    ctx.fillStyle = 'rgba(15,35,67,0.55)'; ctx.fillText(t, xx + 2, yy + 6);
-    ctx.lineWidth = 9; ctx.strokeStyle = '#0f2343'; ctx.strokeText(t, xx, yy);
+    ctx.fillStyle = 'rgba(11,15,22,0.55)'; ctx.fillText(t, xx + 3, yy + 5);
     ctx.fillStyle = '#ffffff'; ctx.fillText(t, xx, yy);
   };
   draw(sign, small, x, y + 4); draw(num, big, x + sw, y);
@@ -300,7 +308,7 @@ function addObstacle(kind, x, z, hp, reward) {
   levelGroup.add(grp);
   const root = document.createElement('div');
   root.className = 'tag otag'; root.hidden = true;
-  root.innerHTML = `<div class="o-plate">${SHIELD}<div class="o-col"><b>${hp}</b><div class="o-bar"><i></i></div></div></div>` +
+  root.innerHTML = `<div class="o-plate"><div class="o-row"><small>ПРОЧН.</small><b>${hp}</b></div><div class="o-bar"><i></i></div></div>` +
     `<div class="o-rew">+${reward}${PERSON}</div>`;
   $('tags').appendChild(root);
   const el = { root, num: root.querySelector('b'), bar: root.querySelector('.o-bar i') };
@@ -465,7 +473,8 @@ function win() {
   const stars = 1 + (survivors >= peak * 0.3 ? 1 : 0) + (survivors >= peak * 0.65 ? 1 : 0);
   $('winSquad').textContent = survivors;
   $('winCoins').textContent = runCoins;
-  [...document.querySelectorAll('.stars i')].forEach((s, i) => s.classList.toggle('on', i < stars));
+  [...document.querySelectorAll('.medals i')].forEach((s, i) => s.classList.toggle('on', i < stars));
+  $('winPeak').textContent = peak;
   save.best = Math.max(save.best, survivors);
   bankRun();
   save.level++; persist();
@@ -753,7 +762,7 @@ function render() {
 
   // HTML tags
   const sq = $('squadTag');
-  if (units.length && (state === 'play' || state === 'pause' || state === 'win')) {
+  if (units.length && (state === 'play' || (state === 'win' && $('win').hidden))) {
     _v.set(cx, 1.5 + Math.min(R, 4) * 0.2, cz - Math.min(R, 4) * 0.35).project(camera);
     sq.hidden = false; $('squadNum').textContent = units.length;
     const sc = tagBumpT > 0 ? 1.25 : 1;
@@ -784,11 +793,13 @@ function render() {
     o.el.root.style.transform = `translate(${(_v.x * 0.5 + 0.5) * W}px, ${(-_v.y * 0.5 + 0.5) * H}px) translate(-50%,-100%) scale(${sc})`;
   }
   $('prog').style.width = clamp(-cz / runLen * 100, 0, 100) + '%';
+  $('hudDist').textContent = Math.max(0, Math.round(runLen + cz)) + ' м';
 
   // fade bridge towers the camera is flying through
   for (const tw of towers) {
     const a = camera.position.z - tw.z;           // >0: tower is ahead of the camera
-    const op = a > 12 ? clamp((a - 12) / 8, 0.15, 1) : a < -1 ? clamp((-1 - a) / 3, 0.15, 1) : 0.15;
+    const op = a > 12 ? clamp((a - 12) / 8, 0, 1) : a < -1 ? clamp((-1 - a) / 3, 0, 1) : 0;
+    tw.obj.visible = op > 0.04;
     const fade = op < 1;
     if (fade !== tw.faded) { tw.faded = fade; for (const m of tw.mats) { m.transparent = fade; m.depthWrite = !fade; m.needsUpdate = true; } tw.obj.traverse(o => { if (o.isMesh) o.castShadow = !fade; }); }
     if (fade) for (const m of tw.mats) m.opacity = op;
@@ -814,7 +825,7 @@ function frame(now) {
 (async function boot() {
   ui.show('loading'); ui.sound();
   requestAnimationFrame(frame);
-  try { await Promise.all([document.fonts.load(`900 20px ${FONT}`), document.fonts.load(`italic 900 20px ${FONT}`), document.fonts.load(`800 20px ${FONT}`)]); } catch (e) {}
+  try { await Promise.all([document.fonts.load(`700 20px ${FONT}`), document.fonts.load(`600 20px ${FONT}`), document.fonts.load(`800 20px 'JBMono'`)]); } catch (e) {}
   M = await loadModels(p => { $('loadBar').style.width = (5 + p * 95) + '%'; });
   for (const k of Object.keys(M)) tuneMaterials(M[k]);
   blue = new Crowd(scene, bakeCharacter(M.soldierBlue), MAXU + 130);
@@ -824,5 +835,5 @@ function frame(now) {
   ui.shop(); ui.coins(); ui.level();
   ui.show('menu');
   window.__game = { get state() { return state; }, get units() { return units.length; }, get cz() { return cz; }, get boss() { return boss; },
-    setX(x) { targetX = x; }, get obstacles() { return obstacles.map(o => o.z); }, warp(z) { const d = z - cz; cz = z; for (const u of units) u.z += d; snapCamera(); }, cheat(n) { addUnits(n, cx, cz, true); } };
+    setX(x) { targetX = x; }, get obstacles() { return obstacles.map(o => o.z); }, warp(z) { const d = z - cz; cz = z; for (const u of units) u.z += d; snapCamera(); }, cheat(n) { addUnits(n, cx, cz, true); }, kill() { removeUnits(units.length); } };
 })();
