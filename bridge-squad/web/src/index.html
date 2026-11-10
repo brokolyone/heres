@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Отряд на мосту</title>
+<style>/*__CSS__*/</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="gl"></canvas>
+  <div id="tags">
+    <div class="tag tag-squad" id="squadTag" hidden><span id="squadNum">1</span></div>
+    <div class="tag tag-boss" id="bossTag" hidden>
+      <div class="boss-name">ГРОМИЛА</div>
+      <div class="hp"><i id="bossHp"></i></div>
+    </div>
+  </div>
+  <div id="fx"></div>
+
+  <header class="hud" id="hud" hidden>
+    <button class="icon-btn" id="pauseBtn" aria-label="Пауза">
+      <svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1.5"/><rect x="14" y="5" width="4" height="14" rx="1.5"/></svg>
+    </button>
+    <div class="track">
+      <span class="lv-dot" id="lvA">1</span>
+      <div class="track-bar"><i id="prog"></i><b id="progBoss"></b></div>
+      <span class="lv-dot next" id="lvB">2</span>
+    </div>
+    <div class="chip coin-chip"><i class="coin"></i><span id="hudCoins">0</span></div>
+  </header>
+
+  <section class="screen" id="menu">
+    <div class="menu-top">
+      <button class="icon-btn" id="soundBtn" aria-label="Звук">
+        <svg viewBox="0 0 24 24" id="soundOn"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke-width="2.2" stroke-linecap="round"/></svg>
+      </button>
+      <div class="chip coin-chip"><i class="coin"></i><span id="menuCoins">0</span></div>
+    </div>
+    <div class="logo" aria-label="Отряд на мосту">
+      <span class="logo-1">ОТРЯД</span>
+      <span class="logo-2">НА МОСТУ</span>
+    </div>
+    <div class="menu-mid">
+      <div class="level-badge"><small>Уровень</small><b id="menuLv">1</b></div>
+      <button class="btn btn-go" id="playBtn">Играть</button>
+      <div class="hint">Веди отряд пальцем</div>
+    </div>
+    <div class="shop" id="shop"></div>
+  </section>
+
+  <section class="screen dim" id="pause" hidden>
+    <div class="panel">
+      <div class="ribbon blue">Пауза</div>
+      <button class="btn btn-go" id="resumeBtn">Продолжить</button>
+      <button class="btn btn-ghost" id="quitBtn">В меню</button>
+    </div>
+  </section>
+
+  <section class="screen dim" id="win" hidden>
+    <div class="panel">
+      <div class="ribbon">Победа!</div>
+      <div class="stars"><i></i><i></i><i></i></div>
+      <div class="stats">
+        <div><small>Дошли до финиша</small><b id="winSquad">0</b></div>
+        <div><small>Награда</small><b class="coin-line"><i class="coin"></i>+<span id="winCoins">0</span></b></div>
+      </div>
+      <button class="btn btn-go" id="nextBtn">Дальше</button>
+    </div>
+  </section>
+
+  <section class="screen dim" id="lose" hidden>
+    <div class="panel">
+      <div class="ribbon red">Отряд разбит</div>
+      <p class="tip" id="loseTip">Проходи через синие ворота и стреляй по красным заранее.</p>
+      <div class="stats one"><div><small>Монеты за забег</small><b class="coin-line"><i class="coin"></i>+<span id="loseCoins">0</span></b></div></div>
+      <button class="btn btn-go" id="retryBtn">Ещё раз</button>
+      <button class="btn btn-ghost" id="loseMenuBtn">В меню</button>
+    </div>
+  </section>
+
+  <section class="screen" id="loading">
+    <div class="logo small"><span class="logo-1">ОТРЯД</span><span class="logo-2">НА МОСТУ</span></div>
+    <div class="load-bar"><i id="loadBar"></i></div>
+  </section>
+</div>
+<script>/*__JS__*/</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+{
+  "name": "bridge-squad-web",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "node build.mjs" },
+  "devDependencies": { "esbuild": "0.24.0", "three": "0.169.0" }
+}
