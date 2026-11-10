@@ -107,23 +107,23 @@ button:focus-visible{outline:2px solid var(--haz);outline-offset:3px}
 /* ---------- screens ---------- */
 .screen{position:absolute;inset:0;display:flex;flex-direction:column;
   padding:calc(var(--safe-t) + 12px) max(16px,env(safe-area-inset-right,0px)) calc(var(--safe-b) + 16px) max(16px,env(safe-area-inset-left,0px))}
-#menu{justify-content:space-between;background:linear-gradient(rgba(11,15,22,.45),rgba(11,15,22,0) 26%,rgba(11,15,22,0) 42%,rgba(11,15,22,.82) 70%)}
+#menu{justify-content:space-between;background:linear-gradient(rgba(11,15,22,0) 55%,rgba(11,15,22,.7) 78%)}
 .m-top{display:flex;justify-content:space-between;align-items:center}
 .m-top-r{display:flex;gap:8px;align-items:center}
 .op-chip{display:flex;align-items:center;gap:8px;height:36px;padding:0 12px;background:var(--plate);border:1px solid var(--hair);font-size:12px;
   clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
 .op-chip b{font-size:18px;color:var(--haz)}
 
-.title{display:flex;flex-direction:column;align-items:flex-start;margin-top:4vh}
+.title{display:flex;flex-direction:column;align-items:flex-start;margin-top:1.5vh;margin-bottom:auto}
 .title.center{align-items:center;margin-top:0}
 .title-kicker{font-size:12px;color:var(--white);background:var(--plate);padding:4px 8px;margin-bottom:6px}
-.title-main{margin:0;font-size:clamp(84px,30vw,150px);font-weight:700;line-height:.86;letter-spacing:-.01em;color:var(--white);
+.title-main{margin:0;font-size:clamp(64px,21vw,110px);font-weight:700;line-height:.86;letter-spacing:-.01em;color:var(--white);
   text-shadow:0 4px 0 rgba(11,15,22,.55),0 10px 30px rgba(11,15,22,.35)}
 .tape{position:relative;margin-top:10px;transform:rotate(-3deg);transform-origin:left center;background:var(--haz);padding:6px 16px 6px 14px;
   box-shadow:0 6px 0 rgba(11,15,22,.35)}
 .tape::before,.tape::after{content:"";position:absolute;top:0;bottom:0;width:14px;background:repeating-linear-gradient(-45deg,var(--black) 0 5px,var(--haz) 5px 10px)}
 .tape::before{left:-14px}.tape::after{right:-14px}
-.tape span{display:block;font-size:clamp(30px,10vw,48px);font-weight:700;letter-spacing:.06em;line-height:1;color:var(--black)}
+.tape span{display:block;font-size:clamp(24px,7.5vw,38px);font-weight:700;letter-spacing:.06em;line-height:1;color:var(--black)}
 
 .m-bottom{display:flex;flex-direction:column;gap:12px;width:100%;max-width:480px;align-self:center}
 .sec-head{display:flex;justify-content:space-between;align-items:baseline;font-size:15px;letter-spacing:.16em;padding:0 2px 6px;
@@ -151,8 +151,9 @@ button:focus-visible{outline:2px solid var(--haz);outline-offset:3px}
 #playBtn{margin-top:4px}
 
 /* result / pause screens: full-width band, not a floating card */
-.band-screen{justify-content:center;padding-left:0;padding-right:0;background:rgba(11,15,22,.55)}
-.band{position:relative;width:100%;background:var(--plate);border-top:4px solid var(--haz);border-bottom:1px solid var(--hair);
+.band-screen{justify-content:flex-end;padding-left:0;padding-right:0;padding-bottom:0;background:linear-gradient(rgba(11,15,22,0) 45%,rgba(11,15,22,.5))}
+#pause.band-screen{justify-content:center;background:rgba(11,15,22,.55)}
+.band{position:relative;width:100%;padding-bottom:calc(var(--safe-b) + 22px)!important;background:var(--plate);border-top:4px solid var(--haz);border-bottom:1px solid var(--hair);
   padding:26px max(20px,env(safe-area-inset-right,0px)) 22px max(20px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:12px;
   animation:band .35s cubic-bezier(.2,.9,.3,1)}
 .band.red{border-top-color:var(--red)}

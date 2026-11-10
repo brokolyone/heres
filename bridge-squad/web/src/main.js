@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { loadModels, bakeCharacter, Crowd, instanceStatic, tuneMaterials } from './assets.js';
 import { sfx, unlock, suspend, setSound, soundOn } from './audio.js';
+import { Stage } from './stage.js';
 
 // ---------------------------------------------------------------- constants
 const HALF = 5;             // road half-width
@@ -81,6 +82,7 @@ sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
 scene.add(sun, sun.target);
 
 let W = 1, H = 1;
+let stage = null, stageMode = null;   // separate diorama scene for menu / win / lose
 function resize() {
   W = window.innerWidth; H = window.innerHeight;
   renderer.setSize(W, H, false);
@@ -89,6 +91,7 @@ function resize() {
   const want = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(24)) / a);
   camera.fov = clamp(THREE.MathUtils.radToDeg(want), 52, 82);
   camera.updateProjectionMatrix();
+  if (stage) stage.resize(W, H);
 }
 window.addEventListener('resize', resize);
 resize();
@@ -139,7 +142,12 @@ let endTimer = 0, runCoins = 0, peak = 1, shake = 0, levelGroup = null, bossObj 
 
 // ---------------------------------------------------------------- UI
 const ui = {
-  show(id) { for (const s of ['menu', 'pause', 'win', 'lose', 'loading']) $(s).hidden = s !== id; $('hud').hidden = !(id === null || id === 'pause'); },
+  show(id, opts) {
+    for (const s of ['menu', 'pause', 'win', 'lose', 'loading']) $(s).hidden = s !== id;
+    $('hud').hidden = !(id === null || id === 'pause');
+    stageMode = (id === 'menu' || id === 'win' || id === 'lose') && stage ? id : null;
+    if (stageMode) stage.setMode(stageMode, opts || { count: stat.startUnits() });
+  },
   coins() { $('menuCoins').textContent = save.coins; $('hudCoins').textContent = save.coins + runCoins; },
   level() {
     const op = String(save.level).padStart(2, '0');
@@ -162,7 +170,7 @@ const ui = {
         if (save.coins < cost) { sfx.deny(); vib(30); el.classList.remove('flash'); void el.offsetWidth; return; }
         save.coins -= cost; save.up[it.id]++; persist(); sfx.buy(); vib(20);
         ui.shop(); ui.coins();
-        if (it.id === 'squad') { resetSquad(); }
+        if (it.id === 'squad') { resetSquad(); if (stageMode === 'menu') stage.setMode('menu', { count: stat.startUnits() }); }
         const again = box.children[SHOP.indexOf(it)]; again.classList.add('flash');
       });
       box.appendChild(el);
@@ -479,7 +487,7 @@ function win() {
   bankRun();
   save.level++; persist();
   sfx.win(); vib(40);
-  setTimeout(() => { if (state === 'win') ui.show('win'); }, 700);
+  setTimeout(() => { if (state === 'win') ui.show('win', { count: survivors }); }, 900);
 }
 function lose() {
   state = 'lose';
@@ -491,7 +499,7 @@ function lose() {
   $('loseTip').textContent = tips[(Math.random() * tips.length) | 0];
   bankRun();
   sfx.lose(); vib(200);
-  setTimeout(() => { if (state === 'lose') ui.show('lose'); }, 500);
+  setTimeout(() => { if (state === 'lose') ui.show('lose', {}); }, 700);
 }
 
 // ---------------------------------------------------------------- simulation
@@ -784,7 +792,7 @@ function render() {
   for (const o of obstacles) {
     if (!o.alive) continue;
     const ahead = cz - o.z;
-    if (state === 'menu' || ahead < -2 || ahead > 46) { o.el.root.hidden = true; continue; }
+    if (stageMode || state === 'menu' || ahead < -2 || ahead > 46) { o.el.root.hidden = true; continue; }
     _v.set(o.x, 2.55, o.z).project(camera);
     if (_v.z > 1) { o.el.root.hidden = true; continue; }
     o.el.root.hidden = false;
@@ -817,7 +825,12 @@ function frame(now) {
   camera.position.lerp(camPos, k);
   if (shake > 0) camera.position.add(_v.set(rand(-1, 1), rand(-1, 1), 0).multiplyScalar(shake * 0.5));
   camera.lookAt(camLook);
-  if (M) render(); else renderer.render(scene, camera);
+  if (stageMode) {
+    $('squadTag').hidden = true; $('bossBar').hidden = true; bossShown = -1;
+    for (const o of obstacles) o.el.root.hidden = true;
+    stage.update(dt); stage.render();
+  }
+  else if (M) render(); else renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
 
@@ -828,8 +841,11 @@ function frame(now) {
   try { await Promise.all([document.fonts.load(`700 20px ${FONT}`), document.fonts.load(`600 20px ${FONT}`), document.fonts.load(`800 20px 'JBMono'`)]); } catch (e) {}
   M = await loadModels(p => { $('loadBar').style.width = (5 + p * 95) + '%'; });
   for (const k of Object.keys(M)) tuneMaterials(M[k]);
-  blue = new Crowd(scene, bakeCharacter(M.soldierBlue), MAXU + 130);
-  red = new Crowd(scene, bakeCharacter(M.soldierRed), MAXE + 130);
+  const blueParts = bakeCharacter(M.soldierBlue), redParts = bakeCharacter(M.soldierRed);
+  blue = new Crowd(scene, blueParts, MAXU + 130);
+  red = new Crowd(scene, redParts, MAXE + 130);
+  stage = new Stage(renderer, M, blueParts, redParts);
+  stage.resize(W, H);
   state = 'menu';
   buildLevel(save.level);
   ui.shop(); ui.coins(); ui.level();
