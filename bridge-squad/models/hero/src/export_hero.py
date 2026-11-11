@@ -324,7 +324,7 @@ def add_atlas_uv_by_material(o):
 def build_lo(hi_objs, size=1024):
     print("== LO ==")
     for o in hi_objs:
-        o.name = "hi_" + o.name
+        o.name = "hi_" + o.name.replace("_src_", ""); o.data.name = o.name
     parts = asm.assemble(1, library=True)
     objs = [parts[k] for k in ("body", "leg_L", "leg_R") if k in parts]
     for o in objs:
@@ -429,7 +429,7 @@ if __name__ == "__main__":
         m = final_material("M_hero_hi", *hi_imgs)
         finalize_objects(cps, m)
         for o, src in zip(cps, hi_objs):
-            nm = src.name; src.name = "_src_" + nm; o.name = nm; o.data.name = nm
+            nm = src.name; src.name = "_src_" + nm; src.data.name = "_src_" + nm; o.name = nm; o.data.name = nm
         export(cps, os.path.join(OUT_DIR, "hero_hi.glb"))
         remove_objs(cps)
     if which in ("lo", "both"):

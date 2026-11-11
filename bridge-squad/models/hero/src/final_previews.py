@@ -13,25 +13,28 @@ def load(path):
     return objs
 
 
-def main():
+def main(only_crowd=False):
     hi = os.path.join(HERO_DIR, "hero_hi.glb"); lo = os.path.join(HERO_DIR, "hero_lo.glb")
-    load(hi)
-    preview("final_hi", views=("back34", "front34", "front", "face"), res=1024, samples=64)
-    load(lo)
-    preview("final_lo", views=("back34", "front34"), res=768, samples=48)
+    if not only_crowd:
+        load(hi)
+        preview("final_hi", views=("back34", "front34", "front", "face"), res=1024, samples=64)
+    if not only_crowd:
+        load(lo)
+        preview("final_lo", views=("back34", "front34"), res=768, samples=48)
     # crowd shot: ~60 lo soldiers with swinging legs, seen from the game camera
     objs = load(lo)
     base = {o.name: o for o in objs}
+    home = {o.name: o.location.copy() for o in objs}
     random.seed(3)
     for i in range(60):
-        x = (i % 10 - 4.5) * 0.42 + random.uniform(-0.06, 0.06)
+        x = (i % 10 - 4.5) * 0.5 + random.uniform(-0.06, 0.06)
         y = (i // 10) * 0.5 + random.uniform(-0.08, 0.08)
         ph = random.uniform(0, 6.28)
         for nm, o in base.items():
             c = o if i == 0 else o.copy()
             if i:
                 bpy.context.scene.collection.objects.link(c)
-            c.location = o.location + V((x, y, 0)) if i else o.location + V((x, y, 0))
+            c.location = home[nm] + V((x, y, 0))
             if nm.startswith("leg"):
                 c.rotation_mode = "XYZ"
                 c.rotation_euler.x = math.sin(ph) * 0.5 * (1 if nm == "leg_L" else -1)
@@ -39,4 +42,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main("--crowd" in sys.argv)
