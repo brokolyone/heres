@@ -1,0 +1,176 @@
+{
+  "Fabric061": {
+    "asset_id": "Fabric061",
+    "source": "ambientCG",
+    "licence": "CC0 1.0 Universal",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "page": "https://ambientcg.com/view?id=Fabric061",
+    "download": "https://ambientcg.com/get?file=Fabric061_1K-JPG.zip",
+    "files": [
+      "Fabric061_1K-JPG_AmbientOcclusion.jpg",
+      "Fabric061_1K-JPG_Color.jpg",
+      "Fabric061_1K-JPG_NormalGL.jpg",
+      "Fabric061_1K-JPG_Roughness.jpg"
+    ],
+    "name": "Fabric 061"
+  },
+  "Fabric062": {
+    "asset_id": "Fabric062",
+    "source": "ambientCG",
+    "licence": "CC0 1.0 Universal",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "page": "https://ambientcg.com/view?id=Fabric062",
+    "download": "https://ambientcg.com/get?file=Fabric062_1K-JPG.zip",
+    "files": [
+      "Fabric062_1K-JPG_AmbientOcclusion.jpg",
+      "Fabric062_1K-JPG_Color.jpg",
+      "Fabric062_1K-JPG_NormalGL.jpg",
+      "Fabric062_1K-JPG_Roughness.jpg"
+    ],
+    "name": "Fabric 062"
+  },
+  "Fabric066": {
+    "asset_id": "Fabric066",
+    "source": "ambientCG",
+    "licence": "CC0 1.0 Universal",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "page": "https://ambientcg.com/view?id=Fabric066",
+    "download": "https://ambientcg.com/get?file=Fabric066_1K-JPG.zip",
+    "files": [
+      "Fabric066_1K-JPG_AmbientOcclusion.jpg",
+      "Fabric066_1K-JPG_Color.jpg",
+      "Fabric066_1K-JPG_NormalGL.jpg",
+      "Fabric066_1K-JPG_Roughness.jpg"
+    ],
+    "name": "Fabric 066"
+  },
+  "Fabric069": {
+    "asset_id": "Fabric069",
+    "source": "ambientCG",
+    "licence": "CC0 1.0 Universal",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "page": "https://ambientcg.com/view?id=Fabric069",
+    "download": "https://ambientcg.com/get?file=Fabric069_1K-JPG.zip",
+    "files": [
+      "Fabric069_1K-JPG_Color.jpg",
+      "Fabric069_1K-JPG_NormalGL.jpg",
+      "Fabric069_1K-JPG_Roughness.jpg"
+    ],
+    "name": "Fabric 069"
+  },
+  "Fabric079": {
+    "asset_id": "Fabric079",
+    "source": "ambientCG",
+    "licence": "CC0 1.0 Universal",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "page": "https://ambientcg.com/view?id=Fabric079",
+    "download": "https://ambientcg.com/get?file=Fabric079_1K-JPG.zip",
+    "files": [
+      "Fabric079_1K-JPG_Color.jpg",
+      "Fabric079_1K-JPG_NormalGL.jpg",
+      "Fabric079_1K-JPG_Roughness.jpg"
+    ],
+    "name": "Fabric 079"
+  },
+  "Leather014": {
+    "asset_id": "Leather014",
+    "source": "ambientCG",
+    "licence": "CC0 1.0 Universal",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "page": "https://ambientcg.com/view?id=Leather014",
+    "download": "https://ambientcg.com/get?file=Leather014_1K-JPG.zip",
+    "files": [
+      "Leather014_1K-JPG_Color.jpg",
+      "Leather014_1K-JPG_NormalGL.jpg",
+      "Leather014_1K-JPG_Roughness.jpg"
+    ],
+    "name": "Leather 014"
+  },
+  "Leather030": {
+    "asset_id": "Leather030",
+    "source": "ambientCG",
+    "licence": "CC0 1.0 Universal",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "page": "https://ambientcg.com/view?id=Leather030",
+    "download": "https://ambientcg.com/get?file=Leather030_1K-JPG.zip",
+    "files": [
+      "Leather030_1K-JPG_Color.jpg",
+      "Leather030_1K-JPG_NormalGL.jpg",
+      "Leather030_1K-JPG_Roughness.jpg"
+    ],
+    "name": "Leather 030"
+  },
+  "Metal032": {
+    "asset_id": "Metal032",
+    "source": "ambientCG",
+    "licence": "CC0 1.0 Universal",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "page": "https://ambientcg.com/view?id=Metal032",
+    "download": "https://ambientcg.com/get?file=Metal032_1K-JPG.zip",
+    "files": [
+      "Metal032_1K-JPG_Color.jpg",
+      "Metal032_1K-JPG_Metalness.jpg",
+      "Metal032_1K-JPG_NormalGL.jpg",
+      "Metal032_1K-JPG_Roughness.jpg"
+    ],
+    "name": "Metal 032"
+  },
+  "Metal046A": {
+    "asset_id": "Metal046A",
+    "source": "ambientCG",
+    "licence": "CC0 1.0 Universal",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "page": "https://ambientcg.com/view?id=Metal046A",
+    "download": "https://ambientcg.com/get?file=Metal046A_1K-JPG.zip",
+    "files": [
+      "Metal046A_1K-JPG_Color.jpg",
+      "Metal046A_1K-JPG_Metalness.jpg",
+      "Metal046A_1K-JPG_NormalGL.jpg",
+      "Metal046A_1K-JPG_Roughness.jpg"
+    ],
+    "name": "Metal 046 A"
+  },
+  "PaintedMetal002": {
+    "asset_id": "PaintedMetal002",
+    "source": "ambientCG",
+    "licence": "CC0 1.0 Universal",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "page": "https://ambientcg.com/view?id=PaintedMetal002",
+    "download": "https://ambientcg.com/get?file=PaintedMetal002_1K-JPG.zip",
+    "files": [
+      "PaintedMetal002_1K-JPG_Color.jpg",
+      "PaintedMetal002_1K-JPG_Metalness.jpg",
+      "PaintedMetal002_1K-JPG_NormalGL.jpg",
+      "PaintedMetal002_1K-JPG_Roughness.jpg"
+    ],
+    "name": "Painted Metal 002"
+  },
+  "Plastic018A": {
+    "asset_id": "Plastic018A",
+    "source": "ambientCG",
+    "licence": "CC0 1.0 Universal",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "page": "https://ambientcg.com/view?id=Plastic018A",
+    "download": "https://ambientcg.com/get?file=Plastic018A_1K-JPG.zip",
+    "files": [
+      "Plastic018A_1K-JPG_Color.jpg",
+      "Plastic018A_1K-JPG_NormalGL.jpg",
+      "Plastic018A_1K-JPG_Roughness.jpg"
+    ],
+    "name": "Plastic 018 A"
+  },
+  "Rubber004": {
+    "asset_id": "Rubber004",
+    "source": "ambientCG",
+    "licence": "CC0 1.0 Universal",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "page": "https://ambientcg.com/view?id=Rubber004",
+    "download": "https://ambientcg.com/get?file=Rubber004_1K-JPG.zip",
+    "files": [
+      "Rubber004_1K-JPG_Color.jpg",
+      "Rubber004_1K-JPG_NormalGL.jpg",
+      "Rubber004_1K-JPG_Roughness.jpg"
+    ],
+    "name": "Rubber 004"
+  }
+}
