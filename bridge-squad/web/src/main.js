@@ -844,7 +844,7 @@ function frame(now) {
   const blueParts = bakeCharacter(M.soldierBlue), redParts = bakeCharacter(M.soldierRed);
   blue = new Crowd(scene, blueParts, MAXU + 130);
   red = new Crowd(scene, redParts, MAXE + 130);
-  stage = new Stage(renderer, M, blueParts, redParts);
+  stage = new Stage(renderer, M, bakeCharacter(M.heroHi), redParts);
   stage.resize(W, H);
   state = 'menu';
   buildLevel(save.level);

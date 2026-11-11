@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-import soldierBlue from '../../models/soldier_blue.glb';
+import soldierBlue from '../../models/hero/hero_lo.glb';
+import heroHi from '../../models/hero/hero_hi.glb';
 import soldierRed from '../../models/soldier_red.glb';
 import boss from '../../models/boss.glb';
 import gate from '../../models/gate.glb';
@@ -13,7 +14,7 @@ import bridgeSegment from '../../models/bridge_segment.glb';
 import tower from '../../models/tower.glb';
 import skyline from '../../models/skyline.glb';
 
-const SOURCES = { soldierBlue, soldierRed, boss, gate, tires, crate, finish, bridgeSegment, tower, skyline };
+const SOURCES = { soldierBlue, heroHi, soldierRed, boss, gate, tires, crate, finish, bridgeSegment, tower, skyline };
 
 export async function loadModels(onProgress) {
   const loader = new GLTFLoader();
@@ -43,7 +44,10 @@ function findNode(root, name) {
 // crowd renders with three instanced draw calls.
 export function bakeCharacter(root) {
   root.updateMatrixWorld(true);
-  const parts = {};
+  // Textured single-material characters (the hero) keep UVs and their PBR maps.
+  let texMat = null;
+  root.traverse(o => { if (o.isMesh && !texMat) { const m = [].concat(o.material)[0]; if (m && m.map) texMat = m; } });
+  const parts = { texMat };
   const used = new Set();
   const bake = (node, pivot) => {
     const inv = pivot.clone().invert();
@@ -59,6 +63,13 @@ export function bakeCharacter(root) {
       const c = mat.color ? mat.color.clone() : new THREE.Color(1, 1, 1);
       if (mat.emissive && (mat.emissiveIntensity || 0) > 0 && mat.emissive.getHex() !== 0) {
         c.lerp(mat.emissive.clone().multiplyScalar(Math.min(2, mat.emissiveIntensity)), 0.6);
+      }
+      if (texMat) {
+        for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+        if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+        g.morphAttributes = {};
+        geos.push(g);
+        return;
       }
       const n = g.attributes.position.count;
       const col = new Float32Array(n * 3);
@@ -96,7 +107,11 @@ const _c = new THREE.Color();
 export class Crowd {
   constructor(scene, parts, max) {
     this.max = max;
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.0 });
+    const t = parts.texMat;
+    const mat = t ? new THREE.MeshStandardMaterial({ map: t.map, normalMap: t.normalMap || null, roughnessMap: t.roughnessMap || null,
+      metalnessMap: t.metalnessMap || null, aoMap: null, roughness: t.roughnessMap ? 1 : 0.6, metalness: t.metalnessMap ? 1 : 0,
+      emissiveMap: t.emissiveMap || null, emissive: t.emissiveMap ? new THREE.Color(1, 1, 1) : new THREE.Color(0, 0, 0) })
+      : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.0 });
     const mk = geo => {
       const m = new THREE.InstancedMesh(geo, mat, max);
       m.castShadow = true; m.receiveShadow = false; m.frustumCulled = false; m.count = 0;

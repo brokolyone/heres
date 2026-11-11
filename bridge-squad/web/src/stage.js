@@ -175,7 +175,7 @@ export class Stage {
       const slots = [[0, 0.9]];
       for (let row = 1; slots.length < n; row++) for (const side of [-1, 1]) if (slots.length < n) slots.push([side * row * 0.75, 0.9 - row * 0.62]);
       for (let i = 0; i < 4 && slots.length < n; i++) for (let k = 0; k < 3 && slots.length < n; k++) slots.push([(k - 1) * 0.7, -1.2 - i * 0.6]);
-      slots.forEach(([x, z], i) => this.squad.push({ x, y: top, z, bx: x, bz: z, rot: 0, run: false, ph: rand(0, 6), s: i === 0 ? 1.25 : 1, i }));
+      slots.forEach(([x, z], i) => this.squad.push({ x, y: top, z, bx: x, bz: z, rot: 0, run: false, ph: rand(0, 6), s: i === 0 ? 1.4 : 1.15, i }));
       this.boss.visible = false;
     } else {
       this.boss.visible = true;
@@ -209,10 +209,10 @@ export class Stage {
     const mode = this.mode;
     // camera: slow orbit; framed a bit low so the title sits above the squad
     const orbit = Math.sin(t * 0.18) * 0.32 + (mode === 'lose' ? 0.25 : 0);
-    const dist = mode === 'lose' ? 10.5 : 9.6;
-    const camY = mode === 'lose' ? 2.6 : 3.1;
+    const dist = mode === 'lose' ? 10.5 : 7.4;
+    const camY = mode === 'lose' ? 2.6 : 2.5;
     this.camera.position.set(Math.sin(orbit) * dist, camY, Math.cos(orbit) * dist);
-    this.camera.lookAt(0, mode === 'lose' ? 2.0 : 1.45, 0);
+    this.camera.lookAt(0, mode === 'lose' ? 2.0 : 1.2, 0);
 
     // flag wave
     const p = this.clothGeo.attributes.position, b = this.clothBase;
@@ -229,16 +229,16 @@ export class Stage {
       if (u.rz) continue;
       if (mode === 'win') {
         const hop = Math.max(0, Math.sin(t * 7 + u.ph));
-        u.y = this.pedTop + hop * 0.35; u.run = hop > 0.2; u.rot = Math.sin(t * 2 + u.ph) * 0.25;
+        u.y = this.pedTop + hop * 0.35; u.run = hop > 0.2; u.rot = Math.PI + Math.sin(t * 2 + u.ph) * 0.25;
       } else {
         u.y = this.pedTop + Math.abs(Math.sin(t * 2 + u.ph)) * 0.015;
-        u.rot = Math.sin(t * 0.7 + u.ph) * 0.12; u.run = false;
+        u.rot = Math.PI + Math.sin(t * 0.7 + u.ph) * 0.12; u.run = false;
       }
     }
-    for (const e of this.foes) { e.rot = Math.sin(t * 0.9 + e.ph) * 0.2; e.y = this.pedTop + Math.abs(Math.sin(t * 2.4 + e.ph)) * 0.02; }
+    for (const e of this.foes) { e.rot = Math.PI + Math.sin(t * 0.9 + e.ph) * 0.2; e.y = this.pedTop + Math.abs(Math.sin(t * 2.4 + e.ph)) * 0.02; }
     this.blue.update(this.squad, t);
     this.red.update(this.foes, t);
-    if (this.boss.visible) { this.boss.position.y = this.pedTop + Math.sin(t * 1.6) * 0.03; this.boss.rotation.y = Math.sin(t * 0.5) * 0.15; }
+    if (this.boss.visible) { this.boss.position.y = this.pedTop + Math.sin(t * 1.6) * 0.03; this.boss.rotation.y = Math.PI + Math.sin(t * 0.5) * 0.15; }
 
     // confetti
     if (this.confMesh.visible) {
