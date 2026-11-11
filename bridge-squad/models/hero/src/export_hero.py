@@ -396,7 +396,10 @@ def build_lo(hi_objs, size=1024):
 
 def remove_objs(objs):
     for o in objs:
+        me = o.data
         bpy.data.objects.remove(o, do_unlink=True)
+        if me is not None and me.users == 0:
+            bpy.data.meshes.remove(me)
 
 
 def check_glb(path, views, prefix, res=640):
