@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ps5emu LANGUAGES C CXX)
+project(5emuos LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,14 +8,14 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Guest code uses the System V x86-64 ABI. On Windows, HLE functions must be
 # compiled with __attribute__((sysv_abi)), which only Clang supports (MSVC cannot).
 if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    message(FATAL_ERROR "ps5emu must be built with Clang (on Windows: clang-cl or clang++ from LLVM / Visual Studio's Clang component).")
+    message(FATAL_ERROR "5emuos must be built with Clang (on Windows: clang-cl or clang++ from LLVM / Visual Studio's Clang component).")
 endif()
 
 if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64|amd64")
-    message(FATAL_ERROR "ps5emu runs guest code natively and needs an x86-64 host.")
+    message(FATAL_ERROR "5emuos runs guest code natively and needs an x86-64 host.")
 endif()
 
-add_executable(ps5emu
+add_executable(5emuos
     src/main.cpp
     src/common/log.cpp
     src/common/sha1.cpp
@@ -27,15 +27,15 @@ add_executable(ps5emu
     src/hle/libc.cpp
     src/hle/libkernel.cpp
 )
-target_include_directories(ps5emu PRIVATE src)
+target_include_directories(5emuos PRIVATE src)
 
 if(WIN32)
-    target_compile_definitions(ps5emu PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
+    target_compile_definitions(5emuos PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
 endif()
 
 # ---- Tests (Linux host: needs a compiler that emits ELF) -------------------
-option(PS5EMU_TESTS "Build tests" ON)
-if(PS5EMU_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+option(EMUOS_TESTS "Build tests" ON)
+if(EMUOS_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
     enable_testing()
 
     add_executable(nid_test tests/nid_test.cpp src/core/nid.cpp src/common/sha1.cpp)
@@ -54,7 +54,7 @@ if(PS5EMU_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
         COMMENT "Building test guest ELF")
     add_custom_target(hello_guest ALL DEPENDS ${GUEST_ELF})
 
-    add_test(NAME run_hello_guest COMMAND ps5emu ${GUEST_ELF})
+    add_test(NAME run_hello_guest COMMAND 5emuos ${GUEST_ELF})
     set_tests_properties(run_hello_guest PROPERTIES
         PASS_REGULAR_EXPRESSION "Hello from the guest! 42 0x2a ps5")
 endif()

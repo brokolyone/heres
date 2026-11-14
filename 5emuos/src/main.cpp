@@ -8,8 +8,8 @@
 namespace {
 void PrintUsage() {
     std::fprintf(stderr,
-                 "ps5emu - experimental PS5 emulator\n\n"
-                 "Usage: ps5emu [options] <eboot.elf>\n\n"
+                 "5emuos - experimental PS5 emulator\n\n"
+                 "Usage: 5emuos [options] <eboot.elf>\n\n"
                  "  --info            only print ELF information, do not run\n"
                  "  --names <file>    symbol name list (one per line) for readable logs\n"
                  "  --debug           verbose logging\n");

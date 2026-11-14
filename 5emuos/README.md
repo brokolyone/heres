@@ -1,4 +1,4 @@
-# ps5emu
+# 5emuos
 
 Экспериментальный эмулятор PS5, написанный с нуля. Финальная цель — GTA 5 🏁
 
@@ -23,7 +23,7 @@ PS5 построена на AMD Zen 2, то есть на обычном x86-64.
    **«C++ Clang Compiler for Windows»** (или LLVM с llvm.org) и CMake.
 2. В «x64 Native Tools Command Prompt»:
    ```
-   cd ps5emu
+   cd 5emuos
    cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl
    cmake --build build
    ```
@@ -41,7 +41,7 @@ cmake --build build && cd build && ctest --output-on-failure
 ## Запуск
 
 ```
-ps5emu [--info] [--debug] [--names names.txt] eboot.elf
+5emuos [--info] [--debug] [--names names.txt] eboot.elf
 ```
 - `--info` — только показать структуру ELF и импорты, не запускать.
 - `--names` — список имён функций (по одному на строку). Тогда в логах вместо
