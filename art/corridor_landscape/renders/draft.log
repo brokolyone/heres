@@ -1,0 +1,31 @@
+[build_scene] terrain.build() ok in 3.2s  (peak mem 0.32 GB)
+[grass] instances {'lod0_rice': 82904, 'lod0_tall': 14840, 'lod1_mid': 164827, 'lod2_far': 188931, 'total': 451502}  blades~9.3M  prototypes 19  build 1.7s
+[build_scene] grass.build() ok in 1.7s  (peak mem 0.50 GB)
+[build_scene] corridor.build() ok in 0.1s  (peak mem 0.50 GB)
+[build_scene] sky.build() ok in 0.0s  (peak mem 0.50 GB)
+[render_setup] note: CyclesRenderSettings.feature_set not in this build - skipped
+00:05.347  cycles           | WARNING CUEW initialization failed: Error opening the library
+[build_scene] sky['recommended_cycles'] applied: ['volume_step_rate', 'volume_max_steps', 'volume_bounces', 'max_bounces', 'transparent_max_bounces', 'sample_clamp_indirect']
+[build_scene] sky['recommended_color'] exposure 0.0 (+ grade offset 0.0) applied
+[build_scene] sky['recommended_color'] = {'view_transform': 'AgX', 'look': 'AgX - Medium High Contrast', 'exposure': 0.0, 'gamma': 1.0} (view transform/look kept: AgX / AgX - Punchy)
+
+[build_scene] ---------------- scene summary ----------------
+  objects: 93   meshes: 79   collections: ['Corridor', 'Grass', 'GrassPrototypes', 'Sky', 'Terrain', 'TreePrototypes', 'Trees']
+  camera: loc=(0.54, -0.85, 1.12) rot_deg=(90.0, 0.0, 34.8) lens=22.0mm shift=(0.0, 0.04500000178813934)
+  render: draft 800x375 samples=32 thr=0.10000000149011612 bounces=8 denoiser=OPENIMAGEDENOISE threads=auto
+  view: AgX / AgX - Punchy exposure=0.0   compositing=True
+  placeholders in use: none
+  build time 5.0s, peak memory after build 0.50 GB
+[build_scene] rendering -> /home/user/heres/art/corridor_landscape/renders/draft.png
+01:32.043  render           | Saved: '/home/user/heres/art/corridor_landscape/renders/draft.png'
+[build_scene] render written: /home/user/heres/art/corridor_landscape/renders/draft.png
+
+[build_scene] ================= done =================
+  terrain               3.2 s
+  grass                 1.7 s
+  corridor              0.1 s
+  sky                   0.0 s
+  assemble_total        5.0 s
+  render               86.7 s
+  total                91.7 s
+  peak memory (RSS): 2.12 GB
