@@ -9,6 +9,8 @@ import tempfile
 from pathlib import Path
 
 import yt_dlp
+
+import spotify
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart
 from aiogram.types import (
@@ -24,6 +26,9 @@ logging.basicConfig(level=logging.INFO)
 TOKEN = os.environ["BOT_TOKEN"]
 # Только эти Telegram ID могут пользоваться ботом (через запятую).
 ALLOWED = {int(x) for x in os.environ.get("ALLOWED_USERS", "").split(",") if x.strip()}
+# Сколько треков максимум качать из альбома/плейлиста Spotify.
+MAX_PLAYLIST = int(os.environ.get("MAX_PLAYLIST", "50"))
+COOKIES = os.environ.get("COOKIES_FILE") or None
 # Обычный Bot API принимает файлы до 50 МБ.
 MAX_BYTES = 50 * 1024 * 1024
 
@@ -49,8 +54,8 @@ def ydl_opts(kind: str, outdir: str) -> dict:
         "noprogress": True,
     }
     # Если YouTube пишет "Sign in to confirm you're not a bot" — экспортируй cookies.txt из браузера
-    if cookies := os.environ.get("COOKIES_FILE"):
-        base["cookiefile"] = cookies
+    if COOKIES:
+        base["cookiefile"] = COOKIES
     if kind == "mp3":
         base |= {
             "format": "bestaudio/best",
@@ -118,11 +123,50 @@ async def fetch_and_send(chat_id: int, url: str, kind: str, status: Message) -> 
         shutil.rmtree(outdir, ignore_errors=True)
 
 
+async def spotify_flow(chat_id: int, url: str, status: Message) -> None:
+    try:
+        name, tracks = await asyncio.to_thread(spotify.get_tracks, url)
+    except Exception as e:
+        await status.edit_text(f"❌ Spotify: {str(e)[:300]}")
+        return
+    if not tracks:
+        await status.edit_text("❌ Треков не нашлось.")
+        return
+    tracks = tracks[:MAX_PLAYLIST]
+    failed = []
+    for i, t in enumerate(tracks, 1):
+        label = f"{t['artist']} — {t['title']}"
+        prefix = f"[{i}/{len(tracks)}] " if len(tracks) > 1 else ""
+        await status.edit_text(f"⏳ {prefix}{label}")
+        outdir = tempfile.mkdtemp(prefix="sp_")
+        try:
+            async with semaphore:
+                path = await asyncio.to_thread(spotify.download_track, t, outdir, COOKIES)
+            if path.stat().st_size > MAX_BYTES:
+                raise RuntimeError("больше 50 МБ")
+            await bot.send_audio(
+                chat_id, FSInputFile(path),
+                title=t["title"], performer=t["artist"],
+                duration=int(t["duration"]) or None,
+            )
+        except Exception as e:
+            logging.exception("spotify track failed")
+            failed.append(f"• {label}: {str(e)[:100]}")
+        finally:
+            shutil.rmtree(outdir, ignore_errors=True)
+    if failed:
+        await status.edit_text("Готово, но не скачались:\n" + "\n".join(failed)[:3500])
+    elif len(tracks) > 1:
+        await status.edit_text(f"✅ {name}: {len(tracks)} треков")
+    else:
+        await status.delete()
+
+
 @dp.message(CommandStart())
 async def start(msg: Message):
     if not allowed(msg.from_user.id):
         return
-    await msg.answer("Кидай ссылку на YouTube или SoundCloud 🎬🎵")
+    await msg.answer("Кидай ссылку на YouTube, SoundCloud или Spotify 🎬🎵")
 
 
 @dp.message(F.text)
@@ -130,6 +174,11 @@ async def on_link(msg: Message):
     if not allowed(msg.from_user.id):
         return  # чужим молча ничего не отвечаем
     text = msg.text.strip()
+
+    if m := spotify.SPOTIFY_RE.search(text):
+        status = await msg.answer("🔎 Spotify...")
+        await spotify_flow(msg.chat.id, m.group(0), status)
+        return
 
     if m := SC_RE.search(text):
         status = await msg.answer("🔎 SoundCloud...")
@@ -150,7 +199,7 @@ async def on_link(msg: Message):
         await msg.answer("Что качаем?", reply_markup=kb)
         return
 
-    await msg.answer("Это не похоже на ссылку YouTube или SoundCloud 🤔")
+    await msg.answer("Это не похоже на ссылку YouTube, SoundCloud или Spotify 🤔")
 
 
 @dp.callback_query(F.data.regexp(r"^(720|480|360|mp3):"))
