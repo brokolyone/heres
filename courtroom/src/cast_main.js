@@ -220,7 +220,19 @@ const EYE_N = {
     '.KKKKKKKK',
     '..lllll..'],
 };
+EYE_N.narrow = [
+    '.........',
+    '..sssss..',
+    '..KKKKKKK',
+    '.KiPPHWwK',
+    '..lIIil..'];
 const EYE_F = {
+  narrow: [
+    '.....',
+    'ssss.',
+    'KKKKK',
+    'PPHwK',
+    'lIl..'],
   open: [
     '.sss.',
     'KKKKK',
@@ -316,8 +328,30 @@ function head(pb, ox, oy, S, st) {
       '.o23o.',
       '..oo..'], { o: sk[1], 1: sk[1], 2: sk[2], 3: sk[3], '.': undefined }, ex, ey);
   }
+  // линия челюсти и подбородок
+  if (!fem) {
+    pb.line(ox + 23, oy + 29, ox + 18, oy + 36, sk[1]);
+    pb.line(ox + 22, oy + 29, ox + 18, oy + 35, sk[2]);
+    pb.set(ox + 12, oy + 36, sk[4]); pb.set(ox + 13, oy + 36, sk[4]);
+    pb.set(ox + 13, oy + 38, sk[1]); pb.set(ox + 11, oy + 34, sk[2]);
+  } else {
+    pb.line(ox + 21, oy + 30, ox + 15, oy + 36, sk[2]);
+    pb.set(ox + 11, oy + 35, sk[4]);
+  }
+  if (S.sharp) { // острые скулы
+    pb.line(ox + 21, oy + 24, ox + 16, oy + 29, sk[2]);
+    pb.line(ox + 20, oy + 24, ox + 16, oy + 28, sk[2]);
+    pb.line(ox + 19, oy + 23, ox + 15, oy + 26, sk[4]);
+    pb.set(ox + 6, oy + 26, sk[2]); pb.set(ox + 6, oy + 27, sk[2]);
+  }
   // морщины возраста
   if (S.age >= 2) {
+    // носогубные складки, брыли, мешки под глазами, гусиные лапки
+    pb.line(ox + 14, oy + 27, ox + 16, oy + 32, sk[1]); pb.set(ox + 16, oy + 33, sk[2]);
+    pb.line(ox + 6, oy + 28, ox + 6, oy + 31, sk[2]);
+    pb.line(ox + 17, oy + 34, ox + 20, oy + 34, sk[1]); pb.line(ox + 18, oy + 35, ox + 21, oy + 33, sk[2]);
+    pb.line(ox + 16, oy + 23, ox + 20, oy + 23, sk[2]); pb.line(ox + 5, oy + 23, ox + 7, oy + 23, sk[2]);
+    pb.set(ox + 23, oy + 19, sk[1]); pb.set(ox + 24, oy + 21, sk[1]); pb.set(ox + 23, oy + 22, sk[2]);
     pb.line(ox + 7, oy + 9, ox + 12, oy + 9, sk[2]);
     pb.line(ox + 15, oy + 10, ox + 19, oy + 10, sk[2]);
     pb.line(ox + 5, oy + 7, ox + 9, oy + 7, sk[2]);
@@ -356,12 +390,14 @@ function head(pb, ox, oy, S, st) {
     let y = Math.round(BR[0] + (BR[1] - BR[0]) * k + (b === 'up' || b === 'n' ? -Math.round(Math.sin(k * Math.PI) * 1) : 0));
     pb.set(ox + x, oy + y, bc);
     if (x < 21) pb.set(ox + x, oy + y + 1, x < 17 ? bc : bc2);
+    if (!fem && x < 19) pb.set(ox + x, oy + y - 1, bc2);
   }
   for (let x = 4; x <= 8; x++) {
     const k = (8 - x) / 4;
     const y = Math.round(BR[2] + (BR[3] - BR[2]) * k);
     pb.set(ox + x, oy + y, bc);
     if (x > 4) pb.set(ox + x, oy + y + 1, bc2);
+    if (!fem && x > 6) pb.set(ox + x, oy + y - 1, bc2);
   }
   if (b === 'stern' || b === 'angry') { pb.set(ox + 13, oy + 17, sk[2]); pb.set(ox + 13, oy + 16, sk[2]); }
   if (b === 'worried' || b === 'sad') { pb.set(ox + 12, oy + 13, sk[2]); pb.set(ox + 13, oy + 14, sk[2]); }
@@ -380,8 +416,16 @@ function head(pb, ox, oy, S, st) {
   }
   // пот
   if (st.sweat) {
-    pb.map(['.b.', 'bBb', 'bWb', '.b.'], { b: R.blue[5], B: R.blue[6], W: P.white }, ox + 1, oy + 7);
-    pb.map(['.b.', 'bBb', 'bWb', '.b.'], { b: R.blue[5], B: R.blue[6], W: P.white }, ox + 27, oy + 12);
+    const dk = { b: R.blue[4], B: R.blue[6], W: P.white };
+    pb.map(['.b.', 'bBb', 'bWb', '.b.'], dk, ox + 1, oy + 7);
+    pb.map(['..b..', '.bBb.', 'bBWBb', 'bBBBb', '.bbb.'], dk, ox + 28, oy + 10);
+    if (st.sweat === 2) {
+      pb.map(['.b.', 'bWb', '.b.'], dk, ox + 6, oy + 2);
+      pb.map(['.b.', 'bBb', 'bWb', '.b.'], dk, ox + 25, oy + 27);
+      // линии шока над головой
+      pb.line(ox + 2, oy - 8, ox + 4, oy - 4, P.white); pb.line(ox + 12, oy - 11, ox + 12, oy - 7, P.white);
+      pb.line(ox + 22, oy - 10, ox + 20, oy - 6, P.white); pb.line(ox + 31, oy - 6, ox + 28, oy - 3, P.white);
+    }
   }
   return m;
 }
@@ -463,48 +507,55 @@ function dith(pb, m, col, level, x0, y0, x1, y1) {
 }
 /* кисть: прямоугольная ладонь с пальцами — карты */
 const HANDS = {
-  // указательный палец влево (рука вытянута влево). 21x12
+  // указательный палец влево, большой сверху, три согнутых пальца с костяшками
   point: [
-    '...........kkkkk.....',
-    'kkkkkkkkkkk44443k....',
-    'k444444444444333kk...',
-    'kk22222222k4333322k..',
-    '.kkkkkkkkkk4kk33222k.',
-    '..........k4333k3222k',
-    '..........k4kkk32222k',
-    '..........k43333k222k',
-    '...........k3kk32221k',
-    '...........k3332211k.',
-    '............kkk1111k.',
-    '...............kkkk..'],
-  // ладонь плашмя на столе, 16x8
+    '.............kkkk.......',
+    '............k4443k......',
+    'kkkkkkkkkkkkk44333kkk...',
+    'k44444444444443333332k..',
+    'k33333333333k3333222221k',
+    '.kkkkkkkkkkkk4k322222221k',
+    '............k43k22222221k',
+    '............kkkk22222221k',
+    '............k443k2222221k',
+    '............kkkkk222221k.',
+    '.............k432k22211k.',
+    '..............kkkk1111k..',
+    '................kkkkk....'],
+  // ладонь плашмя: четыре растопыренных пальца и большой палец
   flat: [
-    '.kkkkkkkkkkkk...',
-    'k4443333333322k.',
-    'k4433333333222k.',
-    'k4333333332222kk',
-    'k3k33k33k32k221k',
-    'k3k33k33k32k21k.',
-    'k3kk3kk3kk2kk1k.',
-    '.k..k..k..kk.k..'],
-  // кулак у подбородка с вытянутым указательным, 12x13
+    '....kkkkkkkkkkk......',
+    '..kk44443333333kk....',
+    '.k444433333333322k...',
+    'k4433333333333322kkk.',
+    'k43333333333332222332k',
+    'k3k3k33k333k3322k3221k',
+    'k3k3kk3k3k3k32k2kk21k.',
+    'k3k3k.k3k.k3k2k..kkk..',
+    'k3k3k.k3k.k3k2k.......',
+    '.k.k...k...kk.........'],
+  // у подбородка: указательный вверх вдоль щеки, согнутые пальцы, большой под челюстью
   chin: [
-    '.kkkkkkkk...',
-    'k44443333k..',
-    'k4333333322k',
-    'kkkkkk33322k',
-    'k4443k33222k',
-    'kkkkkk3322k.',
-    'k4433k3222k.',
-    'kkkkk32221k.',
-    '.k4333222k..',
-    '.k3332221k..',
-    '..k332211k..',
-    '..k32221k...',
-    '..k3221k....'],
+    '....kk.........',
+    '...k43k........',
+    '...k43k........',
+    '...k432k.......',
+    '...k432kkkk....',
+    'kkkk432k443k...',
+    'k4433332kk32k..',
+    'kkkkk3322k322k.',
+    '.k4433k222k22k.',
+    '.kkkkk322222k..',
+    '..k443322222k..',
+    '..kkkk322221k..',
+    '...k43322211k..',
+    '....k3222211k..',
+    '....k322211k...',
+    '.....kkkkkk....'],
 };
 function hand(pb, kind, x, y, sk, flip) {
-  pb.map(HANDS[kind], { k: OUT, 1: sk[1], 2: sk[2], 3: sk[3], 4: sk[4] }, x, y, flip);
+  const rows = HANDS[kind], W = Math.max.apply(null, rows.map(r => r.length));
+  pb.map(rows.map(r => r + '.'.repeat(W - r.length)), { k: OUT, 1: sk[1], 2: sk[2], 3: sk[3], 4: sk[4] }, x, y, flip);
 }
 /* линии удара */
 function impact(pb, cx, cy, col) {
@@ -523,21 +574,16 @@ function impact(pb, cx, cy, col) {
     normal:    { eyes: 'open', brows: 'n', mouth: 'closed' },
     think:     { eyes: 'half', brows: 'worried', mouth: 'tight' },
     confident: { eyes: 'half', brows: 'smug', mouth: 'smirk' },
-    shocked:   { eyes: 'small', brows: 'up', mouth: 'o', sweat: true },
+    shocked:   { eyes: 'small', brows: 'up', mouth: 'open', sweat: 2 },
     point:     { eyes: 'open', brows: 'stern', mouth: 'closed' },
     slam:      { eyes: 'open', brows: 'angry', mouth: 'grit' },
   };
-  const TALK = { closed: ['closed', 'half', 'open'], tight: ['tight', 'half', 'open'], smirk: ['smirk', 'half', 'smileO'], o: ['o', 'o', 'open'], grit: ['grit', 'half', 'open'] };
+  const TALK = { closed: ['closed', 'half', 'open'], tight: ['tight', 'half', 'open'], smirk: ['smirk', 'half', 'smileO'], o: ['o', 'o', 'open'], grit: ['grit', 'half', 'open'], open: ['open', 'o', 'open'] };
 
   function body(pb, emo, br) {
     const by = -br; // дыхание: плечи вверх
-    neck(pb, sk, br);
-    // торс (пиджак)
-    let torsoPts;
-    if (emo === 'slam') torsoPts = [[20, 136], [22, 92], [30, 66], [50, 56 + by], [66, 54 + by], [84, 52 + by], [106, 54 + by], [122, 64], [130, 92], [132, 136]];
-    else torsoPts = [[28, 136], [30, 100], [32, 76], [36, 64 + by], [46, 58 + by], [62, 54 + by], [84, 52 + by], [104, 55 + by], [114, 60 + by], [118, 72], [120, 100], [122, 136]];
-    const torso = mPoly(pb, torsoPts);
-    shade(pb, torso, su, 3, { hi: 1, lo: 3, splitFn: y => 96 + (y - 60) * 0.1 });
+    neck(pb, sk, br, false, emo === 'shocked' ? 3 : 0);
+    const F = figure(pb, su, 3, br, { noArmL: emo === 'point' || emo === 'slam', noArmR: emo === 'slam' });
     // плоскость груди светлее слева (свет)
     // рубашка V
     const shirt = mPoly(pb, [[60, 54 + by], [82, 51 + by], [74, 70], [66, 86]]);
@@ -569,21 +615,15 @@ function impact(pb, cx, cy, col) {
     // значок коллегии
     pb.map(['.g.', 'gGg', '.g.'], { g: R.gold[3], G: R.gold[5] }, 85, 76);
     pb.set(86, 79, R.gold[1]);
-    // нагрудный карман
-    pb.line(90, 90, 100, 89, su[2]); pb.line(90, 91, 100, 90, su[4]);
+    // нагрудный карман с платком
+    pb.line(80, 84, 89, 83, su[1]); pb.line(80, 85, 89, 84, su[4]);
+    pb.map(['.w.w', 'wwww'], { w: R.neutral[8] }, 83, 82);
     // пуговицы
     pb.map(['.k.', 'kbk', '.k.'], { k: su[0], b: su[1] }, 64, 108);
     pb.map(['.k.', 'kbk', '.k.'], { k: su[0], b: su[1] }, 63, 124);
-    // складки
-    pb.pl([[40, 80], [44, 96], [42, 120]], su[2]);
-    pb.pl([[110, 76], [108, 100], [112, 130]], su[1]);
-    pb.pl([[100, 100], [104, 112]], su[2]);
-    pb.pl([[34, 104], [38, 114]], su[2]);
-    // рукав ближней руки: граница
-    pb.pl([[104, 62 + by], [106, 80], [104, 110], [106, 136]], su[1]);
-    pb.pl([[103, 82], [102, 108], [101, 134]], su[4]);
-    // дальняя рука
-    pb.pl([[36, 72], [34, 96], [34, 136]], su[2]);
+    // клапаны карманов
+    pb.pl([[54, 116], [64, 117]], su[1]); pb.pl([[54, 117], [64, 118]], su[4]);
+    pb.pl([[80, 116], [92, 115]], su[1]);
   }
 
   function armPoint(pb) {
@@ -596,19 +636,16 @@ function impact(pb, cx, cy, col) {
     // манжета
     const cf = mPoly(pb, [[23, 50], [19, 50], [19, 63], [23, 64]]);
     pb.fill(cf, R.neutral[8]); pb.line(19, 62, 22, 63, R.neutral[6]); pb.line(19, 50, 19, 62, R.neutral[9]);
-    hand(pb, 'point', 0, 49, sk, false);
+    hand(pb, 'point', -4, 48, sk, false);
   }
   function armsSlam(pb) {
-    // обе руки вниз к столу
-    const a1 = mPoly(pb, [[32, 70], [24, 90], [18, 118], [34, 120], [38, 96], [44, 76]]);
-    shade(pb, a1, su, 3, { hi: 1, lo: 2 });
-    pb.pl([[36, 80], [32, 112]], su[2]);
-    const a2 = mPoly(pb, [[112, 64], [124, 80], [132, 116], [116, 120], [110, 96], [104, 80]]);
-    shade(pb, a2, su, 2, { hi: 1, lo: 2 });
-    pb.pl([[114, 86], [120, 112]], su[1]);
-    pb.rect(18, 117, 16, 3, R.neutral[8]); pb.rect(116, 117, 16, 3, R.neutral[7]);
-    hand(pb, 'flat', 18, 120, sk, false);
-    hand(pb, 'flat', 116, 120, sk, true);
+    // обе руки от плеч вниз к столу
+    sleeve(pb, su, 3, 42, 68, 28, 118, 15);
+    sleeve(pb, su, 2, 100, 64, 122, 118, 15);
+    pb.pl([[40, 80], [32, 108]], su[2]); pb.pl([[104, 80], [116, 108]], su[1]);
+    pb.rect(19, 116, 18, 3, R.neutral[8]); pb.rect(113, 116, 18, 3, R.neutral[7]);
+    hand(pb, 'flat', 16, 119, sk, false);
+    hand(pb, 'flat', 112, 119, sk, true);
     impact(pb, 26, 128, R.neutral[8]);
     impact(pb, 124, 128, R.neutral[8]);
   }
@@ -652,12 +689,13 @@ function impact(pb, cx, cy, col) {
   function paint(pb, emo, eyes, mouth, br, fid) {
     const e = EMO[emo] || EMO.normal;
     if (emo === 'slam') { /* голова ниже, наклон вперёд */ }
-    const hy = HY + (emo === 'slam' ? 6 : 0) - br, hx = HX - (emo === 'slam' ? 2 : 0) - (emo === 'point' ? 2 : 0);
-    body(pb, emo, br);
+    const sh = emo === 'shocked';
+    const hy = HY + (emo === 'slam' ? 6 : 0) - br - (sh ? 3 : 0), hx = HX - (emo === 'slam' ? 2 : 0) - (emo === 'point' ? 2 : 0) + (sh ? 4 : 0);
+    body(pb, emo, br + (sh ? 2 : 0));
     if (emo === 'think') armThink(pb, hx, hy);
     head(pb, hx, hy, S, { eyes: eyes, brows: e.brows, mouth: mouth, sweat: e.sweat });
     hair(pb, hx, hy, emo);
-    if (emo === 'think') hand(pb, 'chin', hx + 8, hy + 33, sk, false);
+    if (emo === 'think') hand(pb, 'chin', hx + 7, hy + 31, sk, false);
     if (emo === 'point') armPoint(pb);
     if (emo === 'slam') armsSlam(pb);
     if (fid) { // поправляет узел галстука
@@ -696,7 +734,7 @@ function impact(pb, cx, cy, col) {
    ОБЩИЙ КОНСТРУКТОР БЮСТА С АНИМАЦИЯМИ
    cfg = { EMO, TALK, seed, paint(pb, emo, e, eyes, mouth, br, af), animFrame(anim, t)->{id,...}|null }
    ===================================================================== */
-const TALK_STD = { closed: ['closed', 'half', 'open'], tight: ['tight', 'half', 'open'], smirk: ['smirk', 'half', 'smileO'],
+const TALK_STD = { open: ['open', 'o', 'open'], closed: ['closed', 'half', 'open'], tight: ['tight', 'half', 'open'], smirk: ['smirk', 'half', 'smileO'],
   o: ['o', 'o', 'open'], grit: ['grit', 'half', 'open'], smile: ['smile', 'smileO', 'open'], frown: ['frown', 'half', 'open'] };
 function buildBust(cfg) {
   const bust = makeBust();
@@ -706,7 +744,7 @@ function buildBust(cfg) {
     const af = (o.anim && cfg.animFrame) ? cfg.animFrame(o.anim, o.animT || 0) : null;
     let eyes = (af && af.eyes) || e.eyes;
     const bl = blinkState(o.t || 0, cfg.seed || 2);
-    if (bl && eyes !== 'small' && eyes !== 'wide') eyes = (bl === 'closed' || eyes === 'half') ? 'closed' : 'half';
+    if (bl && eyes !== 'small' && eyes !== 'wide') eyes = (bl === 'closed' || eyes === 'half' || eyes === 'narrow') ? 'closed' : 'half';
     const baseM = (af && af.mouth) || e.mouth;
     const tm = (cfg.TALK || TALK_STD)[baseM] || TALK_STD.closed;
     const mouth = o.talking ? tm[mouthFrame(o)] : baseM;
@@ -729,6 +767,44 @@ function glasses(pb, hx, hy, col, hi, o) {
   pb.line(hx + 23, y0 + 1, hx + 25, y0 + 2, col);
   if (hi) { pb.set(hx + 20, y0 + 1, hi); pb.set(hx + 19, y0 + 2, hi); pb.set(hx + 21, y0 + 2, hi); pb.set(hx + 8, y0 + 1, hi); }
 }
+
+/* Приталенная фигура: плечевые швы, руки отделены от корпуса тенью, V-силуэт.
+   o: {s: масштаб по x, noArmL, noArmR, armRamp} -> {m (вся маска), body, X} */
+function figure(pb, ramp, base, br, o) {
+  o = o || {};
+  const s = o.s || 1, by = -br;
+  const X = x => Math.round(72 + (x - 72) * s);
+  const Pp = pts => pts.map(p => [X(p[0]), p[1]]);
+  const armL = mPoly(pb, Pp([[34, 70 + by], [38, 63 + by], [46, 63 + by], [49, 72], [49, 100], [49, 136], [36, 136], [33, 104], [33, 80]]));
+  const armR = mPoly(pb, Pp([[98, 60 + by], [104, 61 + by], [109, 68 + by], [111, 80], [112, 104], [112, 136], [98, 136], [97, 100], [96, 72]]));
+  const body = mPoly(pb, Pp([[44, 62 + by], [60, 55 + by], [84, 53 + by], [100, 58 + by], [98, 72], [96, 96], [95, 112], [96, 136], [49, 136], [50, 112], [48, 92], [46, 72]]));
+  const dk = ramp[Math.max(0, base - 2)], md = ramp[Math.max(0, base - 1)], lt = ramp[Math.min(ramp.length - 1, base + 1)];
+  shade(pb, body, ramp, base, { hi: 1, lo: 0, splitFn: y => X(90) });
+  if (!o.noArmL) {
+    shade(pb, armL, ramp, base, { hi: 1, lo: 2 });
+    pb.pl(Pp([[49, 72], [49, 136]]), OUT);                       // зазор рука/корпус
+    pb.pl(Pp([[47, 74], [47, 136]]), md);
+    pb.pl(Pp([[38, 64 + by], [44, 64 + by]]), lt);                 // верх плечевой подушки
+    pb.pl(Pp([[40, 100], [42, 106], [40, 112]]), md);             // складка у локтя
+    pb.pl(Pp([[36, 84], [37, 96]]), lt);
+  }
+  if (!o.noArmR) {
+    shade(pb, armR, ramp, base - 1, { hi: 1, lo: 2 });
+    pb.pl(Pp([[97, 66 + by], [97, 100], [98, 136]]), OUT);
+    pb.pl(Pp([[103, 98], [106, 104], [104, 110]]), dk);
+    pb.pl(Pp([[100, 62 + by], [104, 64 + by]]), md);
+  }
+  // плечевые швы
+  pb.pl(Pp([[58, 57 + by], [46, 63 + by]]), md);
+  pb.pl(Pp([[86, 55 + by], [98, 60 + by]]), dk);
+  // боковые вытачки / талия
+  pb.pl(Pp([[52, 96], [53, 112], [52, 130]]), md);
+  pb.pl(Pp([[90, 92], [89, 112], [90, 130]]), dk);
+  let m = body;
+  if (!o.noArmL) m = mOr(m, armL);
+  if (!o.noArmR) m = mOr(m, armR);
+  return { m, body, X };
+}
 /* универсальный торс-пиджак: ramp, базовый тон; возвращает маску */
 function torso(pb, ramp, base, br, wide) {
   const by = -br, k = wide ? 4 : 0;
@@ -740,8 +816,9 @@ function torso(pb, ramp, base, br, wide) {
   pb.pl([[110 + k, 76], [108 + k, 100], [112 + k, 130]], ramp[Math.max(0, base - 2)]);
   return m;
 }
-function neck(pb, sk, br, thin) {
-  const a = thin ? 66 : 63, b = thin ? 78 : 80;
+function neck(pb, sk, br, thin, dx) {
+  dx = dx || 0;
+  const a = (thin ? 66 : 63) + dx, b = (thin ? 78 : 80) + dx;
   const n = mPoly(pb, [[a, 40], [b, 40], [b, 58 - br], [a + 1, 60 - br]]);
   pb.fill(n, sk[2]);
   for (let y = 40; y < 54 - br; y++) for (let x = a; x <= b; x++) if (n[y * pb.w + x] && (y < 50 - br || x > a + 6 + (y - 50))) pb.set(x, y, sk[1]);
@@ -799,7 +876,7 @@ function gavel(pb, x0, y0, a, L) {
   };
   function body(pb, br, af) {
     neck(pb, sk, br);
-    const m = torso(pb, rb, 2, br, true);
+    const m = figure(pb, rb, 2, br, { s: 1.12, noArmR: !!af }).m;
     // складки мантии (вертикальные)
     for (const x of [44, 52, 90, 98]) pb.pl([[x, 80], [x - 1, 110], [x + 1, 136]], rb[1]);
     for (const x of [46, 54]) pb.pl([[x, 90], [x, 136]], rb[3]);
@@ -895,23 +972,21 @@ function gavel(pb, x0, y0, a, L) {
    ===================================================================== */
 (function () {
   const sk = R.skinL, hk = R.hairBlack, gs = R.neutral;
-  const S = { skin: sk, iris: [R.green[1], R.green[3]], brow: hk[0], brow2: hk[1], prof: 'f', age: 1,
+  const S = { skin: sk, iris: [R.green[1], R.green[3]], brow: hk[0], brow2: hk[1], prof: 'f', age: 1, sharp: true,
     lipLine: R.red[2], lipLow: R.red[3], lips: [R.red[2], R.red[3], R.red[4]], lash: R.neutral[0] };
   const HX = 58, HY = 12;
   const EMO = {
-    normal:  { eyes: 'open', brows: 'n', mouth: 'closed' },
+    normal:  { eyes: 'narrow', brows: 'n', mouth: 'closed' },
     smirk:   { eyes: 'half', brows: 'smug', mouth: 'smirk' },
-    angry:   { eyes: 'open', brows: 'angry', mouth: 'grit' },
-    shocked: { eyes: 'small', brows: 'up', mouth: 'o', sweat: true },
-    point:   { eyes: 'open', brows: 'stern', mouth: 'closed' },
+    angry:   { eyes: 'narrow', brows: 'angry', mouth: 'grit' },
+    shocked: { eyes: 'small', brows: 'up', mouth: 'open', sweat: 2 },
+    point:   { eyes: 'narrow', brows: 'stern', mouth: 'closed' },
   };
-  function body(pb, br, slam) {
-    neck(pb, sk, br, true);
+  let this_point = false;
+  function body(pb, br, slam, dx) {
+    neck(pb, sk, br, true, dx);
     const by = -br;
-    const m = slam
-      ? mPoly(pb, [[26, 136], [28, 96], [34, 70], [50, 60], [66, 56], [84, 54], [102, 56], [116, 66], [124, 96], [126, 136]])
-      : mPoly(pb, [[38, 136], [38, 100], [39, 76], [42, 66 + by], [50, 60 + by], [64, 56 + by], [84, 54 + by], [100, 57 + by], [107, 62 + by], [110, 74], [111, 100], [112, 136]]);
-    shade(pb, m, gs, 5, { hi: 1, lo: 3, splitFn: y => 96 + (y - 60) * 0.1 });
+    figure(pb, gs, 5, br, { s: 0.86, noArmL: slam || this_point, noArmR: slam });
     // блузка (тёмная шёлковая)
     const bl = mPoly(pb, [[62, 55 + by], [82, 53 + by], [76, 74], [70, 82]]);
     shade(pb, bl, R.neutral, 8, { hi: 0, lo: 1 });
@@ -924,11 +999,10 @@ function gavel(pb, x0, y0, a, L) {
     pb.pl([[89, 69], [94, 72], [80, 90], [70, 100]], gs[3]);
     pb.pl([[76, 74], [70, 100]], gs[4]);
     // талия, пуговица
-    pb.pl([[40, 104], [52, 110]], gs[4]); pb.pl([[100, 110], [110, 104]], gs[3]);
+    pb.pl([[56, 104], [62, 108]], gs[4]); pb.pl([[80, 108], [88, 104]], gs[3]);
     pb.map(['.k.', 'kbk', '.k.'], { k: gs[2], b: gs[7] }, 68, 108);
     // складки
-    pb.pl([[100, 66 + by], [102, 84], [100, 112], [102, 136]], gs[3]);
-    pb.pl([[42, 78], [44, 92]], gs[4]);
+
     // брошь
     pb.map(['.r.', 'rRr', '.r.'], { r: R.red[2], R: R.red[4] }, 88, 78);
   }
@@ -967,10 +1041,12 @@ function gavel(pb, x0, y0, a, L) {
   function armsSlam(pb, f) {
     // f: 0 — руки подняты, 1 — удар, 2 — держит
     const hy = f === 0 ? 96 : 120;
-    sleeve(pb, gs, 5, 40, 74, 26, hy, 14);
-    sleeve(pb, gs, 4, 110, 70, 124, hy, 14);
-    hand(pb, 'flat', 18, hy, sk, false);
-    hand(pb, 'flat', 116, hy, sk, true);
+    sleeve(pb, gs, 5, 47, 66, 28, hy, 13);
+    sleeve(pb, gs, 4, 97, 62, 122, hy, 13);
+    pb.pl([[45, 78], [34, hy - 6]], gs[4]); pb.pl([[100, 76], [114, hy - 6]], gs[3]);
+    pb.rect(19, hy - 3, 16, 3, R.neutral[8]); pb.rect(113, hy - 3, 16, 3, R.neutral[7]);
+    hand(pb, 'flat', 16, hy, sk, false);
+    hand(pb, 'flat', 112, hy, sk, true);
     if (f === 1) { impact(pb, 26, hy + 8, P.white); impact(pb, 124, hy + 8, P.white); }
   }
   const bust = buildBust({
@@ -989,8 +1065,10 @@ function gavel(pb, x0, y0, a, L) {
       const slam = !!af;
       let hx = HX, hy = HY - br;
       if (slam && af.f > 0) { hy += 5; hx -= 2; }
+      if (emo === 'shocked' && !slam) { hy -= 3; hx += 4; br += 2; }
       hair(pb, hx, hy, true);
-      body(pb, br, slam && af.f > 0);
+      this_point = emo === 'point' && !slam;
+      body(pb, br, slam, emo === 'shocked' && !slam ? 3 : 0);
       head(pb, hx, hy, S, { eyes: eyes, brows: slam ? 'angry' : e.brows, mouth: mouth, sweat: e.sweat });
       hair(pb, hx, hy, false);
       if (emo === 'point' && !slam) armPoint(pb);
@@ -1023,8 +1101,7 @@ function gavel(pb, x0, y0, a, L) {
   function body(pb, br) {
     neck(pb, sk, br, true);
     const by = -br;
-    const m = mPoly(pb, [[32, 136], [34, 100], [36, 76], [40, 66 + by], [50, 60 + by], [62, 56 + by], [84, 54 + by], [100, 57 + by], [108, 62 + by], [112, 74], [114, 100], [116, 136]]);
-    shade(pb, m, tl, 3, { hi: 1, lo: 3, splitFn: y => 94 + (y - 60) * 0.1 });
+    const m = figure(pb, tl, 3, br, { s: 0.86 }).m;
     // вязка: рёбра по вертикали
     for (let y = 70; y < 136; y++) for (let x = 36; x < 114; x++) if (m[y * pb.w + x] && (x % 4 === 0) && pb.get(x, y) === tl[3]) pb.set(x, y, tl[2]);
     // блузка белая
@@ -1087,11 +1164,7 @@ function gavel(pb, x0, y0, a, L) {
   function body(pb, br) {
     neck(pb, sk, br);
     const by = -br;
-    const m = mPoly(pb, [[22, 136], [24, 100], [26, 74], [32, 64 + by], [46, 58 + by], [62, 54 + by], [84, 52 + by], [106, 56 + by], [118, 62 + by], [124, 74], [126, 100], [128, 136]]);
-    shade(pb, m, st, 3, { hi: 1, lo: 3, splitFn: y => 104 + (y - 60) * 0.1 });
-    // рукава: границы
-    pb.pl([[108, 62 + by], [110, 84], [108, 136]], st[1]);
-    pb.pl([[34, 70], [32, 100], [32, 136]], st[2]);
+    figure(pb, st, 3, br, { s: 1.06 });
     // воротник + тёмно-зелёный галстук
     pb.map([
       'kkkk.........kkkk',
@@ -1109,13 +1182,14 @@ function gavel(pb, x0, y0, a, L) {
     for (let y = 106; y < 136; y += 12) pb.map(['.k.', 'kbk', '.k.'], { k: st[1], b: st[4] }, 80, y);
     // карманы с клапанами
     const pk = (x) => {
-      const f = mPoly(pb, [[x, 78], [x + 18, 77], [x + 18, 84], [x + 9, 86], [x, 84]]);
+      const W = 14, c = x + 7;
+      const f = mPoly(pb, [[x, 78], [x + W, 77], [x + W, 84], [c, 86], [x, 84]]);
       shade(pb, f, st, 3, { hi: 1, lo: 1, bot: 1 });
-      pb.pl([[x, 85], [x + 9, 87], [x + 18, 85]], st[1]);
-      pb.pl([[x + 1, 88], [x + 1, 100], [x + 17, 100], [x + 17, 88]], st[2]);
-      pb.map(['.k.', 'kbk', '.k.'], { k: st[1], b: st[4] }, x + 8, 82);
+      pb.pl([[x, 85], [c, 87], [x + W, 85]], st[1]);
+      pb.pl([[x + 1, 88], [x + 1, 100], [x + W - 1, 100], [x + W - 1, 88]], st[2]);
+      pb.map(['.k.', 'kbk', '.k.'], { k: st[1], b: st[4] }, c - 1, 82);
     };
-    pk(44); pk(86);
+    pk(52); pk(81);
     // звезда шерифа на левой груди (у нас — справа на экране)
     pb.map([
       '....k....',
@@ -1125,9 +1199,9 @@ function gavel(pb, x0, y0, a, L) {
       '..kGgGk..',
       '.kGgkgGk.',
       '.kgk.kgk.',
-      '.kk...kk.'], { k: R.gold[1], G: R.gold[3], H: R.gold[5], g: R.gold[2] }, 90, 66);
+      '.kk...kk.'], { k: R.gold[1], G: R.gold[3], H: R.gold[5], g: R.gold[2] }, 83, 65);
     // табличка с именем
-    pb.rect(48, 73, 12, 3, R.gold[3]); pb.line(48, 75, 59, 75, R.gold[1]); pb.line(49, 74, 57, 74, R.gold[2]);
+    pb.rect(52, 73, 12, 3, R.gold[3]); pb.line(52, 75, 63, 75, R.gold[1]); pb.line(53, 74, 61, 74, R.gold[2]);
     // нашивка на рукаве (ближнем)
     pb.map([
       '.kkkkkk.',
@@ -1137,13 +1211,13 @@ function gavel(pb, x0, y0, a, L) {
       'kgYYYYgk',
       'kggggggk',
       '.kggggk.',
-      '..kkkk..'], { k: gr[0], g: gr[2], G: gr[4], Y: R.gold[4] }, 112, 70);
+      '..kkkk..'], { k: gr[0], g: gr[2], G: gr[4], Y: R.gold[4] }, 103, 70);
     // эполеты
-    pb.pl([[90, 54 + by], [106, 57 + by]], st[1]);
-    pb.pl([[48, 58 + by], [36, 64 + by]], st[1]);
+    pb.pl([[88, 55 + by], [101, 59 + by]], st[1]);
+    pb.pl([[56, 58 + by], [44, 63 + by]], st[1]);
     // ремень внизу
-    pb.rect(24, 130, 104, 6, R.neutral[1]);
-    pb.line(24, 130, 127, 130, R.neutral[3]);
+    pb.rect(50, 130, 46, 6, R.neutral[1]);
+    pb.line(50, 130, 95, 130, R.neutral[3]);
     pb.rect(70, 130, 8, 6, R.gold[3]);
   }
   const bust = buildBust({
@@ -1178,8 +1252,7 @@ function gavel(pb, x0, y0, a, L) {
   function body(pb, br) {
     neck(pb, sk, br, true);
     const by = -br;
-    const m = mPoly(pb, [[30, 136], [32, 100], [34, 78], [40, 68 + by], [50, 60 + by], [62, 56 + by], [84, 54 + by], [102, 58 + by], [110, 64 + by], [114, 76], [116, 100], [118, 136]]);
-    shade(pb, m, cd, 4, { hi: 1, lo: 3, splitFn: y => 96 + (y - 60) * 0.1 });
+    const m = figure(pb, cd, 4, br, { s: 0.9 }).m;
     for (let y = 70; y < 136; y++) for (let x = 34; x < 116; x++) if (m[y * pb.w + x] && ((x + y) % 5 === 0) && pb.get(x, y) === cd[4]) pb.set(x, y, cd[3]);
     // блузка в мелкий цветочек
     const bl = mPoly(pb, [[62, 56 + by], [82, 54 + by], [78, 136], [64, 136]]);

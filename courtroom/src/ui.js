@@ -455,7 +455,7 @@ function stampBase(text, color, size) {
     const f = hash2(x, y, seed + 5);
     // край штампа (правая и нижняя стороны) пропечатан хуже
     const edge = (x / bw) * 0.18 + (y / bh) * 0.1;
-    if ((n < (size === 'small' ? 0.12 : 0.17) + edge && f < 0.7) || f < (size === 'shout' ? 0.015 : 0.03)) d[k + 3] = 0;
+    if (size === 'small' ? ((n < 0.1 + edge * 0.5 && f < 0.5) || f < 0.012) : ((n < 0.17 + edge && f < 0.7) || f < (size === 'shout' ? 0.015 : 0.03))) d[k + 3] = 0;
     else if (n > 0.72 && f < 0.6) { d[k] = lr; d[k + 1] = lg; d[k + 2] = lb; }
   }
   cx.putImageData(id, 0, 0);
@@ -546,6 +546,26 @@ function drawShout(c, kind, t) {
   const dl = t < 0.1 ? Math.round(t / 0.1 * 7) : t > 0.88 ? Math.round((1 - t) / 0.12 * 7) : 7;
   dim(c, dl);
   const base = stampBase(S.text, S.color, 'shout');
+  // бумажный лист, на который падает печать (въезжает снизу)
+  {
+    const sk = G.ease.out(G.clamp(t / 0.08, 0, 1));
+    const out = t > 0.88 ? G.ease.in((t - 0.88) / 0.12) : 0;
+    const a = S.angle * Math.PI / 180 * 0.6, ca = Math.cos(a), sa = Math.sin(a);
+    const hw = (base.width >> 1) + 12, hh = (base.height >> 1) + 12;
+    const oy = Math.round((1 - sk) * 160 + out * 200) + (t > fall && t < fall + 0.04 ? 1 : 0);
+    const quad = (ex, dx, dy) => [[-hw - ex, -hh - ex], [hw + ex, -hh - ex], [hw + ex, hh + ex], [-hw - ex, hh + ex]].map(([x, y]) => [Math.round(cx + x * ca - y * sa + dx), Math.round(cy + x * sa + y * ca + oy + dy)]);
+    c.globalAlpha = 0.4; G.poly(c, quad(0, 4, 5), P.shadow); c.globalAlpha = 1;
+    G.poly(c, quad(1, 0, 0), R.paper[0]);
+    G.poly(c, quad(0, 0, 0), R.paper[4]);
+    // линовка листа
+    for (let k = -hh + 8; k < hh - 4; k += 9) {
+      const x0 = -hw + 4, x1 = hw - 4;
+      G.line(c, cx + x0 * ca - k * sa, cy + x0 * sa + k * ca + oy, cx + x1 * ca - k * sa, cy + x1 * sa + k * ca + oy, R.blue[6]);
+    }
+    const mx = -hw + 14;
+    G.line(c, cx + mx * ca + hh * sa, cy + mx * sa - hh * ca + oy, cx + mx * ca - hh * sa, cy + mx * sa + hh * ca + oy, R.red[5]);
+    if (oy > 0 && t > 0.88) return;
+  }
   if (t < fall) {
     const k = t / fall;
     const i = Math.min(SHOUT_STEPS.length - 2, Math.floor(k * (SHOUT_STEPS.length - 1)));
@@ -637,7 +657,7 @@ function iconCanvas(id) {
 }
 function icon2x(id) {
   if (icon2Cache[id]) return icon2Cache[id];
-  const z = zoomInt(iconCanvas(id), 2);
+  const z = (G.Icons && G.Icons.drawBig) ? G.makeSprite(64, 64, c => { try { G.Icons.drawBig(c, id, 0, 0); } catch (e) { c.drawImage(zoomInt(iconCanvas(id), 2), 0, 0); } }) : zoomInt(iconCanvas(id), 2);
   if (G.Icons) icon2Cache[id] = z;
   return z;
 }
@@ -857,8 +877,9 @@ function scribble(c, x, y, w, seed, col) {
     const k = i / n;
     const ph = k * loops * Math.PI * 2;
     if (i % 15 === 0) amp = 3 + rnd() * 4;
-    const dx = x + k * w - Math.sin(ph) * 3.2;
-    const dy = y - (1 - Math.cos(ph)) * amp * (k < 0.2 ? 1.5 : 1) + Math.sin(k * 7) * 2;
+    const ly = (1 - Math.cos(ph)) * amp * (k < 0.2 ? 1.5 : 1);
+    const dx = x + k * w - Math.sin(ph) * 3.6 + ly * 0.55;
+    const dy = y - ly + Math.sin(k * 7) * 2;
     pts.push([Math.round(dx), Math.round(dy)]);
   }
   for (let i = 1; i < pts.length; i++) {
@@ -1101,10 +1122,10 @@ function firstUnsolved() {
   const cs = G.Cases || [];
   const solved = (G.Save && G.Save.data.solved) || {};
   for (let i = 0; i < cs.length; i++) if (!solved[cs[i].id] && !solved[i]) return i;
-  return 0;
+  return cs.length ? cs.length - 1 : 0;
 }
 function isSolved(i) {
-  const cs = G.Cases || [];
+  const cs = (G.Cases && G.Cases.length) ? G.Cases : PLACEHOLDER_CASES;
   const s = (G.Save && G.Save.data.solved) || {};
   return !!(s[i] || (cs[i] && s[cs[i].id]));
 }
@@ -1269,8 +1290,8 @@ const TitleScene = {
   },
   draw(c) {
     const t = this.t;
-    if (G.Env && G.Env.drawExterior) G.Env.drawExterior(c, t);
-    else c.drawImage(skyBg || (skyBg = buildSky()), 0, 0);
+    c.drawImage(skyBg || (skyBg = buildSky()), 0, 0);
+    if (G.Env && G.Env.drawExterior) { try { G.Env.drawExterior(c, t); } catch (e) { /* фон-заглушка уже нарисован */ } }
     if (!logoCv) logoCv = buildLogo('СЛОВО ЗАЩИТЫ');
     // логотип с лёгким «дыханием» и бликом
     const L = logoCv;
@@ -1322,8 +1343,8 @@ const TitleScene = {
         // молоток стучит
         const tap = (t * 3) % 1 < 0.2 ? 2 : 0;
         const w2 = M(it) >> 1;
-        c.drawImage(GAVEL, (W >> 1) - w2 - 19 + tap, y + 1);
-        if (tap) { G.px(c, (W >> 1) - w2 - 3, y + 2, R.gold[5]); G.px(c, (W >> 1) - w2 - 3, y + 10, R.gold[5]); }
+        c.drawImage(GAVEL, (W >> 1) - w2 - 22 + tap, y + 1);
+        if (tap) { G.px(c, (W >> 1) - w2 - 5, y + 1, R.gold[5]); G.px(c, (W >> 1) - w2 - 4, y, R.gold[5]); G.px(c, (W >> 1) - w2 - 5, y + 11, R.gold[5]); G.px(c, (W >> 1) - w2 - 4, y + 12, R.gold[5]); }
       }
     });
     // версия
@@ -1350,10 +1371,12 @@ function buildCaseFolder(cs, i, solved, locked) {
   const cv = G.makeSprite(fw + 4, fh + 14, c => {
     const oy = 10;
     // вкладка
-    G.rect(c, tabX, 0, 46, 12, P.outline);
-    G.rect(c, tabX + 1, 1, 44, 11, R.paper[2]);
-    G.rect(c, tabX + 1, 1, 44, 1, R.paper[3]);
-    T(c, cs.docket || '', tabX + 23, 2, P.inkDark, { align: 'center' });
+    const tw = Math.min(fw - 8, M(cs.docket || '') + 8);
+    const tx0 = Math.min(tabX, fw - tw - 2);
+    G.rect(c, tx0, 0, tw, 12, P.outline);
+    G.rect(c, tx0 + 1, 1, tw - 2, 11, R.paper[2]);
+    G.rect(c, tx0 + 1, 1, tw - 2, 1, R.paper[3]);
+    T(c, cs.docket || '', tx0 + (tw >> 1), 2, P.inkDark, { align: 'center' });
     // папка
     G.rect(c, 0, oy, fw, fh, P.outline);
     G.rect(c, 1, oy + 1, fw - 2, fh - 2, R.paper[2]);
@@ -1367,16 +1390,16 @@ function buildCaseFolder(cs, i, solved, locked) {
     G.frame(c, 6, oy + 8, fw - 12, 42, R.paper[1]);
     G.rect(c, 6, oy + 8, fw - 12, 9, R.red[2]);
     T(c, 'ДЕЛО № ' + (i + 1), fw >> 1, oy + 8, R.paper[4], { align: 'center' });
-    const tl = WRAP(cs.title || '', fw - 18);
+    const tl = locked ? ['* * *'] : WRAP(cs.title || '', fw - 18);
     tl.slice(0, 3).forEach((l, k) => T(c, l, fw >> 1, oy + 20 + k * 10, P.inkDark, { align: 'center' }));
     // подпись-подзаголовок
-    const cap = WRAP(cs.caption || '', fw - 12);
-    cap.slice(0, 4).forEach((l, k) => T(c, l, 6, oy + 54 + k * 10, R.wood[1]));
+    const cap = locked ? [] : WRAP(cs.caption || '', fw - 12);
+    cap.slice(0, 5).forEach((l, k) => T(c, l, 6, oy + 54 + k * 10, R.wood[1]));
     // статья
     const code = (cs.charges && cs.charges[0] && cs.charges[0].code) || '';
-    const cl = WRAP(code.replace('Cal. Penal Code', 'PC'), fw - 12);
-    G.rect(c, 6, oy + fh - 26, fw - 12, 1, R.paper[1]);
-    cl.slice(0, 2).forEach((l, k) => T(c, l, 6, oy + fh - 23 + k * 10, P.stamp));
+    const cl = locked ? [] : WRAP(code.replace('Cal. Penal Code', 'PC'), fw - 12);
+    G.rect(c, 6, oy + fh - 16, fw - 12, 1, R.paper[1]);
+    cl.slice(0, 1).forEach((l, k) => T(c, l, 6, oy + fh - 13 + k * 10, P.stamp));
     // скрепка
     G.rect(c, fw - 18, oy - 3, 3, 14, R.neutral[6]); G.rect(c, fw - 17, oy - 2, 1, 12, R.neutral[8]);
     G.rect(c, fw - 20, oy + 9, 7, 1, R.neutral[5]);
@@ -1385,7 +1408,8 @@ function buildCaseFolder(cs, i, solved, locked) {
       drawStamp(c, fw >> 1, oy + 82, fem ? 'ОПРАВДАНА' : 'ОПРАВДАН', P.stamp, { angle: -14, size: 'small' });
     }
     if (locked) {
-      G.dither(c, 0, 0, fw + 4, fh + 14, R.neutral[3], 11);
+      G.dither(c, 0, 0, fw + 4, fh + 14, R.neutral[3], 7);
+      G.dither(c, 0, 0, fw + 4, fh + 14, R.neutral[2], 2);
       c.globalCompositeOperation = 'destination-over';
       c.globalCompositeOperation = 'source-over';
       const lx = (fw >> 1) - 9, ly = oy + 52;
@@ -1471,10 +1495,6 @@ function buildPad() {
     G.rect(c, px - 2, py - 8, pw + 4, 10, P.outline);
     G.rect(c, px - 1, py - 7, pw + 2, 8, R.red[2]);
     G.rect(c, px - 1, py - 7, pw + 2, 1, R.red[3]);
-    // ручка рядом
-    G.line(c, 344, 60, 360, 170, P.outline); G.line(c, 345, 60, 361, 170, R.blue[3]); G.line(c, 346, 60, 362, 170, R.blue[4]);
-    G.line(c, 347, 60, 363, 170, P.outline);
-    G.rect(c, 344, 56, 4, 6, R.gold[4]);
     T(c, 'НАСТРОЙКИ', px + pw / 2 + 12, py + 6, P.inkDark, { font: 'big', align: 'center' });
   });
 }
@@ -1493,7 +1513,7 @@ const SettingsScene = {
       if (d.key === 'sfx') sfx('select');
     }
   },
-  track(i) { return { x: 170, y: 64 + i * 36, w: 120, h: 12 }; },
+  track(i) { return { x: 196, y: 64 + i * 36, w: 96, h: 12 }; },
   update(dt) {
     this.t += dt;
     const n = SETTINGS.length + 1;
@@ -1601,7 +1621,217 @@ const CreditsScene = {
   },
 };
 
+/* ---------------------------------------------------------------------
+   РЕПЛИКА-ПУЗЫРЬ (для толпы). x,y — кончик хвостика (над головой)
+   --------------------------------------------------------------------- */
+function drawSpeech(c, x, y, text, t) {
+  t = t || 0;
+  const lines = WRAP(text, 110);
+  const tw = Math.max(...lines.map(l => M(l)));
+  let w = tw + 8, h = lines.length * 10 + 4;
+  // «pop»: точка → половина → с перелётом → норма
+  let k = 1, over = 0;
+  if (t < 0.05) k = 0.2; else if (t < 0.1) k = 0.6; else if (t < 0.15) { k = 1; over = 1; }
+  const bw = Math.max(4, Math.round(w * k)) + over * 2, bh = Math.max(3, Math.round(h * k)) + over * 2;
+  const bob = t > 0.15 ? Math.round(Math.sin(t * 5 + x) * 0.6) : 0;
+  let bx = Math.round(x - bw / 2), by = y - 3 - bh + bob;
+  bx = G.clamp(bx, 1, W - bw - 1); by = Math.max(1, by);
+  // тень
+  shadowRect(c, bx + 2, by + 2, bw, bh, 0.35);
+  // тело с округлёнными углами
+  G.rect(c, bx + 1, by, bw - 2, bh, P.outline);
+  G.rect(c, bx, by + 1, bw, bh - 2, P.outline);
+  G.rect(c, bx + 1, by + 1, bw - 2, bh - 2, P.white);
+  G.rect(c, bx + 1, by + bh - 2, bw - 2, 1, R.paper[3]);
+  // хвостик
+  const tx = G.clamp(x, bx + 3, bx + bw - 4);
+  G.rect(c, tx - 2, by + bh - 1, 4, 1, P.white);
+  G.rect(c, tx - 1, by + bh, 3, 1, P.white); G.px(c, tx - 2, by + bh, P.outline); G.px(c, tx + 2, by + bh, P.outline);
+  G.px(c, tx, by + bh + 1, P.white); G.px(c, tx - 1, by + bh + 1, P.outline); G.px(c, tx + 1, by + bh + 1, P.outline);
+  G.px(c, tx, by + bh + 2, P.outline);
+  if (k >= 1) lines.forEach((l, i) => T(c, l, bx + (bw >> 1), by + 2 + over + i * 10, P.inkDark, { align: 'center', emph: P.stamp }));
+}
+
+/* ---------------------------------------------------------------------
+   ПОЛУЧЕНИЕ УЛИКИ (~2.4 с, t — секунды)
+   Мотив: «лампа следователя» — латунное кольцо-лупа и веер лучей, предмет
+   всплывает из темноты; документы выезжают снизу листом, на них падает печать.
+   --------------------------------------------------------------------- */
+const DOC_ICONS = { document: 1, letter: 1, report: 1, policy: 1, autopsy: 1, receipt: 1, ticket: 1, map: 1, logbook: 0 };
+const silCache = {};
+function silhouette(cv, col) {
+  const key = col; const m = silCache[key] || (silCache[key] = new WeakMap());
+  let s = m.get(cv);
+  if (!s) {
+    s = G.makeCanvas(cv.width, cv.height); const x = s.getContext('2d');
+    x.drawImage(cv, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = col; x.fillRect(0, 0, s.width, s.height);
+    m.set(cv, s);
+  }
+  return s;
+}
+function sparkle(c, x, y, size, col) {
+  G.px(c, x, y, P.white);
+  for (let k = 1; k <= size; k++) {
+    const cc = k === size ? col : P.white;
+    G.px(c, x - k, y, cc); G.px(c, x + k, y, cc); G.px(c, x, y - k, cc); G.px(c, x, y + k, cc);
+  }
+  if (size >= 2) { G.px(c, x - 1, y - 1, col); G.px(c, x + 1, y + 1, col); G.px(c, x + 1, y - 1, col); G.px(c, x - 1, y + 1, col); }
+}
+const sheetCache = {};
+function evidenceSheet(ev) {
+  const key = ev.id;
+  if (sheetCache[key]) return sheetCache[key];
+  const sw = 128, sh = 128;
+  const cv = G.makeSprite(sw, sh, c => {
+    G.rect(c, 0, 0, sw, sh, P.outline);
+    G.rect(c, 1, 1, sw - 2, sh - 2, R.paper[4]);
+    G.rect(c, 1, 1, sw - 2, 1, P.white);
+    G.dither(c, 1, sh - 5, sw - 2, 4, R.paper[3], 8);
+    for (let y = 30; y < sh - 6; y += 8) G.rect(c, 3, y, sw - 6, 1, R.blue[6]);
+    G.rect(c, 12, 1, 1, sh - 2, R.red[5]);
+    // заголовок
+    const tl = WRAP(ev.name || '', sw - 22).slice(0, 2);
+    tl.forEach((l, i) => T(c, l, (sw >> 1) + 5, 4 + i * 10, P.inkDark, { align: 'center' }));
+    G.rect(c, 16, 25, sw - 24, 1, P.inkDark);
+    // «машинописные» строки
+    const rnd = G.rng(strSeed(ev.id));
+    for (let y = 32; y < sh - 30; y += 8) {
+      let x = 16; const end = sw - 6 - Math.floor(rnd() * 20);
+      while (x < end) { const l = 2 + Math.floor(rnd() * 9); G.rect(c, x, y - 3, Math.min(l, end - x), 2, R.neutral[4]); x += l + 2; }
+    }
+    // иконка в углу
+    c.drawImage(iconCanvas(ev.icon || ev.id), sw - 36, sh - 36);
+    scribble(c, 16, sh - 12, 34, strSeed(ev.id), P.ink);
+    // загнутый уголок
+    G.poly(c, [[sw - 9, 1], [sw - 1, 9], [sw - 9, 9]], R.paper[2]);
+    G.rect(c, sw - 9, 0, 9, 1, 'transparent');
+    c.clearRect(sw - 8, 0, 8, 1); for (let k = 0; k < 8; k++) c.clearRect(sw - 8 + k, 0, 8 - k, k + 1);
+    G.line(c, sw - 9, 1, sw - 1, 9, P.outline);
+  });
+  sheetCache[key] = cv;
+  return cv;
+}
+function drawItemGet(c, ev, t) {
+  if (!ev) return;
+  t = t || 0;
+  const cx = W >> 1, cy = 82;
+  const isDoc = !!(ev.doc || DOC_ICONS[ev.icon || ev.id]);
+  // 1. затемнение
+  dim(c, Math.min(11, Math.round(t / 0.25 * 11)));
+  if (t > 0.25) { c.globalAlpha = 0.45; G.rect(c, 0, 0, W, H, P.black); c.globalAlpha = 1; }
+  // 2. лучи «лампы»
+  const rk = G.clamp((t - 0.1) / 0.5, 0, 1);
+  if (rk > 0) {
+    const len = Math.round(40 + 190 * G.ease.out(rk));
+    const rot = t * 0.55;
+    const N = 14;
+    for (let i = 0; i < N; i++) {
+      const a0 = rot + i * Math.PI * 2 / N, a1 = a0 + Math.PI / N * 0.55;
+      const pts = [[cx, cy], [cx + Math.cos(a0) * len, cy + Math.sin(a0) * len], [cx + Math.cos(a1) * len, cy + Math.sin(a1) * len]];
+      c.globalAlpha = i % 2 ? 0.22 : 0.35;
+      G.poly(c, pts, i % 2 ? R.gold[4] : P.glow);
+    }
+    c.globalAlpha = 1;
+    // латунное кольцо-лупа и ореол
+    const rr = Math.round(28 + 14 * G.ease.back(Math.min(1, rk * 1.4)));
+    c.globalAlpha = 0.3; G.ellipse(c, cx, cy, rr + 6, rr + 6, P.glow); c.globalAlpha = 0.35; G.ellipse(c, cx, cy, rr, rr, P.white); c.globalAlpha = 1;
+    // штрихованное кольцо (вращается)
+    for (let k = 0; k < 48; k++) {
+      const a = k / 48 * Math.PI * 2 - t * 1.3;
+      const x = Math.round(cx + Math.cos(a) * (rr + 3)), y = Math.round(cy + Math.sin(a) * (rr + 3));
+      G.px(c, x, y, k % 4 === 0 ? P.white : R.gold[4]);
+      if (k % 6 === 0) G.px(c, Math.round(cx + Math.cos(a) * (rr + 6)), Math.round(cy + Math.sin(a) * (rr + 6)), R.gold[3]);
+    }
+  }
+  // 3. предмет
+  const rise = G.clamp((t - 0.15) / 0.55, 0, 1);
+  const arrive = 0.7;
+  if (!isDoc) {
+    const big = icon2x(ev.icon || ev.id);
+    const y0 = H + 10, y1 = cy - 32;
+    let y = Math.round(G.lerp(y0, y1, G.ease.back(rise)));
+    if (t > arrive) y = y1 + Math.round(Math.sin((t - arrive) * 3.2) * 1.5);
+    // тень-ореол
+    c.globalAlpha = 0.35; G.ellipse(c, cx, y + 70, 22, 3, P.shadow); c.globalAlpha = 1;
+    c.drawImage(big, cx - 32, y);
+    if (t > arrive && t < arrive + 0.1) c.drawImage(silhouette(big, P.white), cx - 32, y);
+    else if (t > arrive + 0.1 && t < arrive + 0.16) c.drawImage(silhouette(big, P.glow), cx - 32, y);
+  } else {
+    const sh = evidenceSheet(ev);
+    const y1 = cy - (sh.height >> 1) + 6;
+    let y = Math.round(G.lerp(H + 4, y1, G.ease.out(rise)));
+    const st = G.clamp((t - 0.85) / 0.22, 0, 1);
+    if (st >= 1 && t < 1.15) y += 1; // удар печати
+    shadowRect(c, cx - (sh.width >> 1) + 4, y + 4, sh.width, sh.height, 0.45);
+    c.drawImage(sh, cx - (sh.width >> 1), y);
+    if (t > 0.85) {
+      drawStamp(c, cx - 2, y + 66, 'ПРИОБЩЕНО', P.stampBlue, { angle: -9, size: 'big', t: st });
+      if (st >= 1 && t < 1.05) {
+        const rnd = G.rng(5);
+        for (let i = 0; i < 10; i++) G.px(c, cx - 4 + Math.round((rnd() - 0.5) * 100), y + 64 + Math.round((rnd() - 0.5) * 40), P.stampBlue);
+      }
+    }
+  }
+  // 4. искры
+  if (t > arrive - 0.05) {
+    const rnd = G.rng(77);
+    for (let i = 0; i < 22; i++) {
+      const born = arrive + rnd() * 1.2, life = 0.5 + rnd() * 0.6;
+      const ang = rnd() * Math.PI * 2, dist = 30 + rnd() * 34;
+      const lt = (t - born) / life;
+      if (lt < 0 || lt > 1) continue;
+      const x = Math.round(cx + Math.cos(ang) * dist * (0.7 + lt * 0.4));
+      const y = Math.round(cy + Math.sin(ang) * dist * 0.8 + lt * 14);
+      const sz = lt < 0.2 || lt > 0.8 ? 1 : (i % 3 === 0 ? 3 : 2);
+      sparkle(c, x, y, sz, i % 2 ? R.gold[4] : R.gold[5]);
+    }
+    // вспышка-крест при прибытии
+    if (t < arrive + 0.2) {
+      const k = (t - arrive) / 0.2;
+      const l = Math.round(10 + k * 50);
+      G.rect(c, cx - l, cy, l * 2, 1, P.white); G.rect(c, cx, cy - (l >> 1), 1, l, P.white);
+    }
+  }
+  // 5. лента «НОВАЯ УЛИКА» + название
+  const bt = t - 1.0;
+  if (bt > 0) {
+    const k = G.ease.out(G.clamp(bt / 0.3, 0, 1));
+    const by = 150;
+    const rw = Math.round(W * k);
+    // красная лента от левого края
+    G.rect(c, 0, by - 1, rw, 22, P.outline);
+    G.rect(c, 0, by, rw, 20, R.red[2]);
+    G.rect(c, 0, by, rw, 1, R.red[4]);
+    G.rect(c, 0, by + 1, rw, 1, R.red[3]);
+    G.rect(c, 0, by + 19, rw, 1, R.red[1]);
+    for (let x = 4; x < rw - 4; x += 3) { G.px(c, x, by + 3, R.gold[3]); G.px(c, x, by + 16, R.gold[3]); }
+    if (k >= 1) {
+      const tx = Math.round(G.lerp(-150, cx, G.ease.out(G.clamp((bt - 0.15) / 0.3, 0, 1))));
+      T(c, 'НОВАЯ УЛИКА', tx, by + 1, R.gold[5], { font: 'title', align: 'center', shadow: R.red[0], shadowX: 1, shadowY: 1 });
+      // блик пробегает по надписи
+      const gx = Math.round(((bt * 140) % 500) - 60);
+      if (gx > 0 && gx < W) { c.globalAlpha = 0.35; G.poly(c, [[gx, by], [gx + 6, by], [gx - 4, by + 20], [gx - 10, by + 20]], P.white); c.globalAlpha = 1; }
+    }
+    // табличка с названием
+    const nk = G.clamp((bt - 0.3) / 0.25, 0, 1);
+    if (nk > 0) {
+      const name = ev.name || ev.id;
+      const nw = M(name, { font: 'big' }) + 24;
+      const ny = by + 22 + Math.round((1 - G.ease.back(nk)) * 16);
+      const nx = cx - (nw >> 1);
+      shadowRect(c, nx + 2, ny + 2, nw, 20, 0.45);
+      G.rect(c, nx, ny, nw, 20, P.outline);
+      woodFill(c, nx + 1, ny + 1, nw - 2, 18, 12, 1);
+      G.rect(c, nx + 1, ny + 1, nw - 2, 1, R.gold[4]);
+      G.rect(c, nx + 1, ny + 18, nw - 2, 1, R.gold[2]);
+      rivet(c, nx + 3, ny + 8); rivet(c, nx + nw - 7, ny + 8);
+      T(c, name, cx, ny + 4, R.paper[4], { font: 'big', align: 'center', shadow: P.black, shadowX: 0, shadowY: 1 });
+    }
+  }
+}
+
 const UI = G.UI = {
+  drawSpeech, drawItemGet,
   drawDialog, button, drawCredibility, courtRecord, drawDocument, drawStamp, drawShout,
   choice, crossHUD, drawWipe,
   TitleScene, CaseSelectScene, SettingsScene, CreditsScene,

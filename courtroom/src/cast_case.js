@@ -500,7 +500,10 @@ function armTo(p, hx, hy, o) {
   const fr = o.from, sl = o.sleeve, sk = o.skin;
   const w = o.w || 13;
   const mx = (fr[0] + hx) / 2 + (o.bend || 0), my = Math.max(fr[1], hy) - 4;
-  p.part({ s: [C(fr[0], fr[1], mx, my, hx + (o.wx || 2), hy + 8, w, w - 4)], ramp: sl, base: o.slBase || 3, cast: 2, shT: 0.4 });
+  p.part({ s: [E(fr[0], fr[1], Math.round(w / 2) + 1, Math.round(w / 2) + 3), C(fr[0], fr[1], mx, my, hx + (o.wx || 2), hy + 8, w, w - 3)], ramp: sl, base: o.slBase || 3, cast: 2, shT: 0.42, hiT: 0.7 });
+  // складки рукава у локтя
+  p.stroke(C(fr[0] - 3, fr[1] - 6, mx - 2, my - 2, (mx + hx) / 2, (my + hy) / 2 + 4, 1), -1, sl);
+  p.stroke(C(fr[0] + 2, fr[1] - 4, fr[0] - 1, fr[1] - 10, fr[0] - 4, fr[1] - 12, 1), -1, sl);
   if (o.cuff) p.part({ s: [C(hx - 1, hy + 9, hx + 1, hy + 7, hx + 3, hy + 5, 5)], ramp: o.cuff, base: 3, cast: 1 });
   const pose = o.pose || 'flat';
   if (pose === 'point') {
@@ -734,38 +737,41 @@ function shineLine(c, x, y, len, col) { for (let i = 0; i < len; i++) px(c, x + 
    --------------------------------------------------------------------- */
 function makeIso(cfg) {
   const cache = {};
-  function build(pose, frame) {
-    const W = 20, H = 32;
+  /* pose: stand|sit; frame: 0/1 (дыхание), mode: idle|talk|whisper|gasp|murmur|angry|cheer|clap|laugh|shout|bk; ph: 0/1 под-кадр */
+  function build(pose, frame, mode, ph) {
+    const W = 22, H = 36;
     const c = G.makeCanvas(W, H);
     const x = c.getContext('2d');
     const big = cfg.build === 'big' ? 1 : 0, thin = cfg.build === 'thin' ? 1 : 0;
-    const bob = frame === 1 ? 1 : 0;
-    const talk = frame === 2;
-    const fx = 4; // левый край тела
-    const tw = 10 + big * 2 - thin; // ширина торса
     const sit = pose === 'sit';
-    const legTop = 19;
-    const baseY = H - 2;
-    const top = cfg.top, pants = cfg.pants || R.neutral, skin = cfg.skin;
-    const torsoTop = sit ? 10 : 10;
-    const offY = (sit ? 0 : 0) + bob;
-    // ноги
+    const top = cfg.top, pants = cfg.pants || R.neutral, skin0 = cfg.skin;
+    const angry = mode === 'angry' || mode === 'bk';
+    const skin = angry ? [skin0[0], R.red[2], R.red[3], R.red[4], skin0[4]] : skin0;
+    // смещения тела
+    let jump = 0, lean = 0, hShake = 0;
+    if (frame === 1) jump = 1; // дыхание/покачивание
+    if (mode === 'gasp') jump = ph ? 1 : -1;
+    if (mode === 'cheer') jump = ph ? -2 : 0;
+    if (mode === 'laugh') jump = ph ? 1 : 0;
+    if (mode === 'angry' || mode === 'bk') hShake = ph ? 1 : -1;
+    if (mode === 'murmur') hShake = ph ? 1 : -1;
+    if (mode === 'whisper') lean = -1;
+    const fx = 5 + (mode === 'angry' || mode === 'bk' ? hShake : 0);
+    const tw = 10 + big * 2 - thin;
+    const legTop = 22, baseY = H - 2;
+    const fill = (xx, yy, w, h, col) => { x.fillStyle = col; x.fillRect(xx, yy, w, h); };
     if (!sit) {
-      const lx = fx + 1 + big;
+      const lx = fx + 1;
       for (let y = legTop; y < baseY - 1; y++) {
-        x.fillStyle = pants[2]; x.fillRect(lx, y, 3, 1);
-        x.fillStyle = pants[1]; x.fillRect(lx + 4, y, 3, 1);
-        x.fillStyle = pants[3]; x.fillRect(lx, y, 1, 1);
+        fill(lx, y, 3, 1, pants[2]); fill(lx + 4, y, 3, 1, pants[1]); fill(lx, y, 1, 1, pants[3] || pants[2]);
       }
-      x.fillStyle = cfg.shoes || R.neutral[1];
-      x.fillRect(lx - 1, baseY - 1, 4, 2); x.fillRect(lx + 4, baseY - 1, 4, 2);
-      x.fillStyle = R.neutral[4]; x.fillRect(lx - 1, baseY - 1, 1, 1);
+      fill(lx - 1, baseY - 1, 4, 2, cfg.shoes || R.neutral[1]); fill(lx + 4, baseY - 1, 4, 2, cfg.shoes || R.neutral[1]);
+      fill(lx - 1, baseY - 1, 1, 1, R.neutral[4]);
     }
-    const ty = (sit ? 15 : torsoTop) + offY;
-    const tH = sit ? 10 : legTop - torsoTop + (cfg.long ? 5 : 1);
-    // торс
+    const ty = (sit ? 18 : 13) + jump;
+    const tH = sit ? 10 : legTop - 13 + (cfg.long ? 5 : 1);
+    const bx = fx - big + lean;
     for (let y = 0; y < tH; y++) {
-      const yy = ty + y;
       const inset = y === 0 ? 1 : 0;
       for (let i = inset; i < tw - inset; i++) {
         const u = i / (tw - 1);
@@ -773,60 +779,92 @@ function makeIso(cfg) {
         if (u < 0.3) col = top[4] || top[3];
         if (u > 0.65) col = top[2];
         if (y === tH - 1) col = top[1];
-        x.fillStyle = col; x.fillRect(fx + i - big, yy, 1, 1);
+        fill(bx + i + (y < 3 ? lean : 0), ty + y, 1, 1, col);
       }
     }
-    // рубашка/вырез
-    if (cfg.shirt) { x.fillStyle = cfg.shirt; x.fillRect(fx + 2 - big, ty, 3, 2); x.fillRect(fx + 3 - big, ty + 2, 1, 2); }
-    if (cfg.tie) { x.fillStyle = cfg.tie; x.fillRect(fx + 3 - big, ty + 1, 1, 5); }
-    // руки
-    const armY = ty + 1;
-    x.fillStyle = top[2];
-    x.fillRect(fx - 1 - big, armY, 2, sit ? 7 : 8);
-    x.fillStyle = top[3]; x.fillRect(fx - 1 - big, armY, 1, sit ? 7 : 8);
-    x.fillStyle = skin[3]; x.fillRect(fx - 1 - big, armY + (sit ? 7 : 8), 2, 2);
-    if (talk) { // жест: правая рука поднята вперёд-влево
-      x.fillStyle = top[2]; x.fillRect(fx + tw - 2 - big, armY + 1, 2, 3);
-      x.fillStyle = top[3]; x.fillRect(fx + tw - 4 - big, armY + 4, 3, 2);
-      x.fillStyle = skin[3]; x.fillRect(fx + tw - 6 - big, armY + 4, 2, 2);
-      x.fillStyle = skin[4]; x.fillRect(fx + tw - 6 - big, armY + 4, 1, 1);
-    } else {
-      x.fillStyle = top[1]; x.fillRect(fx + tw - 1 - big, armY, 2, sit ? 7 : 8);
-      x.fillStyle = skin[2]; x.fillRect(fx + tw - 1 - big, armY + (sit ? 7 : 8), 2, 2);
-    }
+    if (cfg.shirt) { fill(bx + 2 + lean, ty, 3, 2, cfg.shirt); fill(bx + 3 + lean, ty + 2, 1, 2, cfg.shirt); }
+    if (cfg.tie) fill(bx + 3 + lean, ty + 1, 1, 5, cfg.tie);
+    if (cfg.extraBody) cfg.extraBody(x, { fx: bx, ty, tw, sit, frame });
     // голова
-    const hx = fx + Math.floor(tw / 2) - 4, hy = ty - 8;
+    const hx = bx + Math.floor(tw / 2) - 4 + lean * 2 + (mode === 'murmur' ? hShake : 0), hy = ty - 8 + (mode === 'laugh' && ph ? 0 : 0);
     for (let j = 0; j < 8; j++) for (let i = 0; i < 7; i++) {
       if ((j === 0 || j === 7) && (i === 0 || i === 6)) continue;
       let col = skin[3];
       if (i >= 5) col = skin[2];
       if (j === 7) col = skin[2];
-      x.fillStyle = col; x.fillRect(hx + i, hy + j, 1, 1);
+      fill(hx + i, hy + j, 1, 1, col);
     }
-    x.fillStyle = skin[4]; x.fillRect(hx + 1, hy + 2, 1, 2);
+    fill(hx + 1, hy + 2, 1, 2, skin[4]);
     // глаза
-    x.fillStyle = PAL.outline; x.fillRect(hx + 1, hy + 4, 1, 1); x.fillRect(hx + 4, hy + 4, 1, 1);
-    x.fillStyle = skin[1]; x.fillRect(hx + 2, hy + 6, 2, 1);
-    if (talk) { x.fillStyle = R.red[1]; x.fillRect(hx + 2, hy + 6, 2, 1); }
-    // волосы/шапка
-    if (cfg.hairDraw) cfg.hairDraw(x, hx, hy, frame, pose);
-    if (cfg.extra) cfg.extra(x, { fx: fx - big, ty, tw, hx, hy, sit, talk, frame, armY });
-    const o = G.outlineSprite(c, PAL.outline);
-    return o;
+    const eyeCol = PAL.outline;
+    if (mode === 'laugh' || mode === 'cheer') { fill(hx + 1, hy + 4, 1, 1, eyeCol); fill(hx + 4, hy + 4, 1, 1, eyeCol); fill(hx + 1, hy + 3, 1, 1, skin[2]); }
+    else if (mode === 'gasp' || mode === 'bk') { fill(hx + 1, hy + 3, 1, 2, eyeCol); fill(hx + 4, hy + 3, 1, 2, eyeCol); }
+    else { fill(hx + 1, hy + 4, 1, 1, eyeCol); fill(hx + 4, hy + 4, 1, 1, eyeCol); }
+    if (angry) { fill(hx + 1, hy + 3, 2, 1, PAL.outline); fill(hx + 4, hy + 3, 1, 1, PAL.outline); }
+    // рот
+    const open = mode === 'talk' ? ph : (mode === 'shout' || mode === 'cheer' || mode === 'laugh' || mode === 'gasp' || mode === 'bk') ? 1 : 0;
+    if (open) { fill(hx + 2, hy + 6, 2, 1, R.red[0]); if (mode === 'shout' || mode === 'laugh' || mode === 'cheer') fill(hx + 2, hy + 5, 2, 1, R.red[1]); }
+    else fill(hx + 2, hy + 6, 2, 1, skin[1]);
+    if (cfg.hairDraw) cfg.hairDraw(x, hx, hy, frame, pose, mode);
+    // руки
+    const armY = ty + 1, aL = bx - 1, aR = bx + tw - 1;
+    const sleeve = (xx, yy, w, h, lit) => fill(xx, yy, w, h, lit ? top[3] : top[2]);
+    const handAt = (xx, yy, lit) => { fill(xx, yy, 2, 2, lit ? skin[3] : skin[2]); fill(xx, yy, 1, 1, lit ? skin[4] : skin[3]); };
+    const down = (side) => {
+      const ax = side ? aR : aL, h = sit ? 7 : 8;
+      sleeve(ax, armY, 2, h, !side); handAt(ax, armY + h, !side);
+    };
+    const upTo = (side, hx2, hy2) => { // рука от плеча к точке (кисть)
+      const ax = side ? aR : aL;
+      const sx = ax, sy = armY + 1;
+      const n = Math.max(Math.abs(hx2 - sx), Math.abs(hy2 - sy));
+      for (let k = 0; k <= n; k++) {
+        const xx = Math.round(sx + (hx2 - sx) * k / (n || 1)), yy = Math.round(sy + (hy2 - sy) * k / (n || 1));
+        sleeve(xx, yy, 2, 2, !side);
+      }
+      handAt(hx2, hy2, !side);
+    };
+    switch (mode) {
+      case 'talk':
+        down(0);
+        if (ph) upTo(1, hx - 2, ty + 3); else upTo(1, hx - 1, ty + 5);
+        break;
+      case 'whisper': down(1); upTo(0, hx - 1, hy + 5); break;
+      case 'gasp': upTo(0, hx - 1, hy + 5); upTo(1, hx + 5, hy + 5); break;
+      case 'murmur': down(0); down(1); break;
+      case 'angry': down(0); upTo(1, aR + 1, hy - 4 + (ph ? 0 : 1)); break;
+      case 'bk': upTo(0, hx - 1, hy + 2); upTo(1, hx + 6, hy + 2); break;
+      case 'cheer': upTo(0, aL - 2, hy - 4); upTo(1, aR + 2, hy - 4); break;
+      case 'clap':
+        if (ph) { upTo(0, hx + 1, ty + 3); upTo(1, hx + 3, ty + 3); }
+        else { upTo(0, hx - 1, ty + 2); upTo(1, hx + 5, ty + 2); }
+        break;
+      case 'laugh': upTo(0, hx + 1, ty + 6); down(1); break;
+      case 'shout': down(1); upTo(0, hx - 2, hy + 5); fill(hx - 1, hy + 4, 1, 3, skin[3]); break;
+      default: down(0); down(1);
+    }
+    if (cfg.extra) cfg.extra(x, { fx: bx, ty, tw, hx, hy, sit, talk: mode === 'talk', frame, armY, mode, ph });
+    return G.outlineSprite(c, PAL.outline);
   }
   return {
     draw(ctx, x, y, o) {
       o = o || {};
       const pose = o.pose === 'sit' ? 'sit' : 'stand';
       const t = o.t || 0;
-      let frame = (Math.floor(t * 1.4 + (cfg.seed || 0)) % 2);
-      if (o.talking) frame = (Math.floor(t * 4) % 2) ? 2 : 0;
-      if (o.anim === 'breakdown' || o.emo === 'breakdown') frame = Math.floor(t * 10) % 2 ? 1 : 0;
-      const k = pose + frame;
-      const spr = cache[k] || (cache[k] = build(pose, frame));
+      let frame = (Math.floor(t * 0.7 + (cfg.seed || 0) * 2) % 2);
+      let mode = 'idle', ph = 0;
+      if (o.react) {
+        mode = o.react; const rt = o.reactT === undefined ? t : o.reactT;
+        const sp = { whisper: 2, gasp: 7, murmur: 5, angry: 9, cheer: 5, clap: 7, laugh: 8, shout: 3 }[mode] || 4;
+        ph = Math.floor(rt * sp) % 2;
+        if (mode === 'gasp' && rt > 0.6) ph = 1;
+        frame = 0;
+      } else if (o.anim === 'breakdown' || o.emo === 'breakdown') { mode = 'bk'; ph = Math.floor(t * 10) % 2; frame = 0; }
+      else if (o.talking) { mode = 'talk'; ph = Math.floor(t * 4) % 2; }
+      const k = pose + frame + mode + ph;
+      const spr = cache[k] || (cache[k] = build(pose, frame, mode, ph));
       const flip = o.dir === 'r';
-      const ox = -11, oy = pose === 'sit' ? -27 : -33;
-      G.blit(ctx, spr, x + ox + (flip ? 0 : 0), y + oy, flip);
+      G.blit(ctx, spr, x - 12, y - (pose === 'sit' ? 33 : 37), flip);
     },
   };
 }
@@ -932,7 +970,7 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
   const H = { cx: 52, top: 18, ramp: sk, gaunt: true, jaw: -1, chin: 1 };
   const fp = feat(H, { iris: [hb[1], hb[3], hb[4]], brow: hb[1], brow2: hb[2], browThick: 2 });
   reg('lomax', {
-    name: 'Сэмюэл Ломакс', voice: 'mid', emos: DEF_EMOS, seed: 3, feat: fp,
+    name: 'Сэмюэл Ломакс', voice: 'mid', emos: DEF_EMOS, seed: 3, fidEmos: ['normal', 'worried', 'hopeful'], fidFace(st, f) { if (st.fk > 0.6) { f.eyes = 'half'; } }, feat: fp,
     build(p, st) {
       const cx = H.cx, t = H.top;
       const e = st.emo;
@@ -991,6 +1029,11 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
       // седые прядки у виска
       p.stroke(C(cx + 6, t + 14, cx + 8, t + 18, cx + 7, t + 22, 1), 1, hb);
       // худые плечи вперёд при волнении — нет. Очки рисуются в post
+      if (st.fid >= 0) {
+        const k = st.fk;
+        const hp = lerpP([cx + 16, t + 84], [cx - 5, t + 21], k);
+        armTo(p, hp[0], hp[1], { from: [cx + 26, t + 100], sleeve: cardi, skin: sk, pose: 'point', w: 15, bend: 10 });
+      }
     },
     face(st) {
       const f = defendantFace(st);
@@ -1005,6 +1048,8 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
         for (let i = 1; i < w - 1; i++) { px(c, x0 + i, y0, fr); px(c, x0 + i, y0 + h - 1, fr); }
         for (let j = 1; j < h - 1; j++) { px(c, x0, y0 + j, fr); px(c, x0 + w - 1, y0 + j, fr); }
       };
+      const gl = st.fk > 0.95 && st.fa > 0.3 ? -1 : 0;
+      const t0 = t; { const t = t0 + gl;
       ring(cx - 9, t + 14, 10, 8);
       ring(cx - 16, t + 14, 5, 8);
       px(c, cx - 11, t + 16, fr); px(c, cx - 10, t + 16, fr); // переносица
@@ -1012,6 +1057,11 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
       px(c, cx - 8, t + 15, hi); px(c, cx - 8, t + 16, hi); px(c, cx - 15, t + 15, hi);
       // блик на стекле
       c.globalAlpha = 0.35; G.rect(c, cx - 3, t + 15, 2, 1, PAL.white); G.rect(c, cx - 2, t + 16, 1, 1, PAL.white); c.globalAlpha = 1;
+      }
+      if (st.fk > 0.95) { // палец на переносице поверх оправы
+        for (let y = t + 16 + gl; y < t + 24; y++) { px(c, cx - 11, y, PAL.outline); px(c, cx - 10, y, sk[3]); px(c, cx - 9, y, sk[2]); px(c, cx - 8, y, PAL.outline); }
+        px(c, cx - 10, t + 15 + gl, PAL.outline); px(c, cx - 9, t + 15 + gl, PAL.outline); px(c, cx - 10, t + 16 + gl, sk[4]);
+      }
       if (st.emo === 'relieved') {
         tear(c, cx - 3, t + 20, 7); tear(c, cx - 13, t + 20, 5);
       }
@@ -1031,8 +1081,8 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
   const H0 = { cx: 52, top: 22, ramp: sk, jaw: 3, chin: 1, jowl: true, skull: 1, sideX: 4 };
   const RF = [R.red[2], R.red[3], R.skinL[1], R.skinL[2], R.skinL[3]];
   reg('hollis', {
-    name: 'Питер Холлис', voice: 'low', emos: WIT_EMOS, seed: 7, bkFrames: 8,
-    feat: feat(H0, { iris: [R.blue[2], R.blue[3], R.blue[5]], brow: hg[2], brow2: hg[1], browThick: 2 }),
+    name: 'Питер Холлис', voice: 'low', emos: WIT_EMOS, seed: 7, fidEmos: ['normal', 'nervous', 'angry', 'shocked'], fidFace(st, f) { if (st.fk > 0.6) { f.eyes = 'half'; f.mouth = 'flat'; f.brows = [1, 0]; } }, bkFrames: 8,
+    feat: feat(H0, { iris: [R.blue[2], R.blue[3], R.blue[5]], brow: hg[2], brow2: hg[1], browThick: 2, mouth: [H0.cx - 12, H0.top + 29] }),
     shake: (k, t) => (k < 0.6 ? ((Math.floor(t * 30) & 1) ? 2 : -2) : 0),
     build(p, st) {
       const H = Object.assign({}, H0);
@@ -1079,7 +1129,7 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
       head(p, H);
       if (red) { // побагровел
         for (let y = t; y < t + 38; y++) for (let x = cx - 16; x < cx + 20; x++) {
-          const i = y * BW + x; if (p.ramp[i] === sk && (G.bayer(x, y) < (bk >= 5 ? 10 : 6))) p.set(x, y, RF, p.tone[i]);
+          const i = y * BW + x; const flush = (y > t + 20 && y < t + 31 && x < cx + 6) || (bk >= 3 && y > t + 4 && y < t + 12); if (p.ramp[i] === sk && flush && (G.bayer(x, y) < (bk >= 3 ? 10 : 7))) p.set(x, y, RF, p.tone[i]);
         }
       }
       ear(p, H);
@@ -1126,6 +1176,11 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
         for (const s of fl) p.part({ s: [s], ramp: hg, base: 3, cast: 1 });
         const f = capFrames[Math.min(bk, 7)];
         if (bk < 7) drawCap(f[0], f[1], bk * 2);
+      }
+      if (st.fid >= 0 && bk < 0) {
+        const k = st.fk, w = Math.round(Math.sin(st.fa * Math.PI * 4) * 3);
+        const hp = lerpP([cx + 14, t + 80], [cx - 13 + w, t + 26], k);
+        armTo(p, hp[0], hp[1], { from: [cx + 30, t + 96], sleeve: shirt, skin: sk, pose: 'point', w: 18, bend: 12 });
       }
     },
     after(c, st) {
@@ -1177,7 +1232,7 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
   const H = { cx: 54, top: 24, ramp: sk, fem: true, jaw: -3, chin: -1, sideX: 4 };
   const BL = [R.red[2], R.red[3], R.red[4], R.skinL[2], R.skinL[3]];
   reg('whitfield', {
-    name: 'Анна Уитфилд', voice: 'high', emos: DEF_EMOS, seed: 5,
+    name: 'Анна Уитфилд', voice: 'high', emos: DEF_EMOS, seed: 5, fidEmos: ['normal', 'worried', 'hopeful'], fidFace(st, f) { if (st.fk > 0.6) { f.eyes = 'down'; } },
     feat: feat(H, { iris: [R.green[2], R.green[4], R.green[5]], brow: hr[2], brow2: hr[3], browThick: 1, lash: true, lip: [R.red[2], R.red[3], R.red[4]], mouthLine: R.red[1] }),
     build(p, st) {
       const cx = H.cx, t = H.top, e = st.emo;
@@ -1234,6 +1289,11 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
       p.px(cx - 3, t + 30, R.neutral[8]); p.px(cx - 2, t + 31, R.neutral[7]);
       // мука на платье
       for (let i = 0; i < 9; i++) { const x = cx + 14 + (i * 7) % 11, y = t + 88 + (i * 5) % 14; if (G.bayer(x, y) < 8) p.px(x, y, R.neutral[8]); }
+      if (st.fid >= 0) {
+        const k = st.fk, w = Math.round(st.fa * 4);
+        const hp = lerpP([cx + 14, t + 82], [cx + 8 + w, t + 16], k);
+        armTo(p, hp[0], hp[1], { from: [cx + 26, t + 96], sleeve: dress, skin: sk, pose: 'pinch', w: 14, bend: 8 });
+      }
     },
     face(st) {
       const f = defendantFace(st);
@@ -1247,7 +1307,7 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
     },
     iso: { skin: sk, top: dress, pants: R.green, shoes: R.wood[1], build: 'thin', seed: 0.5, shirt: R.paper[3],
       hairDraw: isoHair(hr, 'bun'),
-      extra(x, f) { if (!f.sit) { x.fillStyle = dress[2]; x.fillRect(f.fx, 19 + (f.frame === 1 ? 1 : 0), 10, 4); x.fillStyle = dress[1]; x.fillRect(f.fx + 6, 19, 4, 4); } } },
+      extra(x, f) { if (!f.sit) { x.fillStyle = dress[2]; x.fillRect(f.fx, 22, 10, 5); x.fillStyle = dress[1]; x.fillRect(f.fx + 6, 22, 4, 5); } } },
   });
 })();
 
@@ -1257,9 +1317,9 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
   const shirt = [R.neutral[4], R.neutral[5], R.neutral[6], R.neutral[7], R.neutral[8], R.neutral[9]];
   const susp = R.red;
   const H0 = { cx: 52, top: 18, ramp: sk, jaw: 4, chin: 2, jowl: true, skull: 1, sideX: 4 };
-  const RF = [R.red[1], R.red[2], R.red[3], R.red[4], R.red[5]];
+  const RF = [R.red[1], R.red[2], R.red[3], R.red[4], R.skinL[3]];
   reg('crane', {
-    name: 'Виктор Крейн', voice: 'low', emos: WIT_EMOS, seed: 11, bkFrames: 8,
+    name: 'Виктор Крейн', voice: 'low', emos: WIT_EMOS, seed: 11, fidEmos: ['normal', 'nervous', 'angry', 'shocked'], fidFace(st, f) { if (st.fk > 0.6) { f.eyes = 'down'; f.brows = [1, 0]; } }, bkFrames: 8,
     feat: feat(H0, { iris: [R.hairBrown[1], R.hairBrown[2], R.hairBrown[4]], brow: R.hairBrown[1], brow2: hg[1], browThick: 3, mouth: [H0.cx - 13, H0.top + 28] }),
     shake: (k, t) => (k > 0.15 && k < 0.7 ? ((Math.floor(t * 26) & 1) ? 2 : -1) : 0),
     build(p, st) {
@@ -1290,7 +1350,7 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
         const dx = (x - f[0]) / f[2], dy = (y - f[1]) / f[3], r = dx * dx + dy * dy;
         if (r > 1 || x < 0 || x >= BW || y < 0 || y >= BH) continue;
         const i = y * BW + x; if (!m[i] || p.ramp[i] !== shirt) continue;
-        const lvl = Math.round((1 - r) * 14 * flourAmt) + 1;
+        const lvl = Math.round((1 - r) * 9 * flourAmt);
         if (G.bayer(x, y) < lvl) p.set(x, y, shirt, 5);
       }
       // подтяжки
@@ -1332,10 +1392,22 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
       for (let y = t + 12; y < t + 28; y += 2) p.shift(cx + 13, y, 1, hg);
       // вздутая жилка на виске в гневе
       if (fury) { p.set(cx + 2, t + 7, H.ramp, 1); p.set(cx + 3, t + 8, H.ramp, 1); p.set(cx + 3, t + 9, H.ramp, 1); p.set(cx + 4, t + 10, H.ramp, 1); }
+      if (st.fid >= 0 && bk < 0) {
+        const k = st.fk, w = Math.round((st.fa * 2 % 1) * 18);
+        const hp = lerpP([cx + 14, t + 86], [cx - 24 + w, t + 74], k);
+        armTo(p, hp[0], hp[1], { from: [cx + 30, t + 100], sleeve: shirt, skin: sk, pose: 'flat', w: 18, bend: 2 });
+      }
     },
     after(c, st) {
       // облака муки при срыве
       const bk = st.bk;
+      if (st.fid >= 0 && st.fk > 0.9) { // отряхивается: облачко муки
+        const cx = H0.cx, t = H0.top;
+        const x0 = cx - 26 + Math.round((st.fa * 2 % 1) * 18), y0 = t + 70 - Math.round((st.fa * 2 % 1) * 6);
+        for (let y = y0 - 5; y <= y0 + 3; y++) for (let x = x0 - 6; x <= x0 + 4; x++) {
+          const dx = x - x0, dy = y - y0, r = (dx * dx + dy * dy) / 26; if (r < 1 && G.bayer(x, y) < 9 * (1 - r)) px(c, x, y, r < 0.4 ? PAL.white : R.neutral[8]);
+        }
+      }
       if (bk < 0) return;
       const cx = H0.cx, t = H0.top;
       const puffs = [[cx - 30, t + 74], [cx + 24, t + 66], [cx - 8, t + 92], [cx + 34, t + 94], [cx - 40, t + 96], [cx + 8, t + 56]];
@@ -1385,13 +1457,13 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
 
 /* ====================== ЛИЗА ПАК ====================== */
 (function () {
-  const sk = [R.skinL[1], R.skinL[2], R.skinL[3], R.skinL[4], R.neutral[9]];
+  const sk = R.skinL;
   const hk = R.hairBlack;
   const hood = [R.neutral[3], R.neutral[4], R.neutral[5], R.neutral[6], R.neutral[7]];
   const H = { cx: 54, top: 22, ramp: sk, fem: true, jaw: -3, chin: -1, sideX: 4 };
   const BL = [R.red[2], R.red[3], R.red[4], R.skinL[3], R.skinL[4]];
   reg('park', {
-    name: 'Лиза Пак', voice: 'high', emos: DEF_EMOS, seed: 2,
+    name: 'Лиза Пак', voice: 'high', emos: DEF_EMOS, seed: 2, fidEmos: ['normal', 'worried', 'hopeful'], fidFace(st, f) { if (st.fk > 0.4) { f.eyes = 'down'; f.brows = [-1, 0]; } },
     feat: feat(H, { iris: [R.hairBrown[0], R.hairBrown[1], R.hairBrown[3]], brow: hk[1], brow2: hk[2], browThick: 2, lash: true, lipL: R.skinL[3], mouthLine: R.skinL[0] }),
     build(p, st) {
       const cx = H.cx, t = H.top, e = st.emo;
@@ -1420,7 +1492,7 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
       const sp = [[cx + 29, t + 74, R.blue[4]], [cx + 30, t + 75, R.blue[5]], [cx - 33, t + 82, R.gold[4]], [cx - 32, t + 83, R.gold[3]], [cx + 12, t + 96, R.red[3]], [cx - 14, t + 64, R.teal[4]]];
       for (const s of sp) if (m[s[1] * BW + s[0]]) p.px(s[0], s[1], s[2]);
       // руки (кисти с краской) — сжимают рукава у груди
-      const handY = t + 92 + (e === 'hopeful' ? -6 : 0);
+      const handY = t + 92 + (e === 'hopeful' ? -6 : 0) - Math.round(st.fk * 8);
       p.part({ s: [C(cx - 35, t + 70, cx - 29, handY + 6, cx - 14, handY + 6, 14, 12)], ramp: hood, base: 3, cast: 1 });
       p.part({ s: [C(cx + 38, t + 72, cx + 32, handY + 8, cx + 14, handY + 6, 14, 12)], ramp: hood, base: 2, cast: 1 });
       // манжеты
@@ -1469,6 +1541,12 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
       const cx = H.cx, t = H.top;
       if (st.emo === 'relieved') { tear(c, cx - 2, t + 19, 8); tear(c, cx - 12, t + 19, 5); }
       if (st.emo === 'worried') { tear(c, cx - 1, t + 20, 2); }
+      if (st.fid >= 0 && st.fk > 0.9) { // отковыривает краску: ноготь и отлетающая чешуйка
+        const hy = t + 84, a = st.fa;
+        px(c, cx + 5, hy + 2, R.skinL[4]); px(c, cx + 6, hy + 1, R.skinL[4]);
+        const fx = cx + 8 + Math.round(a * 10), fy = hy - 2 - Math.round(Math.sin(a * Math.PI) * 10);
+        if (a > 0.25) { px(c, fx, fy, R.red[4]); px(c, fx + 1, fy, R.red[3]); }
+      }
     },
     iso: { skin: sk, top: hood, pants: R.blue, shoes: R.neutral[8], build: 'mid', seed: 0.9,
       hairDraw(x, hx, hy, fr, pose) { isoHair(hk, 'bob')(x, hx, hy); x.fillStyle = R.teal[4]; x.fillRect(hx + 1, hy + 1, 1, 3); },
@@ -1479,11 +1557,11 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
 /* ====================== ИРЭН БЕЛЛ ====================== */
 (function () {
   const sk = R.skinL;
-  const plat = [R.hairGrey[1], R.hairBlond[2], R.hairBlond[3], R.hairBlond[4], R.hairGrey[4]];
+  const plat = [R.hairGrey[1], R.stone[2], R.stone[4], R.hairGrey[3], R.hairGrey[4]];
   const black = [R.neutral[0], R.neutral[1], R.neutral[2], R.neutral[3], R.neutral[4]];
   const H = { cx: 54, top: 22, ramp: sk, fem: true, jaw: -2, chin: 0, sideX: 4 };
   reg('bell', {
-    name: 'Ирэн Белл', voice: 'mid', emos: WIT_EMOS, seed: 9, bkFrames: 8,
+    name: 'Ирэн Белл', voice: 'mid', emos: WIT_EMOS, seed: 9, fidEmos: ['normal', 'nervous', 'angry', 'shocked'], fidFace(st, f) { if (st.fk > 0.6) { f.eyes = 'half'; f.mouth = 'smirk'; } }, bkFrames: 8,
     feat: feat(H, { iris: [R.blue[2], R.blue[4], R.blue[5]], brow: R.hairBrown[2], brow2: R.hairBrown[3], browThick: 1, lash: true, lip: [R.red[1], R.red[2], R.red[3]], mouthLine: R.red[0] }),
     shake: (k, t) => (k > 0.2 && k < 0.55 ? ((Math.floor(t * 30) & 1) ? 1 : -1) : 0),
     build(p, st) {
@@ -1549,6 +1627,11 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
       p.part({ s: [Rc(ex, ey, 2, 2)], ramp: R.gold, base: 3, cast: 1 });
       p.part({ s: [P([ex - 3 + sway, ey + 3], [ex + 5 + sway, ey + 3], [ex + 1 + sway, ey + 11])], ramp: R.gold, base: 3, cast: 1, hiT: 0.6 });
       p.set(ex + 1 + sway, ey + 5, R.red, 3);
+      if (st.fid >= 0 && bk < 0) {
+        const k = st.fk;
+        const hp = lerpP([cx + 14, t + 82], [cx + 3, t + 15 - Math.round(st.fa * 1)], k);
+        armTo(p, hp[0], hp[1], { from: [cx + 26, t + 96], sleeve: black, skin: sk, pose: 'pinch', w: 14, bend: 10 });
+      }
     },
     face(st) {
       const bk = st.bk;
@@ -1566,6 +1649,7 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
       // красные очки «кошачий глаз»
       let slide = 0, crack = false;
       if (bk >= 0) { slide = bk >= 2 ? Math.min(4, bk - 1) : 0; crack = bk >= 1; }
+      if (st.fid >= 0 && st.fk > 0.95) slide = st.fa < 0.5 ? 1 : 0;
       const gy = t + 14 + slide;
       const fr = R.red[3], frD = R.red[2], hi = R.red[5];
       const box = (x0, y0, w, h) => {
@@ -1603,7 +1687,7 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
   const tee = R.neutral;
   const H = { cx: 52, top: 20, ramp: sk, jaw: 1, chin: 1, sideX: 3 };
   reg('doyle', {
-    name: 'Маркус Дойл', voice: 'mid', emos: DEF_EMOS, seed: 4,
+    name: 'Маркус Дойл', voice: 'mid', emos: DEF_EMOS, seed: 4, fidEmos: ['normal', 'worried', 'hopeful'], fidFace(st, f) { if (st.fk > 0.6) { f.eyes = 'half'; f.mouth = 'flat'; } },
     feat: feat(H, { iris: [R.hairBrown[0], R.hairBrown[1], R.hairBrown[3]], brow: hk[0], brow2: hk[1], browThick: 2, lid: R.neutral[0] }),
     build(p, st) {
       const cx = H.cx, t = H.top, e = st.emo;
@@ -1672,6 +1756,11 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
         p.part({ s: [E(q[0], q[1], 2, 2)], ramp: hk, base: 3, cast: 0, hiT: 0.7, shT: 0.35 });
         p.set(q[0] - 1, q[1] - 1, hk, 4);
       }
+      if (st.fid >= 0 && st.fk >= 0.3) {
+        const k = st.fk, w = Math.round(Math.sin(st.fa * Math.PI * 5) * 2);
+        const hp = lerpP([cx + 20, t + 90], [cx + 9 + w, t + 4], k);
+        armTo(p, hp[0], hp[1], { from: [cx + 30, t + 70], sleeve: sk, skin: sk, pose: 'fist', w: 11, bend: 10, slBase: 2 });
+      }
     },
     face(st) {
       const f = defendantFace(st);
@@ -1685,20 +1774,20 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
     },
     iso: { skin: sk, top: shirt, pants: R.neutral, shoes: R.neutral[1], build: 'mid', seed: 0.1, shirt: R.neutral[8],
       hairDraw: isoHair(hk, 'curly'),
-      extra(x, f) { if (!f.sit) { x.fillStyle = shirt[2]; x.fillRect(f.fx, 19, 10, 2); } } },
+      extra(x, f) { if (!f.sit) { x.fillStyle = shirt[2]; x.fillRect(f.fx, 22, 10, 2); } } },
   });
 })();
 
 /* ====================== ДЕТЕКТИВ РЭЙ МОРАЛЕС ====================== */
 (function () {
   const sk = R.skinM;
-  const hs = [R.hairBlack[1], R.hairBlack[3], R.hairGrey[1], R.hairGrey[2], R.hairGrey[3]];
+  const hs = [R.hairBlack[0], R.hairBlack[2], R.hairBlack[3], R.hairGrey[1], R.hairGrey[3]];
   const coat = [R.stone[0], R.stone[1], R.stone[2], R.stone[3], R.stone[4], R.stone[5]];
   const shirt = [R.neutral[5], R.neutral[6], R.neutral[7], R.neutral[8], R.neutral[9]];
   const H0 = { cx: 52, top: 20, ramp: sk, jaw: 1, chin: 1, sideX: 3, gaunt: true };
   reg('morales', {
-    name: 'Детектив Рэй Моралес', voice: 'low', emos: WIT_EMOS, seed: 13, bkFrames: 8,
-    feat: feat(H0, { iris: [R.hairBrown[0], R.hairBrown[2], R.hairBrown[3]], brow: hs[1], brow2: hs[2], browThick: 2, lid: R.neutral[0] }),
+    name: 'Детектив Рэй Моралес', voice: 'low', emos: WIT_EMOS, seed: 13, fidEmos: ['normal', 'nervous', 'angry', 'shocked'], fidFace(st, f) { if (st.fk > 0.3) { f.eyes = 'down'; f.brows = [-1, 1]; } }, bkFrames: 8,
+    feat: feat(H0, { iris: [R.hairBrown[0], R.hairBrown[2], R.hairBrown[3]], brow: hs[1], brow2: hs[3], browThick: 2, lid: R.neutral[0], mouth: [H0.cx - 12, H0.top + 29] }),
     shake: (k) => 0,
     build(p, st) {
       const H = Object.assign({}, H0);
@@ -1747,7 +1836,7 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
       for (let i = 0; i < 5; i++) p.set(cx - 9 + i, t + 10, sk, 2);
       // волосы: короткая стрижка соль-с-перцем
       p.part({ s: [P([cx - 12, t + 6], [cx - 8, t - 1], [cx + 4, t - 3], [cx + 15, t + 2], [cx + 18, t + 12], [cx + 16, t + 24], [cx + 10, t + 22], [cx + 8, t + 14], [cx - 2, t + 6])], ramp: hs, base: 2, cast: 1, hiT: 0.7 });
-      for (let y = t - 2; y < t + 24; y++) for (let x = cx - 12; x < cx + 19; x++) if (p.ramp[y * BW + x] === hs && G.bayer(x, y) < 5) p.shift(x, y, 2, hs);
+      for (let y = t - 2; y < t + 24; y++) for (let x = cx - 12; x < cx + 19; x++) if (p.ramp[y * BW + x] === hs && G.bayer(x, y) < 3 && ((x * 7 + y * 3) % 5 === 0 || x > cx + 6)) p.shift(x, y, 2, hs);
       p.stroke(C(cx - 8, t + 2, cx, t - 2, cx + 8, t - 1, 1), -1, hs);
       p.stroke(C(cx + 8, t + 6, cx + 13, t + 10, cx + 14, t + 20, 1), 2, hs);
       // усы с проседью
@@ -1763,6 +1852,15 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
         p.part({ s: [P([nx, ny + tilt], [nx + 14, ny], [nx + 14, ny + 3], [nx, ny + 3 + tilt])], ramp: R.neutral, base: 2, cast: 0 });
         for (let k = 0; k < 4; k++) { p.set(nx + 3 + k * 3, ny + 1 + (tilt > 2 ? 1 : 0), R.neutral, 7); }
         for (let k = 0; k < 4; k++) for (let i = 2; i < 12; i++) if ((i + k) % 5) p.px(nx + i, ny + 7 + k * 3 + Math.round(tilt * (1 - i / 14)), PAL.ink);
+        if (drop === 0 && st.fid >= 0) { // листает страницу
+          const a = st.fa, k = st.fk;
+          if (k > 0.5) {
+            const px0 = nx + 14 - Math.round(Math.sin(a * Math.PI) * 6) - Math.round(a * 14) * (a > 0.5 ? 1 : 0) * 0;
+            const ex = Math.round(nx + 14 - a * 14), lift = Math.round(Math.sin(a * Math.PI) * 7);
+            p.part({ s: [P([nx + 1, ny + 3], [ex, ny + 3 - lift], [ex, ny + 18 - lift], [nx + 1, ny + 18])], ramp: R.paper, base: 4, cast: 1 });
+            for (let q = 0; q < 3; q++) p.px(Math.round((nx + 2 + ex) / 2), ny + 8 + q * 3 - Math.round(lift / 2), PAL.ink);
+          }
+        }
         if (drop === 0) { // пальцы держат блокнот
           p.part({ s: [C(cx - 39, T0 + 74, cx - 35, T0 + 100, cx - 29, T0 + 104, 12, 10)], ramp: coat, base: 3, cast: 1 });
           p.part({ s: [P([nx + 2, ny + 14], [nx + 12, ny + 13], [nx + 13, ny + 20], [nx + 2, ny + 22])], ramp: sk, base: 3, cast: 1 });
@@ -1815,7 +1913,7 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
   const shirt = [R.neutral[6], R.neutral[7], R.neutral[8], R.neutral[9]];
   const H0 = { cx: 52, top: 18, ramp: sk, jaw: 2, chin: 2, sideX: 3 };
   reg('holloway', {
-    name: 'Грант Холлоуэй', voice: 'low', emos: WIT_EMOS, seed: 17, bkFrames: 8, bkDur: 1.2,
+    name: 'Грант Холлоуэй', voice: 'low', emos: WIT_EMOS, seed: 17, fidEmos: ['normal', 'nervous', 'angry', 'shocked'], fidFace(st, f) { if (st.fk > 0.5) { f.eyes = 'down'; f.brows = [1, -1]; f.mouth = 'smirk'; } }, bkFrames: 8, bkDur: 1.2,
     feat: feat(H0, { iris: [R.blue[1], R.blue[3], R.blue[4]], brow: hs[1], brow2: hs[3], browThick: 2 }),
     shake: (k, t) => (k > 0.1 && k < 0.45 ? ((Math.floor(t * 30) & 1) ? 1 : -1) : 0),
     build(p, st) { buildHolloway(p, st); },
@@ -1883,7 +1981,7 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
     fold(p, C(bx + 39, T + 62, bx + 40, T + 84, bx + 38, BH, 1), -1, suit);
     // рука: поправляет манжету у груди — золотые часы видны
     if (bk < 3) {
-      const ay = T + 82;
+      const ay = T + 82 - Math.round((st.fk || 0) * 12);
       p.part({ s: [C(bx - 40, T + 62, bx - 37, ay + 18, bx - 16, ay + 10, 15, 12)], ramp: suit, base: 3, cast: 2 });
       p.part({ s: [P([bx - 18, ay + 2], [bx - 12, ay + 1], [bx - 11, ay + 15], [bx - 17, ay + 16])], ramp: shirt, base: 3, cast: 1 }); // манжета
       p.part({ s: [P([bx - 12, ay + 2], [bx - 2, ay], [bx + 4, ay + 6], [bx + 2, ay + 13], [bx - 11, ay + 14])], ramp: sk, base: 3, cast: 1 });
@@ -1920,8 +2018,13 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
     if (!messy) {
       // зачёс назад: гладкая масса и длинные пряди к затылку
       p.part({ s: [P([cx - 13, t + 8], [cx - 10, t + 0], [cx + 2, t - 4], [cx + 14, t - 1], [cx + 19, t + 8], [cx + 18, t + 22], [cx + 11, t + 24], [cx + 8, t + 14], [cx - 2, t + 8])], ramp: hs, base: 2, cast: 1, hiT: 0.72 });
-      for (let k = 0; k < 5; k++) p.stroke(C(cx - 11 + k * 2, t + 5 - k, cx + 4, t - 3 + k * 2, cx + 17, t + 8 + k * 3, 1), k & 1 ? -1 : 1, hs);
-      p.stroke(C(cx - 8, t + 1, cx - 2, t - 2, cx + 6, t - 2, 1), 2, hs);
+      // объёмный зачёс: передний «вал» над лбом, блестящие полосы геля к затылку
+      p.part({ s: [C(cx - 14, t + 6, cx - 12, t - 3, cx - 2, t - 4, 5, 4)], ramp: hs, base: 2, cast: 1, hiT: 0.6 });
+      p.stroke(C(cx - 12, t + 1, cx - 4, t - 4, cx + 8, t - 2, 1), 2, hs);
+      p.stroke(C(cx - 6, t + 2, cx + 4, t - 1, cx + 16, t + 6, 1), 1, hs);
+      p.stroke(C(cx - 4, t + 5, cx + 6, t + 3, cx + 17, t + 12, 1), -1, hs);
+      p.stroke(C(cx - 9, t + 0, cx + 2, t - 3, cx + 15, t + 2, 1), -1, hs);
+      p.stroke(C(cx + 2, t + 7, cx + 10, t + 7, cx + 16, t + 16, 1), 1, hs);
       p.stroke(C(cx + 10, t + 4, cx + 15, t + 10, cx + 16, t + 18, 1), 2, hs); // седина на висках
       p.stroke(C(cx + 9, t + 6, cx + 13, t + 12, cx + 12, t + 18, 1), 2, hs);
     } else {

@@ -14,7 +14,7 @@ const EV=[{id:'logbook',icon:'logbook',name:'Журнал охраны',desc:'Ж
 const S={dialog(c){c.drawImage(G.makeSprite(384,216,x=>{G.rect(x,0,0,384,216,G.RAMP.carpet[2])}),0,0);
   G.UI.drawCredibility(c,4,4,3,5,0.05,{flashLost:true});
   G.UI.drawDialog(c,{name:'Питер Холлис',text:'Я видел его *своими глазами*!{p} Он вышел через служебный вход ровно в 23:40, с футляром для скрипки под мышкой. Клянусь, это был он, мистер Ломакс.',shown:400,waiting:true,t:0});
-  G.UI.drawSpeech&&G.UI.drawSpeech(c,80,60,'Не может быть!',0.5);
+  G.UI.drawSpeech&&G.UI.drawSpeech(c,80,120,'Не может быть!',0.5);G.UI.drawSpeech(c,300,110,'Он лжёт!',0.07);
   G.UI.button(c,{x:10,y:40,w:80,h:16},'Обычная');G.UI.button(c,{x:100,y:40,w:80,h:16},'Главная',{kind:'primary'});G.UI.button(c,{x:190,y:40,w:80,h:16},'Опасно',{kind:'danger'});G.UI.button(c,{x:280,y:40,w:80,h:16},'Нельзя',{disabled:true});
  },
  record(c){S.dialog(c);G.UI.courtRecord(c,{sel:0,mode:'present'},EV,0.1);},
