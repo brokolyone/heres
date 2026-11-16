@@ -1,0 +1,70 @@
+<!doctype html><meta charset="utf-8"><body style="margin:0;background:#000">
+<script src="../src/core.js"></script>
+<script src="../src/cast_main.js"></script>
+<script>
+// ?m=busts&id=player   | ?m=iso | ?m=icons | ?m=scene (384x216)
+const q = new URLSearchParams(location.search);
+const mode = q.get('m') || 'scene';
+G.mountCanvas();
+function gallery(w, h, fn) {
+  const c = G.makeCanvas(w, h); const x = c.getContext('2d');
+  x.fillStyle = G.RAMP.neutral[3]; x.fillRect(0, 0, w, h);
+  fn(x); window.__shotCanvas = c;
+}
+const T = +(q.get('t') || 0.5);
+if (mode === 'busts') {
+  const id = q.get('id') || 'player';
+  const d = G.Cast.defs[id];
+  const list = [];
+  d.emotions.forEach(e => list.push({ emo: e }));
+  list.push({ emo: 'normal', talking: true, t: 0.13 });
+  list.push({ emo: 'normal', t: 3.45 + 0.0 }); // blink-ish
+  for (const a in (d.anims || {})) { const D = d.anims[a]; [0.15, 0.3, 0.45, 0.55, 0.75].forEach(k => list.push({ emo: 'normal', anim: a, animT: D * k / 0.9 * (D > 0.7 ? 0.9 : 0.6) / (D > 0.7 ? 0.9 : 0.6) })); }
+  const cols = 4, cw = 160, ch = 150;
+  gallery(cols * cw, Math.ceil(list.length / cols) * ch, x => {
+    list.forEach((o, i) => {
+      const cx = (i % cols) * cw + cw / 2, cy = Math.floor(i / cols) * ch + 140;
+      G.rect(x, cx - 70, cy - 136, 140, 136, G.RAMP.neutral[(i % 2) ? 4 : 5]);
+      G.Cast.drawBust(x, id, cx, cy, Object.assign({ t: T }, o));
+    });
+  });
+} else if (mode === 'faces') {
+  const id = q.get('id') || 'player';
+  const d = G.Cast.defs[id];
+  const list = d.emotions.map(e => ({ emo: e }));
+  list.push({ emo: 'normal', talking: true, t: 0.13 }); list.push({ emo: 'normal', talking: true, t: 0.26 });
+  const cw = 64, ch = 64;
+  gallery(list.length * cw, ch, x => {
+    list.forEach((o, i) => {
+      const tmp = G.makeCanvas(160, 140); const tx = tmp.getContext('2d');
+      tx.fillStyle = G.RAMP.neutral[5]; tx.fillRect(0,0,160,140);
+      G.Cast.drawBust(tx, id, 80, 140, Object.assign({ t: T }, o));
+      x.drawImage(tmp, 50 + (+q.get('dx')||0), 4 + (+q.get('dy')||0), cw, ch, i * cw, 0, cw, ch);
+    });
+  });
+} else if (mode === 'iso') {
+  const ids = ['player','judge','prosecutor','clerk','bailiff','juror1','juror2','juror3','juror4','juror5','juror6','foreperson'];
+  gallery(ids.length * 22 + 10, 150, x => {
+    G.rect(x, 0, 0, 500, 150, G.RAMP.wood[4]);
+    ids.forEach((id, i) => {
+      const X = 12 + i * 22;
+      G.Cast.drawIso(x, id, X, 34, { pose: 'stand', dir: 'l', t: 0 });
+      G.Cast.drawIso(x, id, X, 70, { pose: 'stand', dir: 'r', t: 0.6, talking: true });
+      G.Cast.drawIso(x, id, X, 100, { pose: 'sit', dir: 'l', t: 0 });
+      G.Cast.drawIso(x, id, X, 130, { pose: 'sit', dir: 'r', t: 0.3, talking: true, anim: id === 'judge' ? 'gavel' : null, animT: 0.45 });
+    });
+  });
+} else if (mode === 'icons') {
+  const ids = ['logbook','photo','document','key','coat','ticket','report','canister','video','knife','policy','map','phone','receipt','badge','letter','fingerprint','autopsy','watch','glass','laptop','bag','paint','violin','bread','cctv','camera','money','pills','keycard'];
+  gallery(8 * 36 + 4, 4 * 36 + 4, x => {
+    ids.forEach((id, i) => { G.rect(x, 2 + (i % 8) * 36, 2 + Math.floor(i / 8) * 36, 34, 34, G.RAMP.paper[(i%2)?1:2]); G.Icons && G.Icons.draw(x, id, 3 + (i % 8) * 36, 3 + Math.floor(i / 8) * 36); });
+  });
+}
+G.renderOnce(c => {
+  G.rect(c, 0, 0, 384, 216, G.RAMP.wood[2]);
+  G.rect(c, 0, 170, 384, 46, G.RAMP.wood[4]);
+  G.Cast.drawBust(c, 'player', 96, 190, { emo: q.get('emo') || 'normal', t: T });
+  if (G.Cast.has('prosecutor')) G.Cast.drawBust(c, 'prosecutor', 290, 190, { emo: 'normal', t: T, flip: true });
+});
+window.__ready = true;
+</script>

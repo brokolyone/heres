@@ -1,0 +1,15 @@
+<!doctype html><meta charset="utf-8"><body style="margin:0;background:#000">
+<script src="../src/core.js"></script>
+<script>
+G.mountCanvas();
+G.renderOnce(c => {
+  let x = 4;
+  for (const [name, r] of Object.entries(G.RAMP)) {
+    r.forEach((col, i) => G.rect(c, x, 4 + i * 8, 10, 8, col));
+    x += 12;
+  }
+  G.poly(c, [[200,120],[260,90],[320,120],[260,150]], G.RAMP.wood[4]);
+  G.dither(c, 20, 120, 100, 40, G.RAMP.gold[4], 8);
+});
+window.__ready = true;
+</script>
