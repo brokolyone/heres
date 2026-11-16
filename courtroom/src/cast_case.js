@@ -1416,7 +1416,7 @@ function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
         const r = Math.round(3 + k * 12 + (n % 3));
         const ox = Math.round((n % 2 ? 1 : -1) * k * (10 + n * 3)), oy = Math.round(-k * (16 + n * 4));
         const x0 = pf[0] + ox, y0 = pf[1] + oy;
-        const dens = Math.round(14 - k * 12);
+        const dens = Math.round(16 - k * 10);
         if (dens <= 0) return;
         for (let y = y0 - r; y <= y0 + r; y++) for (let x = x0 - r; x <= x0 + r; x++) {
           const dx = x - x0, dy = y - y0; const rr = (dx * dx + dy * dy) / (r * r);

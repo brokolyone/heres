@@ -1,26 +1,23 @@
 <!doctype html><meta charset="utf-8"><body style="margin:0;background:#000">
 <script src="../src/core.js"></script>
 <script src="../src/font.js"></script>
+<script src="../src/ui.js"></script>
 <script>
 G.mountCanvas();
 const F=G.Font;
 G.renderOnce(c => {
-  G.rect(c,0,0,384,216,G.RAMP.neutral[1]);
+  G.rect(c,0,0,384,216,G.RAMP.neutral[2]);
   const W=G.PAL.white;
   let y=2;
   F.draw(c,'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ',4,y,W); y+=11;
   F.draw(c,'абвгдеёжзийклмнопрстуфхцчшщъыьэюя',4,y,W); y+=11;
   F.draw(c,'ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz',4,y,W); y+=11;
-  F.draw(c,'0123456789 .,!?:;-—–«»"\'()/%№§$+=\\*…#@& Ёжик, щётка, № 487(a) — $950.',4,y,W); y+=12;
-  F.draw(c,'ПРОТЕСТ! Свидетель *лжёт*{p} съешь же ещё этих мягких французских булок',4,y,W,{shadow:G.RAMP.neutral[0]}); y+=12;
-  F.draw(c,'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ',4,y,G.RAMP.gold[4],{font:'big'}); y+=15;
-  F.draw(c,'абвгдеёжзийклмнопрстуфхцчшщъыьэюя 0123456789',4,y,G.RAMP.gold[4],{font:'big'}); y+=15;
-  F.draw(c,'Скрипка Гварнери — Дело № BA-512874',4,y,W,{font:'big'}); y+=16;
-  F.draw(c,'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХ',4,y,G.RAMP.red[4],{font:'title'}); y+=21;
-  F.draw(c,'ЦЧШЩЪЫЬЭЮЯ 0123456789!?',4,y,G.RAMP.red[4],{font:'title'}); y+=21;
-  F.draw(c,'Слово защиты «ПРОТЕСТ»',4,y,G.RAMP.blue[5],{font:'title'}); y+=21;
-  const lines=F.wrap('Ночной охранник утверждает, что видел *подсудимого у служебного входа* ровно в 23:40.{p} Но в журнале консерватории — запись о том, что сигнализация была отключена в 22:15. Объясните это противоречие, мистер Холлис!',370);
-  lines.forEach((l,i)=>F.draw(c,l,4,y+i*10,G.RAMP.paper[4],{emph:G.RAMP.red[4]}));
+  F.draw(c,'0123456789 .,!?:;-—–«»"\'()/%№§$+=\\*…#@& Об игре, № 487(a) — $950.',4,y,W); y+=12;
+  F.draw(c,'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ',4,y,G.RAMP.gold[4],{font:'big'}); y+=14;
+  F.draw(c,'абвгдеёжзийклмнопрстуфхцчшщъыьэюя 0123',4,y,G.RAMP.gold[4],{font:'big'}); y+=15;
+  F.draw(c,'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦ',4,y,G.RAMP.red[4],{font:'title'}); y+=20;
+  F.draw(c,'ЧШЩЪЫЬЭЮЯ 0123456789!?«»',4,y,G.RAMP.red[4],{font:'title'}); y+=20;
+  G.UI.drawDialog(c,{name:'Дэниел Рид',text:'Ваша честь, свидетель утверждает, что видел *подсудимого у служебного входа* ровно в 23:40.{p} Но в журнале консерватории есть запись: сигнализация отключена в 22:15. Объясните это противоречие, мистер Холлис! Съешь же ещё этих мягких французских булок, да выпей чаю.',shown:999,waiting:true,t:0});
 });
 window.__ready = true;
 </script>

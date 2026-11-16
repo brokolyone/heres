@@ -266,15 +266,25 @@ function drawDialog(c, o) {
     // латунный кронштейн под табличкой
     G.rect(c, px + 4, y0 - 1, pl.width - 10, 2, R.wood[0]);
     c.drawImage(pl, px, y0 - 10);
+    // блик пробегает по латунной табличке
+    const gp = ((t + px * 0.01) % 4) / 0.5;
+    if (gp < 1) {
+      const gx = px + Math.round(gp * (pl.width + 10)) - 5;
+      for (let k = 0; k < 12; k++) {
+        const xx = gx - (k >> 1), yy = y0 - 9 + k;
+        if (xx > px && xx < px + pl.width - 3 && k < 12) G.px(c, xx, yy, k % 5 === 0 ? P.white : R.gold[5]);
+      }
+    }
   }
   const col = o.color || R.paper[4];
   const emph = o.emph || R.red[4];
   const lines = WRAP(o.text || '', W - 30, { font: 'small' });
   let budget = o.shown == null ? Infinity : o.shown;
-  const ty = y0 + (o.name ? 11 : 10);
+  const lh = lines.length > 4 ? 9 : 10;
+  const ty = y0 + (lines.length > 4 ? 9 : o.name ? 11 : 10);
   for (let i = 0; i < lines.length && i < 5; i++) {
     if (budget <= 0) break;
-    T(c, lines[i], 14, ty + i * 10, col, { maxChars: budget, shadow: P.black, shadowX: 0, shadowY: 1, emph });
+    T(c, lines[i], 14, ty + i * lh, col, { maxChars: budget, shadow: P.black, shadowX: 0, shadowY: 1, emph });
     budget -= STRIP(lines[i]).length + 1;
   }
   if (o.waiting) {
@@ -312,8 +322,12 @@ function button(c, r, label, o) {
     bevel(c, x + 1, y + 1 + oy, w - 2, h - 2 - oy, hover ? st.hi : st.face, st.light, st.dark);
     if (!down) G.rect(c, x + 2, y + h - 3, w - 4, 1, hover ? st.face : st.dark);
     if (hover) {
-      // латунные уголки-маркеры
+      // латунные уголки-маркеры (пульсируют)
       const g = R.gold[5];
+      const pu = ((G.time || 0) * 3 | 0) % 2;
+      c.save(); c.translate(0, 0);
+      if (pu) { G.px(c, x - 2, y - 2 + oy, R.gold[4]); G.px(c, x + w + 1, y - 2 + oy, R.gold[4]); G.px(c, x - 2, y + h + 1, R.gold[4]); G.px(c, x + w + 1, y + h + 1, R.gold[4]); }
+      c.restore();
       G.rect(c, x - 1, y - 1 + oy, 3, 1, g); G.rect(c, x - 1, y - 1 + oy, 1, 3, g);
       G.rect(c, x + w - 2, y - 1 + oy, 3, 1, g); G.rect(c, x + w, y - 1 + oy, 1, 3, g);
       G.rect(c, x - 1, y + h, 3, 1, g); G.rect(c, x - 1, y + h - 2, 1, 3, g);
@@ -400,6 +414,15 @@ function drawCredibility(c, x, y, value, max, t, o) {
     }
     shadowRect(c, sx + 2, sy + 13, 12, 2, 0.35);
     c.drawImage(spr, sx, sy + dy);
+    // искорка-блик по целым печатям по очереди
+    if (i < value && !o.flashLost) {
+      const ph = (t * 1.6) % (max + 3);
+      if (Math.floor(ph) === i) {
+        const k = ph - i;
+        const s2 = k < 0.3 ? 1 : k < 0.6 ? 2 : 1;
+        sparkle(c, sx + 4, sy + 3, s2, R.gold[5]);
+      }
+    }
   }
 }
 
@@ -709,7 +732,6 @@ function buildFolder() {
     T(c, 'МАТЕРИАЛЫ ДЕЛА', FX + 12, FY + 13, R.wood[1], { font: 'small' });
     G.rect(c, FX + 12, FY + 23, 150, 1, R.paper[1]);
     tab(FX + 14, 54, true, 'Улики');
-    tab(FX + 70, 60, false, 'Профили');
   });
 }
 const REC = { cols: 4, rows: 3, cell: 38, gx: FX + 12, gy: FY + 28 };
@@ -1347,6 +1369,13 @@ const TitleScene = {
         if (tap) { G.px(c, (W >> 1) - w2 - 5, y + 1, R.gold[5]); G.px(c, (W >> 1) - w2 - 4, y, R.gold[5]); G.px(c, (W >> 1) - w2 - 5, y + 11, R.gold[5]); G.px(c, (W >> 1) - w2 - 4, y + 12, R.gold[5]); }
       }
     });
+    // пылинки в закатном свете
+    for (let i = 0; i < 18; i++) {
+      const sp = 4 + (i * 7) % 9;
+      const x = Math.round((i * 53 + t * sp) % W);
+      const y = Math.round(60 + (i * 37) % 140 + Math.sin(t * 0.8 + i) * 4);
+      G.px(c, x, y, i % 3 ? R.gold[5] : P.glow);
+    }
     // версия
     T(c, 'v1.0', W - 4, H - 11, R.paper[2], { align: 'right', shadow: P.black, shadowX: 0, shadowY: 1 });
   },
