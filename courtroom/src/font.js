@@ -431,5 +431,11 @@ const Font = G.Font = {
     return out;
   },
   has(ch, o) { return !!glyphOf(fontOf(o), ch); },
+  /* Маска глифа small {w,h:10,m} — для логотипов/крупных надписей в UI */
+  mask(ch) { return smallG[ch] || smallG[ALIAS[ch]] || smallG[String(ch).toUpperCase()] || null; },
+  scale2x,
+  /* Высота заглавных и их верх внутри строки шрифта */
+  capTop(o) { const n = fontOf(o).name; return n === 'title' ? 2 : 1; },
+  capH(o) { const n = fontOf(o).name; return n === 'title' ? 14 : n === 'big' ? 10 : 7; },
 };
 })();

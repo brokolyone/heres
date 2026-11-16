@@ -157,7 +157,7 @@ function exec(c) {
     case 'leave': delete S.pos[c.who]; break;
     case 'evidence': {
       if (!S.evidence.includes(c.id)) S.evidence.push(c.id);
-      G.Audio && G.Audio.sfx('evidence');
+      G.Audio && G.Audio.sfx('itemget');
       S.block = { type: 'evidence', id: c.id, t0: G.time };
       break;
     }
@@ -182,9 +182,10 @@ function exec(c) {
     }
     case 'verdict': verdictSequence(c); break;
     case 'emo': setEmo(c.who, c.emo); break;
+    case 'crowd': startCrowd(c); break;
     case '__gameover': gameOver(); break;
     case '__add':
-      if (!S.evidence.includes(c.id)) { S.evidence.push(c.id); G.Audio && G.Audio.sfx('evidence'); S.block = { type: 'evidence', id: c.id, t0: G.time }; }
+      if (!S.evidence.includes(c.id)) { S.evidence.push(c.id); G.Audio && G.Audio.sfx('itemget'); S.block = { type: 'evidence', id: c.id, t0: G.time }; }
       break;
     case '__stamp': G.Audio && G.Audio.sfx('stamp'); G.fx.shake(4, .3); S.block = { type: 'bigstamp', text: c.text, t0: G.time }; break;
     default: console.warn('unknown cmd', c);
@@ -214,6 +215,54 @@ function penalty() {
   G.Audio && G.Audio.sfx('damage');
   G.fx.shake(4, .4); G.fx.flash(G.RAMP.red[3], .25);
   if (S.cred <= 0) push([{ c: '__gameover' }]);
+}
+
+/* ---------------- толпа: присяжные и зрители ---------------- */
+function crowdIds() {
+  const ids = [];
+  for (const id in S.pos) if (/^(juror|spectator|foreperson)/.test(id)) ids.push(id);
+  return ids;
+}
+function startCrowd(c) {
+  const mood = c.mood || 'whisper';
+  const loud = mood !== 'whisper' && mood !== 'murmur';
+  const ids = crowdIds();
+  const share = mood === 'whisper' ? 0.45 : mood === 'murmur' ? 0.6 : 0.9;
+  for (const id of ids) if (Math.random() < share) {
+    S.react[id] = { mood: mood === 'murmur' && Math.random() < .5 ? 'whisper' : mood, t0: G.time + Math.random() * 0.5, dur: loud ? 2.6 : 2.2 };
+  }
+  // реплики-пузыри
+  const lines = (c.lines && c.lines.length ? c.lines : CROWD_LINES[mood] || []).slice();
+  const speakers = ids.filter(id => S.react[id]).sort(() => Math.random() - .5);
+  S.bubbles = lines.slice(0, 4).map((text, k) => ({ who: speakers[k % Math.max(1, speakers.length)], text, t0: G.time + 0.2 + k * 0.55, dur: 2.0 }));
+  const sfx = { whisper: 'crowd', murmur: 'crowd', gasp: 'crowdGasp', angry: 'crowdAngry', cheer: 'cheer', clap: 'clap', laugh: 'crowd', shout: 'crowdAngry' }[mood];
+  G.Audio && G.Audio.sfx(sfx || 'crowd');
+  if (loud) G.fx.shake(mood === 'gasp' ? 2 : 3, .5);
+  setWorld(G.Env.cams.wide, S.view.mode !== 'world');
+  S.block = { type: 'wait', until: G.time + (loud ? 2.4 : 2.0) + lines.length * 0.25 };
+}
+const CROWD_LINES = {
+  whisper: ['Ты слышал?', 'Шшш…', 'Он врёт.', 'Интересно…', 'Вот это да.'],
+  murmur: ['Хм…', 'Не верю.', 'Странно.'],
+  gasp: ['Ах!', 'Не может быть!', 'Боже мой!'],
+  angry: ['Позор!', 'Лжец!', 'Как он мог?!'],
+  cheer: ['Да!', 'Браво!', 'Свободна!', 'Ура!'],
+  clap: ['Браво!', 'Молодец!'],
+  laugh: ['Ха-ха!', 'Ну и ну!'],
+  shout: ['Эй!', 'Позор!', 'Справедливость!'],
+};
+/* фоновая жизнь: кто-то всегда перешёптывается */
+function ambientCrowd() {
+  if (!S.nextAmbient || G.time > S.nextAmbient) {
+    S.nextAmbient = G.time + 1.2 + Math.random() * 2.5;
+    const ids = crowdIds();
+    if (!ids.length) return;
+    const id = ids[Math.floor(Math.random() * ids.length)];
+    if (!S.react[id] || G.time - S.react[id].t0 > S.react[id].dur) {
+      const r = Math.random();
+      S.react[id] = { mood: r < .75 ? 'whisper' : 'murmur', t0: G.time, dur: 1.4 + Math.random() * 1.5, ambient: true };
+    }
+  }
 }
 
 /* ---------------- контрольные точки и проигрыш ---------------- */
@@ -321,8 +370,11 @@ function verdictSequence(c) {
     { c: 'shot', id: 'defendant' },
     { c: 'emo', who: def, emo: 'relieved' },
     { c: 'say', who: 'clerk', shot: 'defendant', text: '*' + word + '*.' },
-    { c: 'sfx', id: 'crowd' },
+    { c: 'sfx', id: 'verdict' },
+    { c: 'crowd', mood: 'cheer', lines: c.cheer || ['Да!', 'Браво!', 'Справедливость!', 'Ура!'] },
+    { c: 'crowd', mood: 'clap' },
     { c: 'anim', who: 'judge', id: 'gavel' },
+    { c: 'say', who: 'judge', emo: 'stern', text: 'Тишина в зале! {p}Прошу тишины.' },
     { c: '__stamp', text: fem ? 'ОПРАВДАНА' : 'ОПРАВДАН' },
     { c: 'say', who: 'judge', emo: 'smile', text: 'Подсудимая сторона освобождается из-под стражи. Залог возвращается. Заседание закрыто.'.replace('Подсудимая сторона освобождается', fem ? 'Подсудимая освобождается' : 'Подсудимый освобождается') },
     { c: 'say', who: def, shot: 'defendant', emo: 'relieved', text: c.thanks || 'Спасибо вам. Я… я не знаю, что сказать. Спасибо.' },
@@ -378,13 +430,22 @@ const Court = {
       evidence: (d.start || []).slice(), cred: MAX_CRED, credFlash: -9,
       view: { mode: 'black', shot: null }, cam: { x: 0, y: 0, z: 1 }, camTween: null,
       record: { open: false, sel: 0, page: 0, mode: 'view' }, cross: null, pressed: {},
-      paused: false, started: false, cp: null, endT: null,
+      paused: false, started: false, cp: null, endT: null, react: {}, bubbles: [],
     };
     // расстановка по местам
     S.pos.judge = 'judge'; S.pos.clerk = 'clerk'; S.pos.bailiff = 'bailiff';
     S.pos.player = 'defense'; S.pos.prosecutor = 'prosecution'; S.pos[d.defendant] = 'defendant';
     for (let k = 1; k <= 6; k++) S.pos['juror' + k] = 'jury' + (k - 1);
     S.pos.foreperson = 'jury6';
+    const hasSpect = G.Cast.has('spectator1');
+    const juryN = G.Env && G.Env.spots.jury ? G.Env.spots.jury.length : 7;
+    for (let k = 7; k < juryN; k++) S.pos[hasSpect ? 'spectator' + (k - 6) : 'juror' + ((k % 6) + 1) + '_' + k] = 'jury' + k;
+    const galN = G.Env && G.Env.spots.gallery ? G.Env.spots.gallery.length : 0;
+    for (let k = 0; k < galN; k++) {
+      const sid = hasSpect ? 'spectator' + (((k + 5 + idx * 3) % 12) + 1) : 'juror' + (((k * 5 + idx) % 6) + 1);
+      if (S.pos[sid]) { S.pos[sid + '_g' + k] = 'gallery' + k; } else S.pos[sid] = 'gallery' + k;
+    }
+    if (G.Env && G.Env.spots.reporter) S.pos.reporter = 'reporter';
     if (G.Env) S.cam = Object.assign({}, G.Env.cams.wide);
     push(d.script);
     S.started = true;
@@ -410,6 +471,8 @@ const Court = {
     for (const id in S.chars) { const c = S.chars[id]; if (c.anim && G.time - c.animStart > (G.Cast.animDuration(id, c.anim) || 1) + 0.05) { if (c.anim === 'breakdown') c.emo = 'breakdown'; c.anim = null; } }
 
     updateLine(dt);
+    if (S.view.mode === 'world') ambientCrowd();
+    S.bubbles = S.bubbles.filter(b => G.time - b.t0 < b.dur);
     if (S.needRun) { run(); }
     const B = S.block;
     if (!B) { run(); return; }
@@ -427,7 +490,7 @@ const Court = {
       case 'shout': if (G.time - B.t0 >= B.dur) { S.block = null; run(); } break;
       case 'bigstamp': if (G.time - B.t0 > 0.6 && advanceInput() || G.time - B.t0 > 2.4) { S.block = null; run(); } break;
       case 'title': if (G.time - B.t0 > 0.8 && advanceInput() || G.time - B.t0 > 4.5) { S.block = null; run(); } break;
-      case 'evidence': if (G.time - B.t0 > 0.5 && advanceInput()) { S.block = null; G.Audio && G.Audio.sfx('select'); run(); } break;
+      case 'evidence': if (G.time - B.t0 > (G.UI.drawItemGet ? 2.0 : 0.5) && advanceInput()) { S.block = null; G.Audio && G.Audio.sfx('select'); run(); } break;
       case 'doc': if (B.back) break; if (G.time - B.t0 > 0.4 && advanceInput()) { S.block = null; G.Audio && G.Audio.sfx('paper'); run(); } break;
       case 'cross': updateCross(); break;
       case 'presentPrompt':
@@ -484,14 +547,25 @@ function drawScene(ctx) {
     G.Env.drawWorld(ctx, 'back', G.time);
     const list = [];
     for (const id in S.pos) { const sp = spotOf(S.pos[id]); if (sp) list.push({ id, sp }); }
-    // зрители в галерее
-    const gal = G.Env.spots.gallery || [];
-    gal.forEach((sp, k) => list.push({ id: 'juror' + (((k * 5 + S.idx) % 6) + 1), sp: Object.assign({ pose: 'sit', dir: 'l' }, sp), extra: true }));
     list.sort((a, b) => a.sp.y - b.sp.y);
     for (const o of list) {
-      G.Cast.drawIso(ctx, o.id, o.sp.x, o.sp.y, o.extra ? { pose: o.sp.pose || 'sit', dir: o.sp.dir || 'l', t: G.time + o.sp.x } : charOpts(o.id, { pose: o.sp.pose || 'stand', dir: o.sp.dir || 'l' }));
+      const base = o.id.replace(/_.*$/, '');
+      const r = S.react[o.id];
+      const extra = { pose: o.sp.pose || 'stand', dir: o.sp.dir || 'l', t: G.time + (o.sp.x * 0.37) % 3 };
+      if (r && G.time >= r.t0 && G.time - r.t0 < r.dur) { extra.react = r.mood; extra.reactT = G.time - r.t0; }
+      G.Cast.drawIso(ctx, base, o.sp.x, o.sp.y, Object.assign(charOpts(base, extra), { t: extra.t }));
+      o.screen = { x: o.sp.x, y: o.sp.y };
     }
     G.Env.drawWorld(ctx, 'front', G.time);
+    // реплики толпы над головами (в мировых координатах -> экран)
+    G.resetCam(ctx);
+    for (const b of S.bubbles) {
+      const age = G.time - b.t0; if (age < 0 || age > b.dur) continue;
+      const sp = spotOf(S.pos[b.who]); if (!sp || !G.UI.drawSpeech) continue;
+      const z = S.cam.z || 1;
+      const sx = Math.round(G.W / 2 + (sp.x - S.cam.x) * z), sy = Math.round(G.H / 2 + (sp.y - 26 - S.cam.y) * z);
+      G.UI.drawSpeech(ctx, sx, sy, b.text, age);
+    }
     G.resetCam(ctx);
   } else if (S.view.mode === 'shot' && G.Env) {
     const sh = S.view.shot, info = G.Env.shots[sh] || { anchor: { x: 192, y: 180 }, flip: false };
@@ -578,7 +652,7 @@ function drawAll(ctx) {
   }
 
   // всплывающая улика
-  if (B.type === 'evidence') drawEvidencePopup(ctx, B);
+  if (B.type === 'evidence') { if (G.UI.drawItemGet) G.UI.drawItemGet(ctx, evObj(B.id), G.time - B.t0); else drawEvidencePopup(ctx, B); }
   if (B.type === 'doc') {
     const e = evObj(B.id);
     const doc = e.doc || { title: e.name, header: '', lines: [e.desc] };

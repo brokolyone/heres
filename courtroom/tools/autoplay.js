@@ -10,7 +10,7 @@ const path = require('path'), fs = require('fs');
   const errs = [];
   p.on('pageerror', e => errs.push('pageerror: ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 3).join('\n')));
   p.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') errs.push(m.type() + ': ' + m.text()); });
-  await p.goto('file://' + path.resolve(__dirname, '../dist/play.html'));
+  await p.goto(process.env.GAME_URL || 'http://localhost:8765/dist/play.html');
   await p.waitForTimeout(500);
   await p.evaluate(i => G.startCase(+i), ci);
   let shots = 0, lastType = '', t0 = Date.now(), lastShotKey = '';

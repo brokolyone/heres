@@ -18,8 +18,9 @@ const scripts = ORDER.map(n => {
   return `<script>/* ${n}.js */\n${fs.readFileSync(f, 'utf8').replace(/<\/script/gi, '<\\/script')}\n</script>`;
 }).join('\n');
 fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
-const out = head + scripts + '\n';
+const base = b => `<script>window.G = window.G || {}; G.ASSET_BASE = '${b}';</script>\n`;
+const out = head + base('') + scripts + '\n';
 fs.writeFileSync(path.join(root, 'dist', 'index.html'), out);
 // локальная версия с doctype
-fs.writeFileSync(path.join(root, 'dist', 'play.html'), '<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body>' + out + '</body></html>');
+fs.writeFileSync(path.join(root, 'dist', 'play.html'), '<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body>' + head + base('../') + scripts + '</body></html>');
 console.log('dist/index.html', (out.length / 1024).toFixed(1) + ' KB');
