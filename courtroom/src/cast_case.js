@@ -415,27 +415,35 @@ function makeBust(def) {
   const cacheBase = {}, cacheFull = {};
   const NBK = def.bkFrames || 8;
   const BKD = def.bkDur || 1.2;
-  function baseFor(emo, bk) {
-    const k = emo + '|' + bk;
+  const NF = 8;
+  const FDUR = def.fidDur || 1.8, FPER = def.fidPer || 8.5;
+  function baseFor(emo, bk, fid) {
+    const k = emo + '|' + bk + '|' + fid;
     if (cacheBase[k]) return cacheBase[k];
     const p = new Painter(BW, BH);
-    const st = { emo, bk, hx: 0, hy: 0 };
+    const st = { emo, bk, hx: 0, hy: 0, fid, f: fid >= 0 ? (fid + 0.5) / NF : -1 };
+    // k: подъём руки 0..1..0, a: фаза действия в удержании 0..1
+    if (fid >= 0) { const f = st.f; st.fk = f < 0.3 ? G.ease.inOut(f / 0.3) : f > 0.72 ? G.ease.inOut((1 - f) / 0.28) : 1; st.fa = G.clamp((f - 0.3) / 0.42, 0, 1); }
+    else { st.fk = 0; st.fa = 0; }
     def.build(p, st);
     const cnv = p.render();
     if (def.after) def.after(cnv.getContext('2d'), st);
     return (cacheBase[k] = { cnv, st });
   }
-  function frameFor(emo, bk, blink, mouthF) {
-    const k = emo + '|' + bk + '|' + blink + '|' + mouthF;
+  function frameFor(emo, bk, blink, mouthF, fid) {
+    fid = fid === undefined ? -1 : fid;
+    const k = emo + '|' + bk + '|' + blink + '|' + mouthF + '|' + fid;
     if (cacheFull[k]) return cacheFull[k];
-    const b = baseFor(emo, bk);
+    const b = baseFor(emo, bk, fid);
     const c = G.makeCanvas(BW, BH + 2);
     const x = c.getContext('2d');
     x.drawImage(b.cnv, 0, 0);
     const st = Object.assign({}, b.st, { blink, mouthF });
     const fc = def.face(st);
+    if (fid >= 0 && def.fidFace) def.fidFace(st, fc);
     drawFace(x, def, st, fc);
     if (def.post) def.post(x, st, fc);
+    if (def.postTop) def.postTop(x, st, fc);
     return (cacheFull[k] = c);
   }
   return {
@@ -446,19 +454,33 @@ function makeBust(def) {
       const t = o.t || 0;
       let emo = o.emo && def.emos.indexOf(o.emo) >= 0 ? o.emo : 'normal';
       let bk = -1, dx = 0;
-      if (o.anim === 'breakdown' && def.bkFrames !== 0 && def.emos.indexOf('breakdown') >= 0) {
+      if (o.anim === 'breakdown' && def.emos.indexOf('breakdown') >= 0) {
         const at = G.clamp(o.animT || 0, 0, BKD - 0.001);
         bk = Math.min(NBK - 1, Math.floor(at / BKD * NBK));
         emo = 'breakdown';
         if (def.shake) dx = def.shake(at / BKD, t);
       } else if (emo === 'breakdown') bk = NBK - 1;
+      // привычный жест (fidget): периодически, когда персонаж не говорит
+      let fid = -1;
+      if (bk < 0 && def.fidEmos && def.fidEmos.indexOf(emo) >= 0) {
+        let fp = -1;
+        if (o.fidget !== undefined) fp = o.fidget;
+        else if (!o.talking) {
+          const per = FPER + (def.seed % 3) * 0.9;
+          const ph = (t + def.seed * 2.37) % per;
+          if (ph < FDUR && t > 1.5) fp = ph / FDUR;
+        }
+        if (fp >= 0 && fp < 1) fid = Math.min(NF - 1, Math.floor(fp * NF));
+      }
       let blink = blinkState(t, def.seed || 1);
       let mouthF = 0;
-      if (o.talking && bk < 0) { const f = Math.floor(t * 8) % 4; mouthF = [0, 1, 2, 1][f]; }
-      if (bk >= 0 && bk < NBK - 1) { blink = 'open'; }
-      if (emo === 'breakdown' && bk === NBK - 1 && o.talking) { const f = Math.floor(t * 8) % 4; mouthF = [0, 1, 2, 1][f]; }
-      const spr = frameFor(emo, bk, blink, mouthF);
-      const br = Math.sin(t * Math.PI * 2 / 3.0 + (def.seed || 0)) > 0 ? 1 : 0;
+      if (o.talking && (bk < 0 || bk === NBK - 1)) { const f = Math.floor(t * 8) % 4; mouthF = [0, 1, 2, 1][f]; }
+      if (bk >= 0 && bk < NBK - 1) blink = 'open';
+      const spr = frameFor(emo, bk, blink, mouthF, fid);
+      // дыхание: 1–2 px, своя фаза у каждого
+      const amp = def.breath || 1;
+      const sv = Math.sin(t * Math.PI * 2 / (def.breathPer || 3.2) + (def.seed || 0) * 1.7);
+      const br = amp === 1 ? (sv > 0 ? 1 : 0) : (sv > 0.45 ? 2 : sv > -0.45 ? 1 : 0);
       const hgt = BH + br;
       if (o.flip) {
         ctx.save();
@@ -471,6 +493,32 @@ function makeBust(def) {
     },
   };
 }
+
+/* рука, поднятая из-за нижнего края кадра к точке (hx,hy).
+   o: {sleeve, skin, from:[x,y], w, pose:'point'|'flat'|'fist'|'pinch', cuff} */
+function armTo(p, hx, hy, o) {
+  const fr = o.from, sl = o.sleeve, sk = o.skin;
+  const w = o.w || 13;
+  const mx = (fr[0] + hx) / 2 + (o.bend || 0), my = Math.max(fr[1], hy) - 4;
+  p.part({ s: [C(fr[0], fr[1], mx, my, hx + (o.wx || 2), hy + 8, w, w - 4)], ramp: sl, base: o.slBase || 3, cast: 2, shT: 0.4 });
+  if (o.cuff) p.part({ s: [C(hx - 1, hy + 9, hx + 1, hy + 7, hx + 3, hy + 5, 5)], ramp: o.cuff, base: 3, cast: 1 });
+  const pose = o.pose || 'flat';
+  if (pose === 'point') {
+    p.part({ s: [P([hx - 2, hy + 2], [hx + 5, hy], [hx + 7, hy + 4], [hx + 6, hy + 9], [hx, hy + 9], [hx - 2, hy + 6])], ramp: sk, base: 3, cast: 1 });
+    p.part({ s: [C(hx, hy + 2, hx - 3, hy - 1, hx - 5, hy - 4, 2)], ramp: sk, base: 3, cast: 1 });
+    p.set(hx + 1, hy + 5, sk, 2); p.set(hx + 2, hy + 6, sk, 2);
+  } else if (pose === 'pinch') {
+    p.part({ s: [P([hx - 1, hy + 1], [hx + 6, hy], [hx + 8, hy + 5], [hx + 6, hy + 9], [hx, hy + 9], [hx - 2, hy + 5])], ramp: sk, base: 3, cast: 1 });
+    p.part({ s: [C(hx, hy + 2, hx - 2, hy, hx - 3, hy - 2, 2), C(hx, hy + 4, hx - 3, hy + 3, hx - 4, hy + 1, 2)], ramp: sk, base: 3, cast: 1 });
+  } else if (pose === 'fist') {
+    p.part({ s: [P([hx - 2, hy], [hx + 6, hy - 1], [hx + 8, hy + 4], [hx + 6, hy + 9], [hx - 1, hy + 9], [hx - 3, hy + 4])], ramp: sk, base: 3, cast: 1 });
+    for (let q = 0; q < 3; q++) p.set(hx - 1 + q * 2, hy + 2 + q, sk, 2);
+  } else {
+    p.part({ s: [P([hx - 3, hy + 1], [hx + 6, hy - 1], [hx + 8, hy + 4], [hx + 6, hy + 10], [hx, hy + 10], [hx - 4, hy + 5])], ramp: sk, base: 3, cast: 1 });
+    for (let q = 0; q < 3; q++) p.stroke(['l', hx - 3 + q, hy + 3 + q * 2, hx + 3 + q, hy + 2 + q * 2], -1, sk);
+  }
+}
+const lerpP = (a, b, k) => [Math.round(a[0] + (b[0] - a[0]) * k), Math.round(a[1] + (b[1] - a[1]) * k)];
 
 /* лицо: брови, глаза, рот */
 function drawFace(x, def, st, fc) {

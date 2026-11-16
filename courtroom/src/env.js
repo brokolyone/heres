@@ -505,7 +505,7 @@ function buildWorld() {
   faceX(b, 1.75, 2.75, 0, 40, 47, plaque);
   // bench backdrop + seal
   const bd = backdropTex();
-  drawSeal(bd.getContext('2d'), bd.width >> 1, 32, 12);
+  drawSeal(bd.getContext('2d'), bd.width >> 1, 26, 12);
   faceX(b, BD0, BD1, 0, 0, HW - 2, bd);
   // clock face on the right wall (above the jury box)
   const clk = G.makeSprite(14, 14, c => {
@@ -533,8 +533,8 @@ function buildWorld() {
   /* ---------- back-layer furniture ---------- */
   // judge's dais & high-back chair
   box(b, BD0, 0, BD1, 0.5, 0, 25, { top: WD[2], l: WD[1] });
-  box(b, 4.375, 0.0, 4.875, 0.125, 25, 52, { top: R.red[2], l: R.red[1], r: R.red[0], hl: R.red[3] });
-  for (let k = 0; k < 4; k++) px(b, ix(4.375, 0.125) + 2 + k * 2, iy(4.375, 0.125, 50) + k + 1, GO[4]);
+  box(b, 4.375, 0.0, 4.875, 0.125, 25, 46, { top: R.red[2], l: R.red[1], r: R.red[0], hl: R.red[3] });
+  for (let k = 0; k < 4; k++) px(b, ix(4.375, 0.125) + 2 + k * 2, iy(4.375, 0.125, 44) + k + 1, GO[4]);
   // clerk chair, witness chair, reporter chair
   box(b, 1.875, 0.125, 2.375, 0.25, 12, 30, { top: NE[3], l: NE[2], r: NE[1] });
   box(b, 6.625, 0.375, 7.125, 0.5, 16, 34, { top: WD[3], l: WD[2], r: WD[1], hl: WD[4] });
@@ -552,7 +552,7 @@ function buildWorld() {
   box(b, 6.0, 1.25, 6.5, 1.375, 0, 16, { top: NE[3], l: NE[2], r: NE[1] });
   // counsel chairs
   [[1.875, 3.875], [3.125, 3.875], [8.375, 3.875], [9.0, 3.75]].forEach(([gx, gy], i) => {
-    box(b, gx - 0.25, gy - 0.125, gx + 0.25, gy, 0, 20, { top: NE[3], l: NE[2], r: NE[1], hl: NE[4] });
+    box(b, gx - 0.25, gy - 0.125, gx + 0.25, gy, 0, 16, { top: R.red[2], l: R.red[1], r: R.red[0], hl: R.red[3] });
     box(b, gx - 0.25, gy, gx + 0.25, gy + 0.375, 0, 7, { top: NE[2], l: NE[1], r: NE[0] });
   });
   // bailiff's flag-free corner: water cooler & a ficus
@@ -774,7 +774,7 @@ function drawClockHands(c, t, x0, y0, rH, rM, colH, colM) {
   };
   return { a, hand };
 }
-const FANS = [[5, 8.5, 156], [10.5, 9.5, 184]];
+const FANS = [[5, 8.5, 140], [10.5, 9.5, 186]];
 function drawFan(c, x, y, t, ph) {
   // downrod
   fill(c, x, 0, 1, y - 3, NE[3]); px(c, x + 1, ((t * 7 + ph * 9) | 0) % Math.max(1, y - 4), NE[4]);
@@ -899,7 +899,7 @@ G.Env = {
   world: { w: WW, h: WH },
   spots,
   cams: {
-    wide: { x: 280, y: 172, z: 1 },
+    wide: { x: 280, y: 160, z: 1 },
     judge: { x: 318, y: 112, z: 2 },
     witness: { x: 350, y: 132, z: 2 },
     defense: { x: 236, y: 140, z: 2 },

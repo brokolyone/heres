@@ -116,6 +116,35 @@ function xform(src, deg, scale) {
   oc.putImageData(id, 0, 0);
   return out;
 }
+/* Поворот тремя сдвигами (Паэт): строки/столбцы сдвигаются целиком, пиксели не теряются,
+   штрихи букв остаются целыми */
+function rotShear(src, deg) {
+  if (!deg) return src;
+  const a = deg * Math.PI / 180, ta = Math.tan(a / 2), sa = Math.sin(a);
+  const sw = src.width, sh = src.height;
+  const N = Math.ceil(Math.max(sw, sh) * 1.5) + 4;
+  let buf = new Uint32Array(N * N);
+  const sd = new Uint32Array(src.getContext('2d').getImageData(0, 0, sw, sh).data.buffer);
+  const ox = (N - sw) >> 1, oy = (N - sh) >> 1, cx = N / 2, cy = N / 2;
+  for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++) buf[(y + oy) * N + x + ox] = sd[y * sw + x];
+  const shx = (b) => { const o = new Uint32Array(N * N); for (let y = 0; y < N; y++) { const d = Math.round(-(y + 0.5 - cy) * ta); for (let x = 0; x < N; x++) { const X = x + d; if (X >= 0 && X < N) o[y * N + X] = b[y * N + x]; } } return o; };
+  const shy = (b) => { const o = new Uint32Array(N * N); for (let x = 0; x < N; x++) { const d = Math.round((x + 0.5 - cx) * sa); for (let y = 0; y < N; y++) { const Y = y + d; if (Y >= 0 && Y < N) o[Y * N + x] = b[y * N + x]; } } return o; };
+  buf = shx(shy(shx(buf)));
+  let x0 = N, y0 = N, x1 = -1, y1 = -1;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (buf[y * N + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0) return src;
+  // симметричная обрезка вокруг центра, чтобы центр штампа не «уплывал»
+  const hw = Math.max(cx - x0, x1 + 1 - cx), hh = Math.max(cy - y0, y1 + 1 - cy);
+  const bx = Math.max(0, Math.floor(cx - hw)), by = Math.max(0, Math.floor(cy - hh));
+  const bw = Math.min(N, Math.ceil(cx + hw)) - bx, bh = Math.min(N, Math.ceil(cy + hh)) - by;
+  const out = G.makeCanvas(bw, bh);
+  const oc = out.getContext('2d');
+  const id = oc.createImageData(bw, bh);
+  const od = new Uint32Array(id.data.buffer);
+  for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) od[y * bw + x] = buf[(y + by) * N + x + bx];
+  oc.putImageData(id, 0, 0);
+  return out;
+}
 /* Целочисленное увеличение (дублирование пикселей) */
 function zoomInt(src, z) {
   if (z === 1) return src;
@@ -418,7 +447,7 @@ function stampBase(text, color, size) {
   const seed = strSeed(key);
   const light = lighter(color);
   const lr = parseInt(light.slice(1, 3), 16), lg = parseInt(light.slice(3, 5), 16), lb = parseInt(light.slice(5, 7), 16);
-  const sc = size === 'shout' ? 9 : 6;
+  const sc = size === 'shout' ? 7 : 6;
   for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) {
     const k = (y * bw + x) * 4;
     if (!d[k + 3]) continue;
@@ -426,7 +455,7 @@ function stampBase(text, color, size) {
     const f = hash2(x, y, seed + 5);
     // край штампа (правая и нижняя стороны) пропечатан хуже
     const edge = (x / bw) * 0.18 + (y / bh) * 0.1;
-    if ((n < (size === 'small' ? 0.12 : 0.2) + edge && f < 0.7) || f < 0.03) d[k + 3] = 0;
+    if ((n < (size === 'small' ? 0.12 : 0.17) + edge && f < 0.7) || f < (size === 'shout' ? 0.015 : 0.03)) d[k + 3] = 0;
     else if (n > 0.72 && f < 0.6) { d[k] = lr; d[k + 1] = lg; d[k + 2] = lb; }
   }
   cx.putImageData(id, 0, 0);
@@ -443,7 +472,10 @@ function stampBase(text, color, size) {
 function stampVariant(text, color, size, angle, scale) {
   const key = text + '|' + color + '|' + size + '|' + angle + '|' + scale;
   let v = stampVarCache[key];
-  if (!v) v = stampVarCache[key] = xform(stampBase(text, color, size), angle, scale);
+  if (!v) {
+    const rot = stampVarCache[text + '|' + color + '|' + size + '|' + angle + '|1'] || rotShear(stampBase(text, color, size), angle);
+    v = stampVarCache[key] = scale === 1 ? rot : xform(rot, 0, scale);
+  }
   return v;
 }
 const APPEAR_STEPS = [2.2, 1.8, 1.5, 1.25, 1.1, 1];
