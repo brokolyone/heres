@@ -1,0 +1,22 @@
+<!doctype html><meta charset="utf-8"><body style="margin:0;background:#000">
+<script src="../src/core.js"></script>
+<script src="../src/env.js"></script>
+<script>
+G.mountCanvas();
+const q = new URLSearchParams(location.search);
+const id = q.get('id') || 'judge', t = +(q.get('t') || 3), bust = q.get('bust') !== '0';
+G.renderOnce(c => {
+  if (id === 'exterior') { G.Env.drawExterior(c, t); return; }
+  G.Env.drawShot(c, id, 'back', t);
+  const s = G.Env.shots[id];
+  if (bust) { // placeholder bust 110x130, facing marker
+    const a = s.anchor;
+    G.rect(c, a.x - 55, a.y - 80, 110, 80, G.RAMP.red[3]);
+    G.rect(c, a.x - 18, a.y - 130, 36, 50, G.RAMP.skinL[3]);
+    G.rect(c, a.x + (s.flip ? 10 : -16), a.y - 112, 6, 4, G.RAMP.neutral[1]);
+  }
+  G.Env.drawShot(c, id, 'front', t);
+  if (q.get('dlg') !== '0') { c.globalAlpha = 0.6; G.rect(c, 0, 152, 384, 64, '#000'); c.globalAlpha = 1; }
+});
+window.__ready = true;
+</script>

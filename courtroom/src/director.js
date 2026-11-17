@@ -321,7 +321,7 @@ function crossAction(a) {
     S.block = null; push(list); run();
   }
   else if (a === 'present' || a === 'record') {
-    S.record = { open: true, sel: 0, page: 0, mode: a === 'present' ? 'present' : 'view', purpose: 'cross' };
+    S.record = { open: true, sel: 0, page: 0, mode: a === 'present' ? 'present' : 'view', purpose: 'cross', frame: G.frameNo };
     G.Audio && G.Audio.sfx('paper');
   }
 }
@@ -494,7 +494,7 @@ const Court = {
       case 'doc': if (B.back) break; if (G.time - B.t0 > 0.4 && advanceInput()) { S.block = null; G.Audio && G.Audio.sfx('paper'); run(); } break;
       case 'cross': updateCross(); break;
       case 'presentPrompt':
-        if (B.phase === 'ask' && lineDone() && advanceInput()) { B.phase = 'record'; S.record = { open: true, sel: 0, page: 0, mode: 'present', purpose: 'present' }; G.Audio && G.Audio.sfx('paper'); }
+        if (B.phase === 'ask' && lineDone() && advanceInput()) { B.phase = 'record'; S.record = { open: true, sel: 0, page: 0, mode: 'present', purpose: 'present', frame: G.frameNo }; G.Audio && G.Audio.sfx('paper'); }
         else if (B.phase === 'ask' && !lineDone() && advanceInput()) S.line.shown = S.line.visible;
         break;
       case 'gameover': break;
@@ -596,7 +596,7 @@ function drawAll(ctx) {
 
   // HUD: доверие суда
   if (S.view.mode !== 'black' && G.UI && G.UI.drawCredibility && B.type !== 'gameover') {
-    G.UI.drawCredibility(ctx, G.W - 4 - 5 * 14, 4, S.cred, MAX_CRED, G.time, { flashLost: G.time - S.credFlash < 1.2 });
+    G.UI.drawCredibility(ctx, G.W - 88, 3, S.cred, MAX_CRED, G.time, { flashLost: G.time - S.credFlash < 1.2 });
   }
 
   // диалог
@@ -635,6 +635,7 @@ function drawAll(ctx) {
   if (S.record.open) {
     const list = S.evidence.map(evObj);
     let r = G.UI.courtRecord(ctx, S.record, list, G.time) || {};
+    if (S.record.frame === G.frameNo) r = {};
     if (S.force && S.force.present) { r = { action: 'present', id: S.force.present }; S.force.present = null; }
     if (r.action === 'close') { S.record.open = false; G.Audio && G.Audio.sfx('cancel'); if (B.type === 'presentPrompt') { B.phase = 'ask'; S.line.shown = S.line.visible; } }
     else if (r.action === 'doc' && r.id) { S.record.open = false; S.block = { type: 'doc', id: r.id, t0: G.time, back: B }; }

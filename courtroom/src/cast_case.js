@@ -16,6 +16,7 @@ const BW = 112, BH = 130;
    ФОРМЫ (для масок)
    --------------------------------------------------------------------- */
 const E = (cx, cy, rx, ry) => ['e', cx, cy, rx, ry];
+const EP = E;
 const P = (...pts) => ['p', pts];
 const Rc = (x, y, w, h) => ['r', x, y, w, h];
 const C = (x0, y0, x1, y1, x2, y2, w0, w1) => ['c', x0, y0, x1, y1, x2, y2, w0, w1 === undefined ? w0 : w1];
@@ -961,6 +962,69 @@ function torso(p, pts, ramp, base, opt) {
   return p.part(Object.assign({ s: [P(...pts)], ramp, base: base === undefined ? 3 : base, cast: 1 }, opt || {}));
 }
 function fold(p, shape, dt, ramp) { p.stroke(shape, dt, ramp); }
+
+/* ФИГУРА: дальняя рука (за торсом) -> торс с талией -> ближняя рука.
+   o = {cx, T (основание шеи), wl, wr (до внешнего края плеч), aw (толщина руки), slope, ramp, arm,
+        base, waist (сужение), open:[pts] вырез, belly:[cx,cy,rx,ry], upperL/upperR (только плечо до локтя),
+        noL/noR, elbow (y локтя от T), fem, pad (плечики)} */
+function figure(p, o) {
+  const cx = o.cx, T = o.T, aw = o.aw || 12, sl = o.slope === undefined ? 7 : o.slope, ramp = o.ramp, arm = o.arm || ramp;
+  const wl = o.wl, wr = o.wr, wst = o.waist === undefined ? 4 : o.waist;
+  const ah = Math.round(aw / 2);
+  const SL = [cx - wl + ah, T + sl + ah - 1], SR = [cx + wr - ah, T + sl + ah - 1];
+  const eY = T + (o.elbow || 56);
+  const EL = [SL[0] - 2, eY], ER = [SR[0] + 2, eY];
+  const res = { SL, SR, EL, ER };
+  const n = BW * BH;
+  const all = new Uint8Array(n);
+  const armPart = (S, Ep, side, b, upper) => {
+    const bot = [Ep[0] - side * 3, BH + 4];
+    const sh = [EP(S[0], S[1] + 1, ah + 1, ah + 2), C(S[0], S[1], (S[0] + Ep[0]) / 2 + side, (S[1] + Ep[1]) / 2, Ep[0], Ep[1], aw + 1, aw - 1)];
+    if (o.pad) sh.push(Rc(S[0] - ah - (side < 0 ? 0 : 0), S[1] - ah - 1, aw + 1, ah + 2));
+    if (!upper) sh.push(C(Ep[0], Ep[1], (Ep[0] + bot[0]) / 2, (Ep[1] + bot[1]) / 2, bot[0], bot[1], aw - 1, aw - 2));
+    else sh.push(EP(Ep[0], Ep[1], ah, ah));
+    const m = p.part({ s: sh, ramp: arm, base: b, cast: 1, shT: 0.38, hiT: 0.74 });
+    // локтевая складка и заломы рукава
+    const ix = side < 0 ? Ep[0] + ah - 2 : Ep[0] - ah + 2; // внутренняя сторона руки
+    p.stroke(C(ix, Ep[1] - 3, ix - side * 3, Ep[1], ix, Ep[1] + 3, 1), -1, arm);
+    p.stroke(['l', ix - side * 1, Ep[1] - 7, ix - side * 3, Ep[1] - 5], -1, arm);
+    p.stroke(C(S[0] - side * 1, S[1] + ah + 4, S[0] - side * 2, (S[1] + Ep[1]) / 2, Ep[0] - side * 2, Ep[1] - 8, 1), side < 0 ? 1 : -1, arm);
+    if (!upper) p.stroke(['l', Ep[0] - side * 2, Ep[1] + 6, Ep[0] - side * 4, BH], side < 0 ? 1 : -1, arm);
+    for (let i = 0; i < n; i++) if (m[i]) all[i] = 1;
+    return m;
+  };
+  let mL = null, mR = null;
+  if (!o.noL) mL = armPart(SL, EL, -1, (o.base || 3), o.upperL);
+  const tp = [[cx - (o.nl || 9), T - 3], [cx + (o.nr || 11), T - 3], [SR[0], T + sl - 1], [cx + wr - aw + 1, T + sl + 12],
+    [cx + wr - aw - wst, eY - 4], [cx + wr - aw - wst + 1, BH + 2], [cx - wl + aw + wst - 1, BH + 2], [cx - wl + aw + wst, eY - 4],
+    [cx - wl + aw - 1, T + sl + 12], [SL[0], T + sl - 1]];
+  const shapes = [P(...smooth(tp, 2))];
+  if (o.belly) shapes.push(EP(o.belly[0], o.belly[1], o.belly[2], o.belly[3]));
+  if (o.open) shapes.push(SUB(P(...o.open)));
+  if (o.open2) shapes.push(SUB(P(...o.open2)));
+  const mT = p.part({ s: shapes, ramp, base: o.base || 3, cast: 1, shT: o.shT || 0.34, hiT: 0.8 });
+  for (let i = 0; i < n; i++) if (mT[i]) all[i] = 1;
+  // линия-тень между дальней рукой и торсом
+  if (mL) for (let y = 0; y < BH; y++) for (let x = 1; x < BW - 1; x++) {
+    const i = y * BW + x; if (!mL[i] || mT[i] || p.ramp[i] !== arm) continue;
+    if (mT[i + 1] || mT[i - 1]) p.tone[i] = Math.min(p.tone[i], 1);
+  }
+  if (o.fem) { // мягкая форма груди
+    p.stroke(C(cx - 12, T + 26, cx - 2, T + 31, cx + 8, T + 27, 1), -1, ramp);
+    p.stroke(C(cx + 10, T + 25, cx + 16, T + 30, cx + 22, T + 26, 1), -1, ramp);
+    p.stroke(C(cx - 10, T + 18, cx - 4, T + 16, cx + 2, T + 18, 1), 1, ramp);
+  }
+  if (!o.noR) {
+    mR = armPart(SR, ER, 1, (o.base || 3) - (o.rDark ? 1 : 0), o.upperR);
+    // тень на торсе вдоль ближней руки (проём рукава, шов)
+    for (let y = 0; y < BH; y++) for (let x = 1; x < BW - 1; x++) {
+      const i = y * BW + x; if (mR[i] || !mT[i] || p.ramp[i] !== ramp) continue;
+      if (mR[i + 1] || mR[i + 2]) p.tone[i] = Math.max(0, p.tone[i] - (mR[i + 1] ? 2 : 1));
+    }
+  }
+  res.mT = mT; res.mL = mL; res.mR = mR; res.m = all;
+  return res;
+}
 
 /* ====================== СЭМЮЭЛ ЛОМАКС ====================== */
 (function () {

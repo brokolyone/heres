@@ -448,7 +448,7 @@ const A = G.Audio = {
     if (!A._pre) { A._pre = true; A.preload && A.preload(); }
     if (pendingMusic && !cur) { const p = pendingMusic; pendingMusic = null; curId = null; A.music(p); }
   },
-  applyVolumes,
+  applyVolumes, applySettings: applyVolumes,
   music(id) {
     if (id === curId) return;
     curId = id;
