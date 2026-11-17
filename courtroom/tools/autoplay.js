@@ -25,7 +25,7 @@ const path = require('path'), fs = require('fs');
       const B = S.block || {};
       return { type: B.type || null, end: S.endT != null, shot: S.view.mode + ':' + S.view.shot, line: S.line && S.line.text, who: S.line && S.line.who,
         lineDone: !S.line || S.line.shown >= S.line.visible, cross: S.cross && { idx: S.cross.idx, phase: S.cross.phase, hit: S.cross.t.statements.findIndex(x => x.hit), n: S.cross.t.statements.length, hitId: (S.cross.t.statements.find(x => x.hit) || {}).hit, adds: S.cross.t.statements.map(x => x.add || null) },
-        rec: S.record.open, cmd: B.cmd ? { answer: B.cmd.answer, ok: (B.cmd.options || []).findIndex(o => o.ok) } : null, ev: S.evidence.slice(), cred: S.cred };
+        rec: S.record.open, cmd: B.cmd ? { answer: B.cmd.answer, ok: (B.cmd.options || []).findIndex(o => o.ok), route: (B.cmd.routes || [])[0] || null } : null, ev: S.evidence.slice(), cred: S.cred };
     });
     if (!st) break;
     if (st.cred !== global.__lastCred) { console.log('cred', st.cred, 'block', st.type, 'line', (st.line || '').slice(0, 70), 'cross', JSON.stringify(st.cross && { idx: st.cross.idx, hit: st.cross.hit })); global.__lastCred = st.cred; }
@@ -53,6 +53,12 @@ const path = require('path'), fs = require('fs');
         await p.waitForTimeout(300);
         await p.evaluate(id => G._dbg.force({ present: id }), st.cross.hitId);
       }
+      await p.waitForTimeout(150); continue;
+    }
+    if (st.type === 'argue') {
+      if (!st.lineDone) { await p.evaluate(() => G.input._kp.add('Enter')); await p.waitForTimeout(100); continue; }
+      await p.waitForTimeout(600); await snap('argue');
+      const r = st.cmd.route; await p.evaluate(r => G._dbg.force({ argue: { claim: r.claim, ground: r.ground, ev: r.ev || null } }), r);
       await p.waitForTimeout(150); continue;
     }
     if (st.type === 'choice') { await p.waitForTimeout(400); await p.evaluate(i => G._dbg.force({ choice: i }), st.cmd.ok); await p.waitForTimeout(100); continue; }

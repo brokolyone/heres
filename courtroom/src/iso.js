@@ -295,7 +295,7 @@ function paintHead(d, st) {
   if (d.streak) { s(1, 0, d.streak); s(0, 1, d.streak); s(-1, 2, d.streak); s(-1, 3, d.streak); }
   // очки
   if (d.glasses) {
-    const gc = d.glasses === 'red' ? R.red[3] : d.glasses === 'gold' ? R.gold[2] : R.neutral[4];
+    const gc = d.glasses === 'red' ? R.red[3] : d.glasses === 'gold' ? R.gold[3] : R.neutral[6];
     if (st.eyes === 'p') { s(-1, 3, gc); s(1, 3, gc); }
     else if (d.glasses === 'red') { s(0, ey, gc); s(2, ey, gc); s(3, ey, gc); s(5, ey, gc); }
     else { s(2, ey, gc); s(3, ey, gc); s(5, ey, gc); }

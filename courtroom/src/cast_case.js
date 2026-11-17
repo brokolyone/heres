@@ -260,6 +260,7 @@ const HAND = {
   clasp: ['..444..', '.54443.', '5444443', '4434443', '.3.3.3.'],
   fist:  ['.444.', '54443', '44443', '4.4.3', '.333.'],
   grip:  ['.5444.', '544443', '4.4.43', '3.3.3.'],
+  clasp2: ['..5544.....', '.54444445..', '5444344444.', '44434443443', '4434.4.4.43', '.3.3.3.3.3.'],
 };
 function drawHand(c, x, y, type, sk, mirror) {
   map(c, x, y, HAND[type], { 1: sk[0], 2: sk[1], 3: sk[2], 4: sk[3], 5: sk[4] }, mirror);
@@ -398,6 +399,60 @@ function makeChar(cfg) {
     bust,
     iso: makeIso(cfg.iso),
   });
+}
+
+/* =====================================================================
+   СТАНДАРТНАЯ ФИГУРА: торс 3/4 влево, плечи со скатом трапеции,
+   длинные плечевые кости, предплечья вперёд-вверх к кистям у живота.
+   o = { ramp, base, neck:[l,r], top, sh:[l,r], shY, waist:[l,r], seam,
+         elbow:[[xl,yl],[xr,yr]], hand:[x,y], handType, sk, armW,
+         sleeve (рампа рукава), torsoDetail(x), armDetail(x), skipFar, skipNear, noHands }
+   ===================================================================== */
+function figure(c, o) {
+  const r = o.ramp, b = o.base || 3, sl = o.sleeve || r;
+  const [nl, nr] = o.neck, top = o.top, shY = o.shY, [sL, sR] = o.sh, [wL, wR] = o.waist;
+  const seam = o.seam || (sR - 10);
+  const aw = o.armW || 8;
+  // торс
+  c.drawImage(outlined(x => {
+    if (o.under) o.under(x);
+    const pts = [[nl - 1, top], [nr + 1, top], [sR - 5, shY - 3], [sR - 1, shY - 1], [sR + 1, shY + 2], [sR + 1, shY + 10],
+      [wR, NH + 2], [wL, NH + 2], [sL - 1, shY + 10], [sL - 1, shY + 2], [sL + 1, shY - 1], [sL + 5, shY - 3]];
+    poly(x, pts, r[b]);
+    // боковая плоскость
+    poly(x, [[seam, top + 1], [nr + 1, top], [sR - 5, shY - 3], [sR - 1, shY - 1], [sR + 1, shY + 2], [sR + 1, NH + 2], [seam + 3, NH + 2]], r[b - 1]);
+    // свет на трапеции
+    poly(x, [[nl - 1, top], [sL + 5, shY - 3], [sL + 1, shY - 1], [sL + 2, shY], [sL + 6, shY - 2], [nl, top + 2]], r[b + 1]);
+    if (o.torsoDetail) o.torsoDetail(x);
+  }), 0, 0);
+  const eL = o.elbow[0], eR = o.elbow[1], h = o.hand;
+  const sLp = [sL + aw / 2 - 1, shY + 2], sRp = [sR - aw / 2 + 1, shY + 2];
+  const wLp = [h[0] - 1, h[1] + 3], wRp = [h[0] + 8, h[1] + 4];
+  // дальняя рука (слева)
+  if (!o.skipFar) c.drawImage(outlined(x => {
+    limb(x, sLp, eL, aw, aw - 1, sl[b]);
+    limb(x, eL, wLp, aw - 1, aw - 2, sl[b]);
+    // свет по внешней стороне плеча
+    line(x, [sL, shY + 3], [eL[0] - 3, eL[1] - 4], sl[b + 1]);
+    line(x, [sL + 1, shY + 1], [sL + 3, shY], sl[b + 1]);
+    // тень по внутренней стороне
+    line(x, [sL + aw - 2, shY + 6], [eL[0] + aw / 2 - 1, eL[1] - 3], sl[b - 1]);
+    line(x, [eL[0] + 2, eL[1] - 1], [wLp[0] - 2, wLp[1] - 1], sl[b + 1]);
+    if (o.armDetail) o.armDetail(x, 'far');
+  }), 0, 0);
+  if (!o.skipNear) c.drawImage(outlined(x => {
+    limb(x, sRp, eR, aw + 1, aw, sl[b - 1]);
+    limb(x, eR, wRp, aw, aw - 1, sl[b - 1]);
+    line(x, [sR - aw + 2, shY + 3], [eR[0] - aw / 2 + 1, eR[1] - 4], sl[b]);
+    line(x, [sR - 4, shY], [sR - 1, shY + 1], sl[b]);
+    line(x, [eR[0] - 2, eR[1] - 3], [wRp[0] + 2, wRp[1] - 2], sl[b]);
+    line(x, [sR, shY + 4], [eR[0] + 3, eR[1] - 2], sl[b - 2]);
+    if (o.armDetail) o.armDetail(x, 'near');
+  }), 0, 0);
+  if (!o.noHands) c.drawImage(outlined(x => {
+    if (o.cuff) o.cuff(x, h);
+    drawHand(x, h[0], h[1], o.handType || 'clasp2', o.sk);
+  }), 0, 0);
 }
 /* ---------------------------------------------------------------------
    ИЗОМЕТРИЯ: фигурка ~12x26
@@ -577,7 +632,7 @@ function isoHair(ramp, style) {
   const sk = R.skinL, hb = R.hairBrown;
   const cd = [R.wood[1], R.wood[3], R.stone[2], R.stone[3], R.stone[4], R.stone[5]]; // кардиган (беж)
   const sh = R.blue;
-  const HX = 21, HY = 7;
+  const HX = 21, HY = 5;
   const pal = { sk, lash: hb[0], iris: hb[3], pupil: R.neutral[0], brow: hb[1], brow2: hb[2] };
   const HAIR = [
     '..........c..d',
@@ -623,47 +678,24 @@ function isoHair(ramp, style) {
     px(c, x + 8, y + 10, PAL.white); px(c, x + 2, y + 10, R.blue[6]);
   }
   function body(c, pose) {
-    c.drawImage(outlined(x => {
-      drawNeck(x, 30, 36, 25, 33, sk);
-      // рубашка под горлом + воротник
-      poly(x, [[28, 31], [38, 31], [36, 40], [31, 40]], sh[5]);
-      poly(x, [[27, 30], [32, 31], [30, 35]], sh[6]); poly(x, [[33, 31], [38, 30], [36, 35]], sh[4]);
-      // кардиган
-      const pts = [[25, 31], [41, 31], [52, 35], [55, 38], [56, 46], [53, 74], [15, 74], [11, 46], [12, 38], [15, 35]];
-      poly(x, pts, cd[3]);
-      poly(x, [[44, 33], [52, 35], [55, 38], [56, 46], [53, 74], [46, 74], [45, 50]], cd[2]);
-      poly(x, [[25, 31], [15, 35], [12, 38], [14, 38], [17, 36], [26, 33]], cd[4]);
-      hl(x, 15, 22, 35, cd[5]);
-      // V-вырез и планка
-      poly(x, [[28, 31], [37, 31], [33, 46], [32, 46]], sh[5]);
-      line(x, [28, 31], [32, 47], cd[4]); line(x, [27, 31], [31, 47], cd[4]);
-      line(x, [37, 31], [33, 47], cd[2]); line(x, [38, 31], [34, 47], cd[1]);
-      vl(x, 32, 47, 74, cd[2]); vl(x, 33, 47, 74, cd[1]);
-      for (const by of [50, 56, 62]) { px(x, 33, by, R.wood[2]); px(x, 32, by, R.wood[4]); }
-      // рёбра вязки по низу
-      for (let i = 16; i < 52; i += 2) px(x, i, 70, cd[2]);
-      // складки у подмышек
-      line(x, [17, 44], [20, 49], cd[2]); line(x, [48, 44], [45, 50], cd[1]);
-    }), 0, 0);
-    // руки
-    c.drawImage(outlined(x => {
-      if (pose !== 'fid') {
-        // дальняя рука: плечо -> локоть -> к центру
-        limb(x, [14, 38], [12, 53], 8, 8, cd[3]);
-        limb(x, [12, 53], [25, 55], 8, 7, cd[3]);
-        hl(x, 11, 15, 38, cd[4]); vl(x, 10, 40, 50, cd[4]);
-        line(x, [13, 50], [22, 52], cd[4]);
-        hl(x, 22, 26, 51, cd[2]);
-      }
-      limb(x, [52, 38], [54, 52], 9, 9, cd[2]);
-      limb(x, [54, 53], [41, 55], 8, 7, cd[2]);
-      vl(x, 50, 39, 48, cd[3]); line(x, [47, 51], [41, 52], cd[3]);
-      line(x, [55, 48], [52, 52], cd[1]);
-    }), 0, 0);
-    c.drawImage(outlined(x => {
-      if (pose !== 'fid') drawHand(x, 25, 50, 'clasp', sk);
-      drawHand(x, 33, 51, 'rest', sk);
-    }), 0, 0);
+    figure(c, {
+      ramp: cd, base: 3, neck: [29, 37], top: 31, sh: [11, 54], shY: 37, waist: [15, 51], seam: 43,
+      elbow: [[10, 62], [56, 62]], hand: [28, 49], sk, armW: 8, skipFar: pose === 'fid', noHands: pose === 'fid',
+      under(x) { drawNeck(x, 30, 36, 24, 33, sk); },
+      torsoDetail(x) {
+        // V-вырез: рубашка, воротник
+        poly(x, [[28, 31], [38, 31], [34, 45], [32, 45]], sh[5]);
+        poly(x, [[28, 31], [31, 31], [31, 35]], sh[6]); poly(x, [[35, 31], [38, 31], [35, 35]], sh[4]);
+        px(x, 33, 32, sh[3]); vl(x, 33, 33, 44, sh[4]);
+        line(x, [27, 31], [32, 46], cd[4]); line(x, [28, 31], [32, 45], cd[5]);
+        line(x, [39, 31], [34, 46], cd[1]); line(x, [38, 31], [34, 45], cd[2]);
+        vl(x, 33, 46, 74, cd[1]); vl(x, 32, 46, 74, cd[4]);
+        for (const by of [47, 53, 59, 65]) { px(x, 34, by, R.wood[2]); px(x, 34, by - 1, R.wood[4]); }
+        for (let i = 17; i < 50; i += 2) px(x, i, 69, cd[2]);
+        // карман
+        hl(x, 18, 25, 58, cd[2]); hl(x, 18, 25, 59, cd[4]);
+      },
+    });
   }
   /* фиджет: поправляет очки указательным пальцем (дальняя рука) */
   function fidArm(c, k) {

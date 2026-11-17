@@ -2023,9 +2023,18 @@ function findIdx(list, sub, from) {
   throw new Error('cases.js: якорь не найден: ' + sub);
 }
 /* вставить команды после команды-якоря (или перед, если before) */
+function findDeep(list, sub) {
+  try { return { list, i: findIdx(list, sub) }; } catch (e) { /* ищем глубже */ }
+  for (const c of list) {
+    const subs = [c.ok, c.fail, c.then].concat((c.options || []).map(o => o.then));
+    for (const l of subs) if (Array.isArray(l)) { const r = findDeep(l, sub); if (r) return r; }
+  }
+  return null;
+}
 function after(cs, sub, cmds, before) {
-  const i = findIdx(cs.script, sub);
-  cs.script.splice(before ? i : i + 1, 0, ...flat(cmds));
+  const r = findDeep(cs.script, sub);
+  if (!r) throw new Error('cases.js: якорь не найден: ' + sub);
+  r.list.splice(before ? r.i : r.i + 1, 0, ...flat(cmds));
 }
 function afterIn(list, sub, cmds) { const i = findIdx(list, sub); list.splice(i + 1, 0, ...flat(cmds)); }
 function alt(cs, tid, idx, a) {
