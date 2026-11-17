@@ -7,7 +7,10 @@
 const G = window.G;
 
 const SHOT_OF = { judge: 'judge', prosecutor: 'prosecution', player: 'defense', foreperson: 'jury' };
-const MAX_CRED = 5;
+let MAX_CRED = 5;
+function maxCred() { const d = G.Save.data.settings.difficulty; return d === 'easy' ? 7 : d === 'hard' ? 3 : 5; }
+const tr = t => G.tr ? G.tr(t) : t;
+const trf = (tpl, ...a) => { let s = tr(tpl); a.forEach((v, i) => { s = s.split('{' + i + '}').join(v); }); return s; };
 
 let S = null;          // состояние текущего дела
 
@@ -16,7 +19,11 @@ function caseData() { return S.case; }
 function isWitness(id) { return (S.case.witnesses || []).includes(id); }
 function evObj(id) {
   const e = S.case.evidence[id];
-  return e ? Object.assign({ id }, e) : { id, name: id, icon: 'document', desc: '' };
+  if (!e) return { id, name: id, icon: 'document', desc: '' };
+  const o = Object.assign({ id }, e, { name: tr(e.name), desc: tr(e.desc) });
+  if (e.doc) o.doc = Object.assign({}, e.doc, { title: tr(e.doc.title), header: tr(e.doc.header), lines: (e.doc.lines || []).map(tr), signature: tr(e.doc.signature),
+    stamps: (e.doc.stamps || []).map(st => Object.assign({}, st, { text: tr(st.text) })) });
+  return o;
 }
 function ch(id) {
   if (!S.chars[id]) S.chars[id] = { emo: 'normal', anim: null, animStart: 0 };
@@ -101,6 +108,7 @@ function snapshotForTransition() {
 }
 
 function sayLine(who, text, kind) {
+  text = tr(text);
   S.line = { who, text, kind: kind || 'say', shown: 0, acc: 0, pauses: parsePauses(text), visible: visLen(text), pauseLeft: 0 };
   S.block = { type: 'line' };
 }
@@ -162,7 +170,7 @@ function exec(c) {
       break;
     }
     case 'doc': G.Audio && G.Audio.sfx('paper'); S.block = { type: 'doc', id: c.id, t0: G.time }; break;
-    case 'title': S.block = { type: 'title', text: c.text, sub: c.sub, t0: G.time }; break;
+    case 'title': S.block = { type: 'title', text: tr(c.text), sub: tr(c.sub), t0: G.time }; break;
     case 'wait': S.block = { type: 'wait', until: G.time + (c.s || 1) }; break;
     case 'penalty': penalty(); break;
     case 'testimony': startTestimony(c.id); break;
@@ -172,10 +180,10 @@ function exec(c) {
       const by = c.by || 'prosecutor';
       const list = [
         { c: 'shout', kind: 'objection', who: by },
-        { c: 'say', who: by, emo: 'point', text: 'Протест, ваша честь! ' + (c.ground || '') },
+        { c: 'say', who: by, emo: 'point', text: trf('Протест, ваша честь! {0}', tr(c.ground || '')) },
         { c: 'anim', who: 'judge', id: 'gavel' },
         { c: 'shout', kind: c.ruling === 'sustained' ? 'sustained' : 'overruled', who: 'judge' },
-        { c: 'say', who: 'judge', emo: 'stern', text: c.ruling === 'sustained' ? 'Протест принят.' + (c.note ? ' ' + c.note : '') : 'Протест отклонён.' + (c.note ? ' ' + c.note : '') },
+        { c: 'say', who: 'judge', emo: 'stern', text: tr(c.ruling === 'sustained' ? 'Протест принят.' : 'Протест отклонён.') + (c.note ? ' ' + tr(c.note) : '') },
       ];
       push(list);
       break;
@@ -183,6 +191,10 @@ function exec(c) {
     case 'verdict': verdictSequence(c); break;
     case 'emo': setEmo(c.who, c.emo); break;
     case 'crowd': startCrowd(c); break;
+    case 'effect': addEffects(c); break;
+    case 'remarks': spawnRemarks(c.pool, c.mood || 'whisper', c.n || 3); break;
+    case 'silence': doSilence(); break;
+    case 'argue': checkpoint(); S.block = { type: 'argue', cmd: c, t0: G.time, st: { step: 0 } }; sayPrompt(c.prompt || 'Сформулируйте позицию защиты.'); break;
     case '__gameover': gameOver(); break;
     case '__add':
       if (!S.evidence.includes(c.id)) { S.evidence.push(c.id); G.Audio && G.Audio.sfx('itemget'); S.block = { type: 'evidence', id: c.id, t0: G.time }; }
@@ -194,7 +206,8 @@ function exec(c) {
 
 function sayPrompt(text) {
   S.speaker = 'player';
-  S.line = { who: 'player', text: text || 'Какая улика это доказывает?', kind: 'think', shown: 0, acc: 0, pauses: [], visible: visLen(text || ''), pauseLeft: 0 };
+  text = tr(text || 'Какая улика это доказывает?');
+  S.line = { who: 'player', text, kind: 'think', shown: 0, acc: 0, pauses: [], visible: visLen(text || ''), pauseLeft: 0 };
 }
 
 function doShout(kind, who) {
@@ -210,6 +223,8 @@ function doShout(kind, who) {
 }
 
 function penalty() {
+  S.mistakes = (S.mistakes || 0) + 1;
+  addEffects({ judge: -1, jury: -1 });
   S.cred = Math.max(0, S.cred - 1);
   S.credFlash = G.time;
   G.Audio && G.Audio.sfx('damage');
@@ -232,9 +247,9 @@ function startCrowd(c) {
     S.react[id] = { mood: mood === 'murmur' && Math.random() < .5 ? 'whisper' : mood, t0: G.time + Math.random() * 0.5, dur: loud ? 2.6 : 2.2 };
   }
   // реплики-пузыри
-  const lines = (c.lines && c.lines.length ? c.lines : CROWD_LINES[mood] || []).slice();
-  const speakers = ids.filter(id => S.react[id]).sort(() => Math.random() - .5);
-  S.bubbles = lines.slice(0, 4).map((text, k) => ({ who: speakers[k % Math.max(1, speakers.length)], text, t0: G.time + 0.2 + k * 0.55, dur: 2.0 }));
+  const lines = (c.lines && c.lines.length ? c.lines : remarkPool(c.pool, mood).sort(() => Math.random() - .5).slice(0, loud ? 4 : 2));
+  lines.forEach((text, k) => S.remarkQueue.push({ text: tr(text), mood, at: G.time + 0.15 + k * 0.4 }));
+  S.bubbles = [];
   const sfx = { whisper: 'crowd', murmur: 'crowd', gasp: 'crowdGasp', angry: 'crowdAngry', cheer: 'cheer', clap: 'clap', laugh: 'crowd', shout: 'crowdAngry' }[mood];
   G.Audio && G.Audio.sfx(sfx || 'crowd');
   if (loud) G.fx.shake(mood === 'gasp' ? 2 : 3, .5);
@@ -263,6 +278,89 @@ function ambientCrowd() {
       S.react[id] = { mood: r < .75 ? 'whisper' : 'murmur', t0: G.time, dur: 1.4 + Math.random() * 1.5, ambient: true };
     }
   }
+}
+
+/* ---------------- мнения ---------------- */
+function addEffects(e) {
+  if (!S.effects) S.effects = { judge: 0, jury: 0, public: 0, press: 0 };
+  for (const k of ['judge', 'jury', 'public', 'press']) if (e[k]) {
+    S.effects[k] += e[k];
+    S.effFlash = { k, v: e[k], t0: G.time };
+  }
+}
+
+/* ---------------- реплики зала по краям экрана ----------------
+   Внезапные, не диалог: всплывают слева и справа, не перекрываются,
+   плавно проявляются и сжимаются в точку.                              */
+const SLOT_Y = [30, 52, 74, 96, 118];
+function remarkPool(pool, mood) {
+  const R = G.Remarks || {};
+  const adult = G.Save.data.settings.adult;
+  let list = [];
+  if (pool && R.pools && R.pools[pool]) list = list.concat(R.pools[pool]);
+  if (R.generic && R.generic[mood]) list = list.concat(R.generic[mood]);
+  if (adult && R.adult) { if (pool && R.adult[pool]) list = list.concat(R.adult[pool]); if (R.adult[mood]) list = list.concat(R.adult[mood]); }
+  if (!list.length) list = CROWD_LINES[mood] || CROWD_LINES.whisper;
+  return list;
+}
+function spawnRemarks(pool, mood, n) {
+  const list = remarkPool(pool, mood);
+  for (let i = 0; i < n; i++) {
+    const text = tr(list[Math.floor(Math.random() * list.length)]);
+    S.remarkQueue.push({ text, mood, at: G.time + i * (0.35 + Math.random() * 0.5) });
+  }
+  if (mood !== 'whisper' && mood !== 'murmur') G.Audio && G.Audio.sfx(mood === 'gasp' ? 'crowdGasp' : mood === 'cheer' ? 'cheer' : mood === 'angry' || mood === 'shout' ? 'crowdAngry' : 'crowd');
+}
+function placeRemark(r) {
+  const used = S.side.map(b => b.side + b.slot);
+  const opts = [];
+  for (const side of ['l', 'r']) for (let k = 0; k < SLOT_Y.length; k++) if (!used.includes(side + k)) opts.push({ side, slot: k });
+  if (!opts.length) return false;
+  const o = opts[Math.floor(Math.random() * opts.length)];
+  S.side.push({ text: r.text, side: o.side, slot: o.slot, x: o.side === 'l' ? 6 : G.W - 6, y: SLOT_Y[o.slot] + Math.floor(Math.random() * 6), age: 0, life: 2.6 + Math.min(2.5, r.text.length * 0.04), mood: r.mood });
+  return true;
+}
+function updateRemarks(dt) {
+  for (const b of S.side) b.age += dt;
+  S.side = S.side.filter(b => b.age < b.life);
+  S.remarkQueue = S.remarkQueue.filter(r => { if (G.time < r.at) return true; return !placeRemark(r) && G.time - r.at < 3; });
+  // фоновые перешёптывания во время заседания
+  if (S.view.mode !== 'black' && !S.paused && S.endT == null && S.block && S.block.type !== 'title' && S.block.type !== 'gameover') {
+    if (!S.nextRemark) S.nextRemark = G.time + 8;
+    if (G.time > S.nextRemark) { S.nextRemark = G.time + 9 + Math.random() * 14; if (S.view.shot !== 'visit') spawnRemarks(null, Math.random() < .85 ? 'whisper' : 'murmur', 1); }
+  }
+}
+function doSilence() {
+  const prev = G.Audio && G.Audio.current();
+  G.Audio && G.Audio.music('silence');
+  G.Audio && G.Audio.sfx('crowdHush');
+  S.side = []; S.remarkQueue = [];
+  S.react = {};
+  setEmo('judge', 'stern');
+  S.block = { type: 'wait', until: G.time + 1.6 };
+  if (prev && prev !== 'silence') setTimeout(() => { if (G.Audio && G.Audio.current() === 'silence') G.Audio.music(prev); }, 2600);
+}
+
+/* ---------------- конструктор аргумента ---------------- */
+function submitArgue(B, r) {
+  const c = B.cmd;
+  const eq = (a, b) => a == null || a === b;
+  const m = (c.routes || []).find(x => x.claim === r.claim && x.ground === r.ground && (!c.proof || eq(x.ev, r.ev)));
+  S.block = null;
+  if (m) {
+    S.argues = (S.argues || 0) + 1;
+    if (m.effects) addEffects(m.effects);
+    push([{ c: 'shout', kind: 'evidence', who: 'player' }].concat(m.then || []));
+    S.needRun = true; return;
+  }
+  const w = (c.weak || []).find(x => x.claim === r.claim && x.ground === r.ground && (!c.proof || eq(x.ev, r.ev)));
+  if (w) {
+    addEffects(Object.assign({ judge: -1 }, w.effects || {}));
+    push(w.then || [{ c: 'say', who: 'judge', emo: 'stern', text: 'Довод слабый, мистер Рид, но суд его учтёт.' }]);
+    S.needRun = true; return;
+  }
+  push([].concat(c.fail || [{ c: 'say', who: 'judge', emo: 'stern', text: 'Это основание здесь не применимо, мистер Рид. Сформулируйте позицию заново.' }], [{ c: 'penalty' }, Object.assign({}, c)]));
+  S.needRun = true;
 }
 
 /* ---------------- контрольные точки и проигрыш ---------------- */
@@ -298,7 +396,8 @@ function showStatement() {
   const st = S.cross.t.statements[S.cross.idx];
   S.speaker = S.cross.t.witness;
   setShot('witness');
-  S.line = { who: S.cross.t.witness, text: st.text, kind: 'statement', shown: 0, acc: 0, pauses: [], visible: visLen(st.text), pauseLeft: 0 };
+  const stx = tr(st.text);
+  S.line = { who: S.cross.t.witness, text: stx, kind: 'statement', shown: 0, acc: 0, pauses: parsePauses(stx), visible: visLen(stx), pauseLeft: 0 };
 }
 
 function crossAction(a) {
@@ -331,10 +430,25 @@ function presentInCross(evId) {
   S.record.open = false;
   const name = evObj(evId).name;
   S.block = null;
+  const alt = (st.alts || []).find(a => a.ev === evId);
+  if (alt) {
+    S.altsUsed = (S.altsUsed || 0) + 1;
+    if (alt.effects) addEffects(alt.effects);
+    const list = [
+      { c: 'shout', kind: 'contradiction', who: 'player' },
+      { c: 'say', who: 'player', emo: 'point', text: trf('Ваша честь, это показание опровергается уликой: «{0}».', name) },
+      { c: 'emo', who: cr.t.witness, emo: 'shocked' },
+      { c: 'sfx', id: 'shock' },
+    ].concat(alt.hitScript || st.hitScript || []);
+    S.cross = null; S.istack = [];
+    G.Audio && G.Audio.music('pressure');
+    push(list); S.needRun = true;
+    return;
+  }
   if (st.hit && st.hit === evId) {
     const list = [
       { c: 'shout', kind: 'contradiction', who: 'player' },
-      { c: 'say', who: 'player', emo: 'point', text: pick(['Ваша честь, это показание опровергается уликой: «' + name + '».', 'Свидетель, взгляните на это. «' + name + '».']) },
+      { c: 'say', who: 'player', emo: 'point', text: trf(pick(['Ваша честь, это показание опровергается уликой: «{0}».', 'Свидетель, взгляните на это. «{0}».']), name) },
       { c: 'emo', who: cr.t.witness, emo: 'shocked' },
       { c: 'sfx', id: 'shock' },
     ].concat(st.hitScript || []);
@@ -342,7 +456,7 @@ function presentInCross(evId) {
     G.Audio && G.Audio.music('pressure');
     push(list); S.needRun = true;
   } else {
-    const list = [{ c: 'say', who: 'player', emo: 'point', text: 'Ваша честь, это показание опровергается уликой: «' + name + '».' }].concat(cr.t.wrong || [
+    const list = [{ c: 'say', who: 'player', emo: 'point', text: trf('Ваша честь, это показание опровергается уликой: «{0}».', name) }].concat(cr.t.wrong || [
       { c: 'say', who: 'prosecutor', emo: 'smirk', text: pick(['Ваша честь, защита показывает присяжным случайные бумаги.', 'Я не вижу никакой связи. Как и все в этом зале.', 'Защита, кажется, перепутала папки.']) },
       { c: 'say', who: 'judge', emo: 'stern', text: 'Суд не видит противоречия, мистер Рид. Не тратьте время присяжных.' },
     ], [{ c: 'penalty' }]);
@@ -358,25 +472,25 @@ function verdictSequence(c) {
   const charge = (d.charges && d.charges[0]) || { code: '', title: '' };
   push([
     { c: 'music', id: 'silence' },
-    { c: 'title', text: 'ПРИСЯЖНЫЕ ВЕРНУЛИСЬ', sub: 'Совещание длилось ' + (2 + (S.idx * 37) % 5) + ' ч ' + (10 + (S.idx * 23) % 50) + ' мин' },
+    { c: 'title', text: 'ПРИСЯЖНЫЕ ВЕРНУЛИСЬ', sub: trf('Совещание длилось {0} ч {1} мин', 2 + (S.idx * 37) % 5, 10 + (S.idx * 23) % 50) },
     { c: 'wide' },
     { c: 'sfx', id: 'crowdHush' },
     { c: 'say', who: 'judge', text: 'Старшина присяжных, вынесли ли присяжные единогласный вердикт?' },
     { c: 'say', who: 'foreperson', text: 'Да, ваша честь.' },
     { c: 'say', who: 'judge', text: 'Передайте вердикт секретарю. {p}Секретарь, огласите.' },
-    { c: 'say', who: 'clerk', text: (d.caption || 'Народ штата Калифорния против подсудимого') + ', дело № ' + (d.docket || '') + '.' },
-    { c: 'say', who: 'clerk', text: 'По обвинению по статье ' + charge.code + ' — ' + charge.title + ' — мы, присяжные, признаём подсудимую сторону{p}{p}' .replace('подсудимую сторону', fem ? 'подсудимую' : 'подсудимого') },
+    { c: 'say', who: 'clerk', text: trf('{0}, дело № {1}.', tr(d.caption || 'Народ штата Калифорния против подсудимого'), d.docket || '') },
+    { c: 'say', who: 'clerk', text: trf(fem ? 'По обвинению по статье {0} — {1} — мы, присяжные, признаём подсудимую{p}{p}' : 'По обвинению по статье {0} — {1} — мы, присяжные, признаём подсудимого{p}{p}', charge.code, tr(charge.title)) },
     { c: 'music', id: 'victory' },
     { c: 'shot', id: 'defendant' },
     { c: 'emo', who: def, emo: 'relieved' },
-    { c: 'say', who: 'clerk', shot: 'defendant', text: '*' + word + '*.' },
+    { c: 'say', who: 'clerk', shot: 'defendant', text: '*' + tr(word) + '*.' },
     { c: 'sfx', id: 'verdict' },
     { c: 'crowd', mood: 'cheer', lines: c.cheer || ['Да!', 'Браво!', 'Справедливость!', 'Ура!'] },
     { c: 'crowd', mood: 'clap' },
     { c: 'anim', who: 'judge', id: 'gavel' },
     { c: 'say', who: 'judge', emo: 'stern', text: 'Тишина в зале! {p}Прошу тишины.' },
     { c: '__stamp', text: fem ? 'ОПРАВДАНА' : 'ОПРАВДАН' },
-    { c: 'say', who: 'judge', emo: 'smile', text: 'Подсудимая сторона освобождается из-под стражи. Залог возвращается. Заседание закрыто.'.replace('Подсудимая сторона освобождается', fem ? 'Подсудимая освобождается' : 'Подсудимый освобождается') },
+    { c: 'say', who: 'judge', emo: 'smile', text: fem ? 'Подсудимая освобождается из-под стражи. Залог возвращается. Заседание закрыто.' : 'Подсудимый освобождается из-под стражи. Залог возвращается. Заседание закрыто.' },
     { c: 'say', who: def, shot: 'defendant', emo: 'relieved', text: c.thanks || 'Спасибо вам. Я… я не знаю, что сказать. Спасибо.' },
   ]);
 }
@@ -384,6 +498,7 @@ function verdictSequence(c) {
 /* ---------------- завершение дела ---------------- */
 function finishCase() {
   const d = S.case;
+  if (G.Rep && !S.recorded) { S.recorded = true; G.Rep.record({ id: d.id, result: 'win', cred: S.cred, maxCred: MAX_CRED, mistakes: S.mistakes, alts: S.altsUsed, argues: S.argues, effects: S.effects }); }
   G.Save.data.solved[d.id] = Math.max(G.Save.data.solved[d.id] || 0, S.cred || 1);
   G.Save.data.progress = { case: Math.min(S.idx + 1, G.Cases.length - 1) };
   G.Save.save();
@@ -391,6 +506,7 @@ function finishCase() {
 }
 
 function gameOver() {
+  if (G.Rep && !S.recordedLoss) { S.recordedLoss = true; G.Rep.record({ id: S.case.id, result: 'loss', cred: 0, maxCred: MAX_CRED, mistakes: S.mistakes, alts: S.altsUsed, argues: S.argues, effects: S.effects }); }
   S.stack = []; S.istack = []; S.cross = null; S.record.open = false;
   G.Audio && G.Audio.music('defeat');
   S.block = { type: 'gameover', t0: G.time };
@@ -423,11 +539,13 @@ function advanceInput() {
 
 const Court = {
   enter(idx) {
+    if (idx && idx.resume && S) { G.resize && G.resize(); return; }
     const d = G.Cases[idx];
     S = {
       idx, case: d, stack: [], istack: [], block: null, line: null, speaker: null,
       chars: {}, pos: {}, witness: (d.witnesses || [])[0] || null,
-      evidence: (d.start || []).slice(), cred: MAX_CRED, credFlash: -9,
+      evidence: (d.start || []).slice(), cred: (MAX_CRED = maxCred()), credFlash: -9,
+      mistakes: 0, effects: { judge: 0, jury: 0, public: 0, press: 0 }, altsUsed: 0, argues: 0, side: [], remarkQueue: [],
       view: { mode: 'black', shot: null }, cam: { x: 0, y: 0, z: 1 }, camTween: null,
       record: { open: false, sel: 0, page: 0, mode: 'view' }, cross: null, pressed: {},
       paused: false, started: false, cp: null, endT: null, react: {}, bubbles: [],
@@ -463,6 +581,7 @@ const Court = {
     }
     if (transT < 1) transT = Math.min(1, transT + dt / 0.22);
 
+    if (inp.keyPressed('Escape') && S.repOpen) { S.repOpen = false; return; }
     if (inp.keyPressed('Escape') && !S.record.open && S.endT == null) { S.paused = !S.paused; G.Audio && G.Audio.sfx(S.paused ? 'select' : 'cancel'); return; }
     if (S.paused) return;
     if (S.endT != null) return;
@@ -472,6 +591,7 @@ const Court = {
 
     updateLine(dt);
     if (S.view.mode === 'world') ambientCrowd();
+    updateRemarks(dt);
     S.bubbles = S.bubbles.filter(b => G.time - b.t0 < b.dur);
     if (S.needRun) { run(); }
     const B = S.block;
@@ -497,6 +617,7 @@ const Court = {
         if (B.phase === 'ask' && lineDone() && advanceInput()) { B.phase = 'record'; S.record = { open: true, sel: 0, page: 0, mode: 'present', purpose: 'present', frame: G.frameNo }; G.Audio && G.Audio.sfx('paper'); }
         else if (B.phase === 'ask' && !lineDone() && advanceInput()) S.line.shown = S.line.visible;
         break;
+      case 'argue': if (!lineDone() && advanceInput()) S.line.shown = S.line.visible; break;
       case 'gameover': break;
       case 'end': break;
     }
@@ -603,7 +724,7 @@ function drawAll(ctx) {
   if (S.line && B.type !== 'evidence' && B.type !== 'doc' && B.type !== 'bigstamp' && B.type !== 'gameover') {
     const L = S.line;
     const color = L.kind === 'think' ? G.RAMP.blue[6] : L.kind === 'statement' ? G.RAMP.green[5] : null;
-    const name = L.who ? (L.who === 'player' && L.kind === 'think' ? G.Cast.name('player') + ' (мысленно)' : G.Cast.name(L.who)) : null;
+    const name = L.who ? (L.who === 'player' && L.kind === 'think' ? trf('{0} (мысленно)', G.Cast.name('player')) : G.Cast.name(L.who)) : null;
     G.UI.drawDialog(ctx, { name, text: L.kind === 'think' ? '(' + L.text + ')' : L.text, shown: L.shown + (L.kind === 'think' ? 1 : 0), waiting: lineDone() && B.type === 'line', t: G.time, side: L.who === 'player' ? 'left' : 'right', color });
   }
 
@@ -612,14 +733,15 @@ function drawAll(ctx) {
     const cr = S.cross;
     if (cr.phase === 'title') drawCrossTitle(ctx, cr);
     else if (!S.record.open) {
-      const r = G.UI.crossHUD(ctx, { title: cr.t.title, index: cr.idx, total: cr.t.statements.length, statement: cr.t.statements[cr.idx].text, t: G.time });
+      const r = G.UI.crossHUD(ctx, { title: tr(cr.t.title), index: cr.idx, total: cr.t.statements.length, statement: cr.t.statements[cr.idx].text, t: G.time });
       if (r && r.action) { S.hudAction = r.action; S.uiConsumed = true; }
     }
   }
 
   // выбор
   if (B.type === 'choice') {
-    let idx = G.UI.choice(ctx, B.cmd.prompt, B.cmd.options.map(o => o.text), G.time - B.t0);
+    let idx = G.UI.choice(ctx, tr(B.cmd.prompt), B.cmd.options.map(o => tr(o.text)), G.time - B.t0);
+    if (G.time - B.t0 < 0.3) idx = -1;   // то же нажатие, что пролистало реплику, не должно выбрать вариант
     if (S.force && S.force.choice != null) { idx = S.force.choice; S.force.choice = null; }
     if (idx >= 0) {
       const o = B.cmd.options[idx];
@@ -663,8 +785,41 @@ function drawAll(ctx) {
   if (B.type === 'shout') G.UI.drawShout(ctx, B.kind, G.clamp((G.time - B.t0) / B.dur, 0, 1));
   if (B.type === 'bigstamp') { G.UI.drawStamp(ctx, G.W / 2, G.H / 2 - 10, B.text, G.PAL.stamp, { angle: -8, size: 'big', t: G.clamp((G.time - B.t0) / 0.35, 0, 1) }); }
   if (B.type === 'gameover') drawGameOver(ctx, B);
+  // реплики зала по краям
+  if (G.UI.drawCrowdBubble) for (const b of S.side) G.UI.drawCrowdBubble(ctx, b);
+  // конструктор аргумента
+  if (B.type === 'argue') {
+    if (lineDone() && G.UI.argueBuilder) {
+      const c = B.cmd;
+      const data = { prompt: tr(c.prompt), proof: !!c.proof,
+        claims: (c.claims || []).map(x => ({ id: x.id, text: tr(x.text) })),
+        grounds: (c.grounds || []).map(x => ({ id: x.id, text: tr(x.text), law: x.law })) };
+      if (B.readyT == null) B.readyT = G.time;
+      let r = G.UI.argueBuilder(ctx, B.st, data, S.evidence.map(evObj), G.time - B.t0);
+      if (G.time - B.readyT < 0.3) r = null;
+      if (S.force && S.force.argue) { r = Object.assign({ action: 'submit' }, S.force.argue); S.force.argue = null; }
+      if (r && r.action === 'submit') submitArgue(B, r);
+    }
+  }
+  // всплывающее изменение мнений
+  if (S.effFlash && G.time - S.effFlash.t0 < 1.6) {
+    const e = S.effFlash, k = G.clamp((G.time - e.t0) / 1.6, 0, 1);
+    const label = tr({ judge: 'Судья', jury: 'Присяжные', public: 'Публика', press: 'Пресса' }[e.k]) + ' ' + (e.v > 0 ? '+' : '') + e.v;
+    G.Font.draw(ctx, label, G.W - 8, 28 - Math.round(k * 6), e.v > 0 ? G.RAMP.green[5] : G.RAMP.red[4], { align: 'right', shadow: G.PAL.black });
+  }
   if (S.endT != null) drawCaseEnd(ctx);
-  if (S.paused) drawPause(ctx);
+  if (S.paused) {
+    if (S.repOpen && G.UI.ReputationScreen) { if (G.UI.ReputationScreen(ctx, G.Rep.compute(), G.time) === 'close') S.repOpen = false; }
+    else if (G.UI.PauseMenu) {
+      const a = G.UI.PauseMenu(ctx, G.time);
+      if (a === 'resume') S.paused = false;
+      else if (a === 'record') { S.paused = false; S.record = { open: true, sel: 0, page: 0, mode: 'view', purpose: 'view', frame: G.frameNo }; }
+      else if (a === 'reputation') S.repOpen = true;
+      else if (a === 'settings') { S.paused = false; G.setScene(G.UI.SettingsScene, { back: Court }); }
+      else if (a === 'restart') { S.paused = false; G.startCase(S.idx); }
+      else if (a === 'title') { S.paused = false; G.Audio && G.Audio.music('menu'); G.setScene(G.UI.TitleScene); }
+    } else drawPause(ctx);
+  }
 }
 
 function drawTitleCard(ctx, B) {
@@ -692,8 +847,8 @@ function drawCrossTitle(ctx, cr) {
   G.rect(ctx, 0, 70 - h / 2, G.W, 1, G.RAMP.gold[3]);
   G.rect(ctx, 0, 70 + h / 2 - 1, G.W, 1, G.RAMP.gold[3]);
   if (k >= 1) {
-    G.Font.draw(ctx, 'ПЕРЕКРЁСТНЫЙ ДОПРОС', G.W / 2, 56, G.RAMP.gold[4], { font: 'big', align: 'center', shadow: G.PAL.black });
-    G.Font.draw(ctx, '«' + cr.t.title + '» — ' + G.Cast.name(cr.t.witness), G.W / 2, 74, G.RAMP.neutral[8], { align: 'center' });
+    G.Font.draw(ctx, tr('ПЕРЕКРЁСТНЫЙ ДОПРОС'), G.W / 2, 56, G.RAMP.gold[4], { font: 'big', align: 'center', shadow: G.PAL.black });
+    G.Font.draw(ctx, '«' + tr(cr.t.title) + '» — ' + G.Cast.name(cr.t.witness), G.W / 2, 74, G.RAMP.neutral[8], { align: 'center' });
   }
 }
 
@@ -739,8 +894,8 @@ function drawCaseEnd(ctx) {
   G.Font.draw(ctx, 'ДЕЛО ЗАКРЫТО', x + w / 2, y + 8, G.RAMP.neutral[1], { font: 'big', align: 'center' });
   G.Font.draw(ctx, d.caption || d.title, x + w / 2, y + 26, G.PAL.ink, { align: 'center' });
   G.Font.draw(ctx, '№ ' + (d.docket || '') + '   ' + ((d.charges && d.charges[0] && d.charges[0].code) || ''), x + w / 2, y + 38, G.RAMP.neutral[4], { align: 'center' });
-  G.Font.draw(ctx, 'Доверие суда: ' + S.cred + ' из ' + MAX_CRED, x + 16, y + 58, G.RAMP.neutral[2]);
-  G.Font.draw(ctx, 'Улик в деле: ' + S.evidence.length, x + 16, y + 70, G.RAMP.neutral[2]);
+  G.Font.draw(ctx, tr('Доверие суда') + ': ' + S.cred + ' / ' + MAX_CRED, x + 16, y + 58, G.RAMP.neutral[2]);
+  G.Font.draw(ctx, trf('Улик в деле: {0}', S.evidence.length), x + 16, y + 70, G.RAMP.neutral[2]);
   G.UI.drawStamp(ctx, x + w - 64, y + 70, ['whitfield', 'park'].includes(d.defendant) ? 'ОПРАВДАНА' : 'ОПРАВДАН', G.PAL.stamp, { angle: -12, size: 'small', t: 1 });
   const next = G.Cases[S.idx + 1];
   if (next && G.UI.button(ctx, { x: x + 16, y: y + h - 28, w: 120, h: 18 }, 'Следующее дело', { kind: 'primary', hotkey: 'Enter' })) G.startCase(S.idx + 1);

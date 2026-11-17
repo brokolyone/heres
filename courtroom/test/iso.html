@@ -1,0 +1,86 @@
+<!doctype html><meta charset="utf-8"><body style="margin:0;background:#000">
+<script src="../src/core.js"></script>
+<script src="../src/env.js"></script>
+<script src="../src/cast_main.js"></script>
+<script src="../src/cast_case.js"></script>
+<script src="../src/iso.js"></script>
+<script>
+// ?m=all (зал + галерея) | ?m=room&cam=wide|jury|judge&t=3&react=whisper | ?m=gal&ids=a,b&z=1 | ?m=prebuild
+const q = new URLSearchParams(location.search);
+const mode = q.get('m') || 'all';
+const T = +(q.get('t') || 3.3);
+const ALL = G.Iso.ids;
+const ids = q.get('ids') ? q.get('ids').split(',') : ALL;
+
+function placements() {
+  const S = G.Env.spots, list = [];
+  const put = (id, s) => list.push({ id, s });
+  put('judge', S.judge); put('clerk', S.clerk); put('reporter', S.reporter); put('bailiff', S.bailiff);
+  put('player', S.defense); put('lomax', S.defendant); put('prosecutor', S.prosecution); put('hollis', S.witness);
+  const jur = ['juror1', 'juror2', 'juror3', 'juror4', 'juror5', 'juror6', 'foreperson', 'crane', 'park', 'bell', 'doyle', 'whitfield'];
+  S.jury.forEach((s, i) => jur[i] && put(jur[i], s));
+  const gal = ['spectator1', 'spectator2', 'spectator3', 'spectator4', 'spectator5', 'spectator6', 'spectator7', 'spectator8', 'spectator9', 'spectator10', 'spectator11', 'spectator12', 'morales', 'holloway', 'whitfield', 'doyle', 'park', 'crane', 'bell'];
+  S.gallery.forEach((s, i) => gal[i] && put(gal[i], s));
+  return list;
+}
+function drawRoom(c, cam, t) {
+  G.applyCam(c, G.Env.cams[cam]);
+  G.Env.drawWorld(c, 'back', t);
+  const L = placements().sort((a, b) => a.s.y - b.s.y);
+  const react = q.get('react');
+  for (const p of L) {
+    const o = { pose: p.s.pose, dir: p.s.dir, t: t + (p.s.x * 0.37) % 3 };
+    if (p.id === 'player' || p.id === 'hollis') o.talking = q.get('talk') === p.id;
+    if (react && (p.id.startsWith('spect') || p.id.startsWith('juror'))) { o.react = react; o.reactT = 0.3 + (p.s.x % 7) * 0.13; }
+    if (p.id === 'judge' && q.get('gavel')) { o.anim = 'gavel'; o.animT = +q.get('gavel'); }
+    G.Cast.drawIso(c, p.id, p.s.x, p.s.y, o);
+  }
+  G.Env.drawWorld(c, 'front', t);
+  G.resetCam(c);
+}
+const COLS = [
+  ['stand', 'l', 'idle', 0], ['stand', 'l', 'idle', 1], ['stand', 'l', 'idle', 2], ['stand', 'l', 'idle', 4], ['stand', 'l', 'idle', 6],
+  ['stand', 'r', 'idle', 0], ['stand', 'l', 'talk', 1], ['stand', 'l', 'talk', 3], ['stand', 'l', 'fid', 1], ['stand', 'l', 'fid', 2], ['stand', 'l', 'bk', 0],
+  ['sit', 'l', 'idle', 0], ['sit', 'l', 'fid', 1], ['sit', 'r', 'talk', 3],
+  ['sit', 'l', 'whisper', 1], ['sit', 'l', 'gasp', 1], ['sit', 'l', 'murmur', 0], ['sit', 'l', 'angry', 2], ['sit', 'l', 'cheer', 0],
+  ['sit', 'l', 'clap', 0], ['sit', 'l', 'clap', 1], ['sit', 'l', 'laugh', 0], ['sit', 'l', 'shout', 2],
+  ['stand', 'l', 'cheer', 2], ['stand', 'l', 'gasp', 2],
+];
+function drawGallery(c, ox, oy, idl) {
+  const cw = 22, rh = 36;
+  G.rect(c, ox, oy, COLS.length * cw + 8, idl.length * rh + 8, G.RAMP.wood[4]);
+  idl.forEach((id, r) => {
+    G.rect(c, ox, oy + r * rh + 32, COLS.length * cw + 8, 1, G.RAMP.wood[3]);
+    COLS.forEach((col, k) => {
+      let st = col[2], f = col[3];
+      if (id === 'judge' && k === 10) { st = 'gavel'; f = 2; }
+      const spr = G.Iso.sprite(id, col[0], col[1], st, f);
+      c.drawImage(spr, ox + 4 + k * cw + 11 - 12, oy + r * rh + 32 - 37 + 4);
+    });
+  });
+  return [COLS.length * cw + 8, idl.length * rh + 8];
+}
+G.mountCanvas();
+let cv = null;
+if (mode === 'room') {
+  G.renderOnce(c => drawRoom(c, q.get('cam') || 'wide', T));
+} else if (mode === 'gal') {
+  const z = +(q.get('z') || 1);
+  const w = COLS.length * 22 + 8, h = ids.length * 36 + 8;
+  const g = G.makeCanvas(w, h); drawGallery(g.getContext('2d'), 0, 0, ids);
+  cv = G.makeCanvas(w * z, h * z); const x = cv.getContext('2d'); x.imageSmoothingEnabled = false; x.drawImage(g, 0, 0, w * z, h * z);
+} else if (mode === 'prebuild') {
+  const t0 = performance.now(); G.Assets.prebuilders.forEach(f => f());
+  console.log('keys', Object.keys(G.Assets.registry).filter(k => k.startsWith('iso/')).length, 'ms', Math.round(performance.now() - t0));
+  G.renderOnce(c => drawRoom(c, 'wide', T));
+} else {
+  const gw = COLS.length * 22 + 8;
+  cv = G.makeCanvas(Math.max(384, gw), 216 + ALL.length * 36 + 8);
+  const x = cv.getContext('2d');
+  G.renderOnce(c => drawRoom(c, 'wide', T));
+  x.drawImage(G.buffer, 0, 0);
+  drawGallery(x, 0, 216, ALL);
+}
+if (cv) window.__shotCanvas = cv;
+window.__ready = true;
+</script>

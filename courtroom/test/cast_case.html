@@ -1,50 +1,68 @@
 <!doctype html><meta charset="utf-8"><body style="margin:0;background:#000">
 <script src="../src/core.js"></script>
+<script src="../src/env.js"></script>
 <script src="../src/cast_case.js"></script>
 <script>
-// ?m=busts&c=lomax,hollis | ?m=bk&c=hollis | ?m=iso | ?m=talk&c=lomax | ?m=fid&c=...
+// ?m=busts&c=lomax,hollis | ?m=bk&c=hollis | ?m=iso | ?m=talk&c=lomax | ?m=fid&c=... | ?m=scene&c=hollis[&shot=witness]
+// &flip=1 — зеркально
 const q = new URLSearchParams(location.search);
 const mode = q.get('m') || 'busts';
 const ids = (q.get('c') || 'lomax,hollis,whitfield,crane,park,bell,doyle,morales,holloway').split(',');
-const BG = G.RAMP.wood[2], BG2 = G.RAMP.stone[4];
+const BG2 = G.RAMP.stone[4];
+const CW = 136, CH = 152;
+const flip = q.get('flip') === '1';
 let cv;
 function bg(c, w, h) { G.rect(c, 0, 0, w, h, BG2); for (let y = 0; y < h; y += 8) G.rect(c, 0, y, w, 1, G.RAMP.stone[3]); }
+function cell(c, id, col, row, o) { G.Cast.drawBust(c, id, col * CW + CW / 2, row * CH + CH - 4, Object.assign({ flip }, o)); }
 if (mode === 'busts') {
   const cols = 5;
-  cv = G.makeCanvas(cols * 114, ids.length * 134);
+  cv = G.makeCanvas(cols * CW, ids.length * CH);
   const c = cv.getContext('2d'); bg(c, cv.width, cv.height);
   ids.forEach((id, r) => {
     const d = G.Cast.defs[id];
-    d.emotions.forEach((e, k) => {
-      G.Cast.drawBust(c, id, k * 114 + 57, r * 134 + 132, { emo: e, t: 1, flip: q.get('flip') === '1' });
-    });
+    d.emotions.forEach((e, k) => cell(c, id, k, r, { emo: e, t: 1 }));
   });
 } else if (mode === 'bk') {
   const n = +(q.get('n') || 8);
-  cv = G.makeCanvas(4 * 114, Math.ceil(n / 4) * ids.length * 134);
+  const rows = Math.ceil(n / 4);
+  cv = G.makeCanvas(4 * CW, rows * ids.length * CH);
   const c = cv.getContext('2d'); bg(c, cv.width, cv.height);
   ids.forEach((id, r) => {
     for (let k = 0; k < n; k++) {
       const dur = G.Cast.animDuration(id, 'breakdown');
-      const row = r * Math.ceil(n / 4) + Math.floor(k / 4);
-      G.Cast.drawBust(c, id, (k % 4) * 114 + 57, row * 134 + 132, { emo: 'normal', anim: 'breakdown', animT: dur * (k + 0.5) / n, t: 0.5 });
+      cell(c, id, k % 4, r * rows + Math.floor(k / 4), { emo: 'normal', anim: 'breakdown', animT: dur * (k + 0.5) / n, t: 0.5 });
     }
   });
 } else if (mode === 'talk') {
-  cv = G.makeCanvas(6 * 114, ids.length * 134);
+  cv = G.makeCanvas(6 * CW, ids.length * CH);
   const c = cv.getContext('2d'); bg(c, cv.width, cv.height);
   ids.forEach((id, r) => {
-    const ts = [0.5, 0.63, 0.76, 0.2 + 0.0, 0.25, 0.35];
     const opts = [{ talking: true, t: 0.51 }, { talking: true, t: 0.64 }, { talking: true, t: 0.76 }, { t: 3.5 }, { t: 3.52 }, { t: q.get('ft') ? +q.get('ft') : 5 }];
-    opts.forEach((o, k) => G.Cast.drawBust(c, id, k * 114 + 57, r * 134 + 132, Object.assign({ emo: q.get('e') || 'normal' }, o)));
+    opts.forEach((o, k) => cell(c, id, k, r, Object.assign({ emo: q.get('e') || 'normal' }, o)));
   });
 } else if (mode === 'fid') {
-  const n = 8;
-  cv = G.makeCanvas(n * 114, ids.length * 134);
+  const n = 6;
+  cv = G.makeCanvas(n * CW, ids.length * CH);
   const c = cv.getContext('2d'); bg(c, cv.width, cv.height);
   ids.forEach((id, r) => {
-    const d = G.Cast.defs[id];
-    for (let k = 0; k < n; k++) G.Cast.drawBust(c, id, k * 114 + 57, r * 134 + 132, { emo: q.get('e') || 'normal', t: 0.3, fidget: (k + 0.5) / n });
+    for (let k = 0; k < n; k++) cell(c, id, k, r, { emo: q.get('e') || 'normal', t: 0.3, fidget: (k + 0.5) / n });
+  });
+} else if (mode === 'scene') {
+  // бюст на настоящем фоне кадра: все эмоции персонажа сеткой 2 колонки
+  const shot = q.get('shot') || 'witness';
+  const list = [];
+  ids.forEach(id => G.Cast.defs[id].emotions.forEach(e => list.push([id, e])));
+  const cols = 2, rows = Math.ceil(list.length / cols);
+  cv = G.makeCanvas(cols * 384, rows * 216);
+  const c = cv.getContext('2d');
+  const one = G.makeCanvas(384, 216), oc = one.getContext('2d');
+  list.forEach(([id, e], k) => {
+    const s = G.Env.shots[shot];
+    oc.clearRect(0, 0, 384, 216);
+    G.Env.drawShot(oc, shot, 'back', 3);
+    G.Cast.drawBust(oc, id, s.anchor.x, s.anchor.y, { emo: e, t: 1, flip: s.flip !== flip, talking: q.get('talk') === '1' });
+    G.Env.drawShot(oc, shot, 'front', 3);
+    c.drawImage(one, (k % cols) * 384, Math.floor(k / cols) * 216);
   });
 } else if (mode === 'iso') {
   const reacts = [null, 'talk', 'sit', 'whisper', 'gasp', 'murmur', 'angry', 'cheer', 'clap', 'laugh', 'shout', 'bk'];

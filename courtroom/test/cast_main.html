@@ -1,5 +1,6 @@
 <!doctype html><meta charset="utf-8"><body style="margin:0;background:#000">
 <script src="../src/core.js"></script>
+<script src="../src/env.js"></script>
 <script src="../src/cast_main.js"></script>
 <script>
 // ?m=busts&id=player   | ?m=iso | ?m=icons | ?m=scene (384x216)
@@ -28,6 +29,21 @@ if (mode === 'busts') {
       G.Cast.drawBust(x, id, cx, cy, Object.assign({ t: T }, o));
     });
   });
+} else if (mode === 'one') {
+  // ?m=one&id=judge&emo=normal[&anim=gavel&at=0.5] — один бюст крупно
+  const id = q.get('id') || 'player';
+  const o = { emo: q.get('emo') || 'normal', t: T, talking: q.get('talk') === '1' };
+  if (q.get('anim')) { o.anim = q.get('anim'); o.animT = +(q.get('at') || 0); }
+  gallery(170, 150, x => { G.rect(x, 0, 0, 170, 150, G.RAMP.neutral[5]); G.Cast.drawBust(x, id, 85, 146, o); });
+} else if (mode === 'env') {
+  // ?m=env&id=judge&shot=judge — бюст поверх настоящего кадра G.Env
+  const id = q.get('id') || 'judge', shot = q.get('shot') || 'judge';
+  const s = G.Env.shots[shot];
+  const c = G.makeCanvas(384, 216), x = c.getContext('2d');
+  G.Env.drawShot(x, shot, 'back', 3);
+  G.Cast.drawBust(x, id, s.anchor.x, s.anchor.y, { emo: q.get('emo') || 'normal', t: T, flip: s.flip, talking: q.get('talk') === '1', anim: q.get('anim'), animT: +(q.get('at') || 0) });
+  G.Env.drawShot(x, shot, 'front', 3);
+  window.__shotCanvas = c;
 } else if (mode === 'faces') {
   const id = q.get('id') || 'player';
   const d = G.Cast.defs[id];

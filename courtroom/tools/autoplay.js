@@ -28,6 +28,7 @@ const path = require('path'), fs = require('fs');
         rec: S.record.open, cmd: B.cmd ? { answer: B.cmd.answer, ok: (B.cmd.options || []).findIndex(o => o.ok) } : null, ev: S.evidence.slice(), cred: S.cred };
     });
     if (!st) break;
+    if (st.cred !== global.__lastCred) { console.log('cred', st.cred, 'block', st.type, 'line', (st.line || '').slice(0, 70), 'cross', JSON.stringify(st.cross && { idx: st.cross.idx, hit: st.cross.hit })); global.__lastCred = st.cred; }
     if (st.end) { await p.waitForTimeout(1200); await snap('end'); break; }
     const key = st.type + '|' + st.shot;
     if (key !== lastShotKey && ['line', 'cross', 'choice', 'presentPrompt', 'evidence', 'doc', 'title', 'shout', 'bigstamp', 'gameover'].includes(st.type)) {

@@ -437,9 +437,10 @@ function isoChair(c, gx, gy, z, col, backH, faceL) {
 }
 
 function buildWorld() {
-  WB = G.makeCanvas(WW, WH);
-  WF = G.makeCanvas(WW, WH);
-  const b = WB.getContext('2d'), f = WF.getContext('2d');
+  WB = G.cacheCanvas('env/world/back', WW, WH, worldBack);
+  WF = G.cacheCanvas('env/world/front', WW, WH, worldFront);
+}
+function worldBack(b) {
 
   /* ---------- floor ---------- */
   topF(b, 0, 0, RW, RD, 0, (gx, gy, x, y) => {
@@ -563,6 +564,8 @@ function buildWorld() {
   box(b, 0.25, 2.0, 0.75, 2.5, 0, 12, { top: NE[5], l: NE[3], r: NE[2], hl: NE[6] });
   box(b, 0.3125, 2.0625, 0.6875, 2.4375, 12, 16, { top: R.paper[3], l: R.paper[1], r: R.paper[0] });
 
+}
+function worldFront(f) {
   /* ---------- FRONT layer ---------- */
   // clerk desk
   box(f, L.clerk[0], L.clerk[1], L.clerk[2], L.clerk[3], 0, L.clerk[4], { top: WD[4], l: panelStrip(28, 22, 3), r: panelStrip(14, 22, 1), hl: WD[5], hr: WD[3], edge: WD[5] });
@@ -729,8 +732,9 @@ const motes = [];
 })();
 let SHAFT = null;
 function buildShafts() {
-  SHAFT = G.makeCanvas(WW, WH);
-  const c = SHAFT.getContext('2d');
+  SHAFT = G.cacheCanvas('env/world/shafts', WW, WH, shaftsFn);
+}
+function shaftsFn(c) {
   for (const w of WINS) {
     // hull of window and floor patch
     const pts = [];
@@ -886,8 +890,8 @@ let built = false;
 function build() {
   if (built) return; built = true;
   for (let i = 0; i < 4; i++) {
-    flagFrames.us.push(makeFlag('us', 11, 22, i * Math.PI / 2));
-    flagFrames.ca.push(makeFlag('ca', 11, 22, i * Math.PI / 2 + 1));
+    flagFrames.us.push(G.cacheCanvas('env/world/flag/us/' + i, 13, 26, c => c.drawImage(makeFlag('us', 11, 22, i * Math.PI / 2), 0, 0)));
+    flagFrames.ca.push(G.cacheCanvas('env/world/flag/ca/' + i, 13, 26, c => c.drawImage(makeFlag('ca', 11, 22, i * Math.PI / 2 + 1), 0, 0)));
   }
   buildWorld();
   buildShafts();
@@ -922,92 +926,87 @@ G.Env = {
 };
 })();
 
+
 /* =====================================================================
-   CLOSE-UP SHOTS & EXTERIOR
+   CLOSE-UP SHOTS, OFFICE, HALLWAY, EXTERIOR
+   Drawn at native 192x108, cached x2 (384x216) — matches the 2x busts.
+   Animated details are drawn per frame in native coords under a x2 transform.
    ===================================================================== */
 (function () {
 'use strict';
 const G = window.G, E = G.Env, Lb = E._lib;
 const R = G.RAMP, P = G.PAL;
-const WD = R.wood, ST = R.stone, NE = R.neutral, GO = R.gold;
-const { C, h2, fill, text3, text3W, panelCol, panelRect, moulding, drawSeal, shade } = Lb;
+const WD = R.wood, ST = R.stone, NE = R.neutral, GO = R.gold, GR = R.green;
+const { C, h2, fill, text3, text3W, moulding, shade } = Lb;
 const px = G.px;
-const SW = 384, SH = 216;
+const NW = 192, NH = 108, SW = 384, SH = 216;
 const SHOTS = E._SHOTS;
+const WHITE = P.white;
 
-/* per-column trapezoid (vertical edges at xa,xb). fn(x,y,u,v) -> colour. k: far/near depth ratio for perspective-correct u */
-function quad(c, xa, xb, ta, ba, tb, bb, fn, k) {
-  k = k || 1;
-  for (let x = xa; x < xb; x++) {
-    const s = (x + 0.5 - xa) / (xb - xa);
-    const u = (s / k) / ((1 - s) + s / k);
-    const top = Math.round(ta + (tb - ta) * s), bot = Math.round(ba + (bb - ba) * s);
-    if (typeof fn === 'string') { fill(c, x, top, 1, bot - top, fn); continue; }
-    for (let y = top; y < bot; y++) {
-      const col = fn(x, y, u, (y - top) / Math.max(1, bot - top), top, bot);
-      if (col) px(c, x, y, col);
-    }
-  }
+/* cache a native-res drawing upscaled x2 */
+function x2(key, w, h, fn) {
+  return G.cacheCanvas(key, w * 2, h * 2, c => {
+    const n = G.makeCanvas(w, h);
+    fn(n.getContext('2d'), w, h);
+    c.imageSmoothingEnabled = false;
+    c.drawImage(n, 0, 0, w * 2, h * 2);
+  });
 }
-/* inverse: screen x of parameter u on such a wall */
-function quadX(xa, xb, u, k) { k = k || 1; const s = u * k / ((1 - u) + u * k); return Math.round(xa + s * (xb - xa)); }
+function nat(ctx, fn) { ctx.save(); ctx.transform(2, 0, 0, 2, 0, 0); fn(ctx); ctx.restore(); }
 
-/* walnut wall with raised panels drawn in perspective: columns of panels between u-cuts, rows between v-cuts */
-function panelWall(c, xa, xb, ta, ba, tb, bb, k, ucuts, vcuts, base, bev, ramp) {
+/* ---------------- native drawing helpers ---------------- */
+function grainCol(x, y, b, ramp) {
   ramp = ramp || WD;
-  const xs = ucuts.map(u => quadX(xa, xb, u, k));
-  quad(c, xa, xb, ta, ba, tb, bb, (x, y, u, v, top, bot) => {
-    for (let i = 0; i + 1 < ucuts.length; i += 2) {
-      const xl = xs[i], xr = xs[i + 1];
-      if (x < xl || x > xr) continue;
-      for (let j = 0; j + 1 < vcuts.length; j += 2) {
-        const yt = Math.round(top + vcuts[j] * (bot - top)), yb = Math.round(top + vcuts[j + 1] * (bot - top));
-        if (y < yt || y > yb) continue;
-        return panelCol(x - xl, xr - x, y - yt, yb - y, ramp, base, bev, x, y);
-      }
-    }
-    return C(ramp, base - 1);
-  }, k);
+  const g = (x * 7 + Math.floor(y / 9 + Math.sin(x * 0.45) * 2.5)) % 19;
+  if (g === 0) return C(ramp, b - 1);
+  if (g === 9 && (y % 7) < 3) return C(ramp, b - 1);
+  return C(ramp, b);
 }
-function plaster(c, x0, y0, w, h, base, seed) {
-  for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) {
-    const n = h2(x + (seed || 0), y);
-    px(c, x, y, n < 0.05 ? C(ST, base - 1) : n > 0.985 ? C(ST, base + 1) : ST[base]);
-  }
+function woodFill(c, x, y, w, h, b, ramp) {
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) px(c, x + i, y + j, grainCol(x + i, y + j, b, ramp));
 }
+/* raised panel with groove, bevels, grain and varnish glints */
+function panel(c, x, y, w, h, b, ramp) {
+  ramp = ramp || WD;
+  if (w < 4 || h < 4) { fill(c, x, y, w, h, C(ramp, b)); return; }
+  fill(c, x, y, w, 1, C(ramp, b - 2)); fill(c, x, y, 1, h, C(ramp, b - 2));
+  fill(c, x, y + h - 1, w, 1, C(ramp, b + 1)); fill(c, x + w - 1, y, 1, h, C(ramp, b + 1));
+  fill(c, x + 1, y + 1, w - 2, 1, C(ramp, b + 2)); fill(c, x + 1, y + 1, 1, h - 2, C(ramp, b + 1));
+  fill(c, x + 1, y + h - 2, w - 2, 1, C(ramp, b - 1)); fill(c, x + w - 2, y + 1, 1, h - 2, C(ramp, b - 1));
+  woodFill(c, x + 2, y + 2, w - 4, h - 4, b, ramp);
+  px(c, x + 1, y + 1, C(ramp, b + 3));
+  if (w > 8) { px(c, x + 2, y + 1, C(ramp, b + 3)); if (b + 3 >= ramp.length - 1) px(c, x + 2, y + 1, WHITE); }
+}
+function rosette(c, x, y) {
+  px(c, x, y, WD[5]); px(c, x - 1, y, WD[3]); px(c, x + 1, y, WD[2]); px(c, x, y - 1, WD[4]); px(c, x, y + 1, WD[1]);
+  px(c, x - 1, y - 1, WD[6]); px(c, x + 1, y + 1, WD[0]);
+}
+/* moulding with varnish glints on the brightest row */
+function mould(c, x, y, w, idx, glint) {
+  idx.forEach((k, j) => {
+    fill(c, x, y + j, w, 1, C(WD, k));
+    if (glint && k >= 5) for (let i = (x * 7 + j * 3) % 13; i < w; i += 17 + ((i * 3) % 7)) { px(c, x + i, y + j, WHITE); if (i + 1 < w) px(c, x + i + 1, y + j, WD[6]); }
+  });
+}
+function plaster(c, x, y, w, h, b, topShade) {
+  fill(c, x, y, w, h, ST[b]);
+  if (topShade) { G.dither(c, x, y, w, topShade, ST[b - 1], 8); G.dither(c, x, y + topShade, w, topShade >> 1, ST[b - 1], 3); }
+}
+function brassGlint(c, x, y) { px(c, x, y, WHITE); }
+function ditherRows(c, y0, y1, col, w) { for (let y = y0; y < y1; y++) G.dither(c, 0, y, w || NW, 1, col, Math.min(16, (y - y0) * 2)); }
 function vignette(c, lv) {
-  for (let i = 0; i < 4; i++) {
-    G.dither(c, 0, 0, 14 - i * 3, SH, P.black, (lv || 8) - i * 2);
-    G.dither(c, SW - 14 + i * 3, 0, 14 - i * 3, SH, P.black, (lv || 8) - i * 2);
-  }
+  for (let i = 0; i < 3; i++) { G.dither(c, i * 2, 0, 2, NH, P.black, lv - i * 3); G.dither(c, NW - 2 - i * 2, 0, 2, NH, P.black, lv - i * 3); }
 }
-function beam(c, pts, a) { // light shaft polygon with dithered core
-  const t = G.makeCanvas(SW, SH), x = t.getContext('2d');
-  G.poly(x, pts, P.glow);
-  const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
-  const m = G.makeCanvas(SW, SH), mx = m.getContext('2d');
-  G.dither(mx, 0, 0, SW, SH, '#000', 8);
-  mx.globalCompositeOperation = 'destination-out';
-  G.poly(mx, pts.map(p => [cx + (p[0] - cx) * 0.8, cy + (p[1] - cy) * 0.95]), '#000');
-  x.globalCompositeOperation = 'destination-out'; x.drawImage(m, 0, 0);
-  return t;
-}
-function makeMotes(seed, n, area) {
-  const r = G.rng(seed), a = [];
-  for (let i = 0; i < n; i++) a.push({ x: r(), y: r(), sp: 0.3 + r() * 0.7, ph: r() * 6.28, area });
-  return a;
-}
-function drawMotes(c, motes, t, inside) {
-  for (const m of motes) {
-    const [x0, y0, w, h] = m.area;
-    const x = x0 + ((m.x * w + t * 2.5 * m.sp + Math.sin(t * 0.5 + m.ph) * 4) % w + w) % w;
-    const y = y0 + ((m.y * h + t * 1.5 * m.sp + Math.sin(t * 0.3 + m.ph) * 3) % h + h) % h;
-    if (inside && !inside(x, y)) continue;
-    c.globalAlpha = 0.3 + 0.2 * Math.sin(t * 2 + m.ph * 3);
-    px(c, x | 0, y | 0, P.glow);
-    if (m.sp > 0.9) px(c, (x | 0) + 1, y | 0, P.glow);
-  }
-  c.globalAlpha = 1;
+function beamFn(pts) {
+  return c => {
+    G.poly(c, pts, P.glow);
+    const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+    const m = G.makeCanvas(NW, NH), mx = m.getContext('2d');
+    G.dither(mx, 0, 0, NW, NH, '#000', 8);
+    mx.globalCompositeOperation = 'destination-out';
+    G.poly(mx, pts.map(p => [cx + (p[0] - cx) * 0.78, cy + (p[1] - cy) * 0.95]), '#000');
+    c.globalCompositeOperation = 'destination-out'; c.drawImage(m, 0, 0); c.globalCompositeOperation = 'source-over';
+  };
 }
 function inPoly(pts, x, y) {
   let ins = false;
@@ -1017,1010 +1016,1216 @@ function inPoly(pts, x, y) {
   }
   return ins;
 }
+function motes(seed, n, area) { const r = G.rng(seed), a = []; for (let i = 0; i < n; i++) a.push({ x: r(), y: r(), sp: 0.3 + r() * 0.7, ph: r() * 6.28, area }); return a; }
+function drawMotes(c, ms, t, poly) {
+  for (const m of ms) {
+    const [x0, y0, w, h] = m.area;
+    const x = x0 + ((m.x * w + t * 1.4 * m.sp + Math.sin(t * 0.5 + m.ph) * 2) % w + w) % w;
+    const y = y0 + ((m.y * h + t * 0.9 * m.sp + Math.sin(t * 0.3 + m.ph) * 2) % h + h) % h;
+    if (poly && !inPoly(poly, x, y)) continue;
+    c.globalAlpha = 0.25 + 0.25 * Math.sin(t * 2 + m.ph * 3);
+    px(c, x | 0, y | 0, m.sp > 0.85 ? WHITE : P.glow);
+  }
+  c.globalAlpha = 1;
+}
+function shaftDraw(ctx, img, t, base) { ctx.globalAlpha = (base || 0.13) + 0.035 * Math.sin(t * 0.37) + 0.012 * Math.sin(t * 1.7); ctx.drawImage(img, 0, 0); ctx.globalAlpha = 1; }
 
-/* big draped flag (hanging along a pole) */
-function bigFlag(kind, w, h, ph) {
-  return G.makeSprite(w, h + 6, c => {
+/* Great Seal of California (native, r 6..24) */
+function seal(c, cx, cy, r) {
+  const band = Math.max(2, Math.round(r * 0.26));
+  for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) {
+    const d = Math.sqrt(x * x + y * y);
+    if (d > r + 0.3) continue;
+    let col;
+    if (d > r - 1) col = (x + y < -r * 0.5) ? GO[5] : GO[1];
+    else if (d > r - band) {
+      const a = Math.atan2(y, x), k = Math.floor((a + Math.PI) / (Math.PI * 2) * r * 2.6);
+      col = (k % 2 === 0 && d < r - 1.4 && d > r - band + 0.6) ? GO[1] : (x + y < -r * 0.3 ? GO[4] : GO[3]);
+    } else if (d > r - band - 1) col = GO[1];
+    else {
+      const ry = y / (r - band);
+      if (ry < -0.2) col = (G.bayer(x, y) < 5) ? R.blue[5] : R.blue[6];
+      else if (ry < 0.08) col = (Math.abs(x + r * 0.25) < (r - band) * 0.55 - (ry + 0.2) * r * 1.2) ? ST[4] : R.blue[5];
+      else if (ry < 0.38) col = ((x + y) & 1) ? R.blue[4] : R.blue[3];
+      else col = ((x * 2 + y) % 3) ? GO[3] : GO[2];
+    }
+    px(c, cx + x, cy + y, col);
+  }
+  const s = r / 12;
+  // Minerva
+  const mx = cx - Math.round(3 * s), my = cy + Math.round(3 * s);
+  fill(c, mx, my - Math.round(7 * s), Math.max(2, Math.round(3 * s)), Math.round(8 * s), GO[4]);
+  fill(c, mx, my - Math.round(7 * s), 1, Math.round(8 * s), GO[5]);
+  G.ellipse(c, mx + 1, my - Math.round(9 * s), Math.max(1, Math.round(s)), Math.max(1, Math.round(s)), GO[4]);
+  px(c, mx + 1, my - Math.round(11 * s), R.red[3]);
+  G.ellipse(c, mx - Math.round(2 * s), my - Math.round(2 * s), Math.max(1, Math.round(2.2 * s)), Math.max(1, Math.round(2.2 * s)), GO[2]);
+  px(c, mx - Math.round(2.5 * s), my - Math.round(2.6 * s), GO[5]);
+  G.line(c, mx + Math.round(4 * s), my - Math.round(11 * s), mx + Math.round(4 * s), my + 1, GO[5]);
+  // grizzly
+  const bx = cx + Math.round(3 * s), by = cy + Math.round(5 * s);
+  fill(c, bx, by - Math.round(2 * s), Math.round(6 * s), Math.max(2, Math.round(2.2 * s)), R.hairBrown[2]);
+  fill(c, bx + Math.round(6 * s) - 1, by - Math.round(3 * s), Math.max(2, Math.round(1.6 * s)), Math.max(2, Math.round(1.6 * s)), R.hairBrown[2]);
+  fill(c, bx, by - Math.round(2 * s), Math.round(6 * s), 1, R.hairBrown[3]);
+  // star + rim glints
+  px(c, cx, cy - r + band + 1, WHITE);
+  px(c, cx - Math.round(r * 0.6), cy - Math.round(r * 0.75), WHITE); px(c, cx - Math.round(r * 0.72), cy - Math.round(r * 0.62), WHITE);
+}
+/* pole with eagle finial (native) */
+function pole(c, x, y0, y1) {
+  fill(c, x, y0, 2, y1 - y0, GO[3]); fill(c, x, y0, 1, y1 - y0, GO[5]);
+  for (let y = y0 + 3; y < y1; y += 11) px(c, x, y, WHITE);
+  fill(c, x - 1, y0 - 2, 4, 2, GO[4]); px(c, x - 1, y0 - 2, WHITE);
+  px(c, x, y0 - 4, GO[4]); px(c, x + 1, y0 - 4, GO[3]); px(c, x, y0 - 5, GO[5]);
+  G.line(c, x, y0 - 4, x - 4, y0 - 7, GO[3]); G.line(c, x + 1, y0 - 4, x + 5, y0 - 7, GO[2]);
+  px(c, x - 3, y0 - 7, WHITE); px(c, x - 4, y0 - 7, GO[5]);
+  fill(c, x - 2, y1 - 2, 6, 2, GO[2]); fill(c, x - 2, y1 - 2, 6, 1, GO[4]); px(c, x - 2, y1 - 2, WHITE);
+}
+/* draped flag sprite native */
+function flagFn(kind, w, h, ph) {
+  return c => {
     for (let x = 0; x < w; x++) {
-      const f = Math.sin(x * 0.42 + ph) + 0.5 * Math.sin(x * 0.9 - ph * 1.3);
-      const sag = Math.round(Math.sin(x / w * Math.PI) * 2);
-      const len = h - Math.round(x * x / (w * w) * h * 0.18) + Math.round(Math.sin(ph + x * 0.3) * 1.5);
+      const f = Math.sin(x * 0.85 + ph) + 0.45 * Math.sin(x * 1.7 - ph * 1.3);
+      const len = h - Math.round(x * x / (w * w) * h * 0.2) + Math.round(Math.sin(ph + x * 0.5));
       for (let y = 0; y < len; y++) {
         let col;
-        const yy = y - sag * (1 - y / len);
         if (kind === 'us') {
-          if (x < w * 0.5 && yy < h * 0.42) col = ((x % 4 === 1) && (yy % 4 === 1 + ((x >> 2) & 1) * 2)) ? NE[9] : R.blue[2];
-          else col = (Math.floor(yy / (h / 13)) % 2 === 0) ? R.red[3] : NE[8];
+          if (x < w * 0.5 && y < h * 0.42) col = ((x % 2 === 1) && (y % 3 === 1 + (x >> 1) % 2)) ? WHITE : R.blue[2];
+          else col = (Math.floor(y / (h / 13)) % 2 === 0) ? R.red[3] : NE[8];
         } else {
           col = NE[8];
-          if (yy > len - h * 0.12) col = R.red[3];
-          const cx = w * 0.5, cy = h * 0.48;
-          const dx = x - cx, dy = yy - cy;
-          if (Math.abs(dx) < w * 0.28 && dy > -h * 0.06 && dy < h * 0.05) col = R.hairBrown[2];
-          if (Math.abs(dx + w * 0.22) < 2 && dy > -h * 0.1 && dy < -h * 0.03) col = R.hairBrown[2];
-          if ((Math.abs(dx + w * 0.15) < 1.5 || Math.abs(dx - w * 0.15) < 1.5) && dy >= h * 0.05 && dy < h * 0.1) col = R.hairBrown[1];
-          if (dy > h * 0.11 && dy < h * 0.14 && Math.abs(dx) < w * 0.4) col = R.green[3];
-          if (Math.abs(x - w * 0.15) < 2 && Math.abs(yy - h * 0.12) < 2 && (Math.abs(x - w * 0.15) + Math.abs(yy - h * 0.12)) < 2.5) col = R.red[3];
+          if (y > len - Math.max(3, h * 0.12)) col = R.red[3];
+          const dx = x - w * 0.5, dy = y - h * 0.5;
+          if (Math.abs(dx) < w * 0.3 && dy > -2 && dy < 2) col = R.hairBrown[2];
+          if (Math.abs(dx + w * 0.26) < 1.5 && dy > -3 && dy < 0) col = R.hairBrown[2];
+          if ((x === Math.round(w * 0.32) || x === Math.round(w * 0.66)) && dy >= 2 && dy < 4) col = R.hairBrown[1];
+          if (dy >= 4 && dy < 5 && Math.abs(dx) < w * 0.4) col = R.green[3];
+          if (x === 2 && y === 3) col = R.red[3];
         }
-        if (f < -0.7) col = shade(shade(col, -1), -1); else if (f < -0.1) col = shade(col, -1);
-        else if (f > 1.0) col = shade(col, 1);
+        if (f < -0.8) col = shade(shade(col, -1), -1); else if (f < -0.1) col = shade(col, -1);
+        else if (f > 1.05) col = (col === NE[8]) ? WHITE : shade(col, 1);
         px(c, x, y, col);
       }
-      px(c, x, len, (x & 1) ? GO[4] : GO[2]); px(c, x, len + 1, (x & 2) ? GO[3] : GO[1]);
+      px(c, x, len, (x & 1) ? GO[4] : GO[2]); if (x % 3 === 0) px(c, x, len, GO[5]);
     }
-  });
+  };
 }
-function bigPole(c, x, y0, y1) {
-  fill(c, x, y0, 3, y1 - y0, GO[3]); fill(c, x, y0, 1, y1 - y0, GO[5]); fill(c, x + 2, y0, 1, y1 - y0, GO[1]);
-  // eagle finial
-  fill(c, x - 1, y0 - 3, 5, 3, GO[4]); fill(c, x - 1, y0 - 1, 5, 1, GO[2]);
-  G.ellipse(c, x + 1, y0 - 6, 2, 2, GO[4]);
-  G.line(c, x + 1, y0 - 7, x - 6, y0 - 13, GO[3]); G.line(c, x + 1, y0 - 8, x - 5, y0 - 15, GO[4]);
-  G.line(c, x + 2, y0 - 7, x + 9, y0 - 13, GO[3]); G.line(c, x + 2, y0 - 8, x + 8, y0 - 15, GO[4]);
-  px(c, x + 1, y0 - 9, GO[5]);
+function clockFace(c, cx, cy, r) {
+  G.ellipse(c, cx + 1, cy + 1, r, r, NE[1]);
+  G.ellipse(c, cx, cy, r, r, WD[1]); G.ellipse(c, cx, cy, r - 1, r - 1, GO[3]); G.ellipse(c, cx, cy, r - 2, r - 2, NE[9]);
+  for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; px(c, cx + Math.round(Math.sin(a) * (r - 3)), cy - Math.round(Math.cos(a) * (r - 3)), i % 3 ? NE[6] : NE[2]); }
+  px(c, cx - r + 1, cy - 2, WHITE); px(c, cx - r + 2, cy - 3, WHITE); px(c, cx - 2, cy - r + 1, GO[5]);
+}
+function clockHandsN(ctx, cx, cy, r, t) {
+  const a = Lb.clockHands(t);
+  const hand = (ang, l, col) => { for (let i = 1; i <= l; i++) px(ctx, cx + Math.round(Math.sin(ang) * i), cy - Math.round(Math.cos(ang) * i), col); };
+  hand(a.h, Math.max(1, r - 5), NE[1]); hand(a.m, r - 3, NE[1]); hand(a.s, r - 3, R.red[3]); px(ctx, cx, cy, GO[2]);
+}
+function windowN(c, x, y, w, h, palms) {
+  fill(c, x - 2, y - 2, w + 4, h + 4, WD[2]); fill(c, x - 2, y - 2, w + 4, 1, WD[4]); fill(c, x - 2, y - 2, 1, h + 4, WD[4]);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    const f = j / h; let col = f < 0.33 ? P.sky : f < 0.68 ? P.sky2 : P.glow;
+    if (f > 0.28 && f < 0.33 && G.bayer(i, j) < 8) col = P.sky2;
+    if (f > 0.63 && f < 0.68 && G.bayer(i, j) < 8) col = P.glow;
+    px(c, x + i, y + j, col);
+  }
+  if (palms) {
+    const p1 = x + Math.round(w * 0.3), ty = y + Math.round(h * 0.3);
+    for (let j = ty; j < y + h; j++) px(c, p1 + (((j - ty) / 6) | 0) % 2, j, R.green[2]);
+    [[-6, 2], [-5, 4], [5, 1], [6, 4], [-2, 5], [3, 5]].forEach(([dx, dy]) => G.line(c, p1, ty, p1 + dx, ty + dy, R.green[2]));
+  }
+  // glare streaks
+  for (let k = 0; k < Math.min(h, w) - 2; k++) { if (k % 2 === 0) px(c, x + 2 + k, y + h - 3 - k, WHITE); }
+  fill(c, x + (w >> 1), y, 1, h, WD[2]); for (let j = y + 8; j < y + h; j += 9) fill(c, x, j, w, 1, WD[2]);
+  fill(c, x, y, w, 3, ST[4]); fill(c, x, y + 1, w, 1, ST[3]); fill(c, x, y + 3, w, 1, ST[2]);
+  fill(c, x - 3, y + h + 1, w + 6, 2, WD[4]); fill(c, x - 3, y + h + 1, w + 6, 1, WD[5]); px(c, x - 2, y + h + 1, WHITE);
+}
+function glassN(c, x, y, h, full) {
+  fill(c, x, y - h, 4, h, R.blue[5]); fill(c, x + 3, y - h, 1, h, R.blue[4]);
+  if (full) { fill(c, x + 1, y - Math.round(h * 0.6), 2, Math.round(h * 0.6), R.blue[6]); fill(c, x, y - Math.round(h * 0.6), 4, 1, NE[9]); }
+  fill(c, x, y - h, 4, 1, NE[8]); px(c, x, y - h + 1, WHITE); px(c, x, y - h + 2, WHITE); px(c, x + 1, y - 1, NE[9]);
+}
+function pitcherN(c, x, y) {
+  for (let j = 0; j < 12; j++) {
+    const w = 3 + Math.round(Math.sin(j / 12 * Math.PI) * 1.2);
+    for (let i = -w; i <= w; i++) {
+      let col = NE[6];
+      if (i === -w) col = NE[7]; else if (i === -w + 1) col = NE[8]; else if (i >= w - 1) col = NE[4]; else if (i === w - 2) col = NE[5];
+      px(c, x + i, y - 12 + j, col);
+    }
+  }
+  fill(c, x - 3, y - 13, 7, 1, NE[7]); px(c, x - 4, y - 13, NE[7]); px(c, x - 5, y - 14, NE[6]);
+  fill(c, x - 2, y - 10, 1, 6, WHITE); px(c, x - 1, y - 9, WHITE);
+  fill(c, x + 5, y - 11, 1, 7, NE[4]); px(c, x + 4, y - 11, NE[5]); px(c, x + 4, y - 5, NE[4]);
+}
+function legalPadN(c, x, y, w, h, seed, rot) {
+  // slight perspective: rows get wider toward the viewer
+  for (let j = 0; j < h; j++) {
+    const o = Math.round((h - j) * (rot || 0.2));
+    fill(c, x + o, y + j, w - o * 2 + Math.round(j * 0.1), 1, j < 2 ? R.red[2] : GO[5]);
+    if (j >= 3 && j % 2 === 1) fill(c, x + o + 1, y + j, w - o * 2 - 2, 1, GO[4]);
+  }
+  const r = G.rng(seed || 3);
+  for (let j = 3; j < h - 1; j += 2) {
+    const o = Math.round((h - j) * (rot || 0.2));
+    let i = 2; const end = (w - o * 2) * (0.45 + r() * 0.45);
+    while (i < end) { const wl = 2 + Math.floor(r() * 4); for (let k = 0; k < wl && i < end; k++, i++) px(c, x + o + i, y + j - 1 + ((k + (r() < 0.3 ? 1 : 0)) & 1), P.ink); i += 1; }
+  }
+  fill(c, x, y + h, w, 1, GO[2]); px(c, x + Math.round(h * (rot || 0.2)), y + 1, WHITE);
+}
+function penN(c, x, y, len, col) { fill(c, x, y, len, 1, col || P.inkDark); px(c, x + len - 1, y, GO[4]); px(c, x + 1, y - 1, NE[6]); px(c, x, y, NE[7]); fill(c, x + 1, y + 1, len - 1, 1, NE[1]); }
+function stickyN(c, x, y, col) { fill(c, x, y, 4, 4, col); fill(c, x, y + 4, 4, 1, shade(col, -1)); px(c, x, y, WHITE); fill(c, x + 1, y + 2, 2, 1, NE[3]); }
+function laptopBackN(c, x, y) {
+  fill(c, x, y - 14, 22, 14, NE[5]); fill(c, x, y - 14, 22, 1, NE[8]); fill(c, x, y - 14, 1, 14, NE[7]);
+  fill(c, x + 21, y - 14, 1, 14, NE[3]); px(c, x + 1, y - 13, WHITE); px(c, x + 2, y - 13, WHITE);
+  G.ellipse(c, x + 11, y - 7, 2, 2, NE[6]); px(c, x + 10, y - 8, WHITE);
+  fill(c, x - 2, y, 26, 2, NE[4]); fill(c, x - 2, y, 26, 1, NE[7]); px(c, x - 1, y, WHITE);
+}
+function folderStackN(c, x, y, n, seed) {
+  const r = G.rng(seed);
+  for (let i = 0; i < n; i++) {
+    const dx = Math.round(r() * 2 - 1), ramp = i % 3 === 1 ? [GO, R.blue, R.red, R.stone][Math.floor(r() * 4)] : R.paper;
+    const yy = y - i * 2;
+    fill(c, x + dx, yy - 1, 24, 1, C(ramp, 3)); fill(c, x + dx + 1, yy, 24, 1, C(ramp, 1));
+    if (ramp === R.paper) px(c, x + dx + 2, yy - 1, WHITE);
+    if (r() < 0.5) fill(c, x + dx + 8 + Math.floor(r() * 10), yy - 2, 3, 1, [R.red[3], R.blue[4], GR[4], GO[4]][i % 4]);
+  }
+  fill(c, x + 14, y - n * 2, 1, n * 2 + 1, R.red[3]);
+}
+function tentCard(c, x, y, txt) {
+  const w = text3W(txt) + 4;
+  fill(c, x, y - 7, w, 7, NE[8]); fill(c, x, y - 7, w, 1, WHITE); fill(c, x, y - 1, w, 1, NE[6]);
+  text3(c, txt, x + 2, y - 6, NE[2]);
+}
+/* desk top in perspective + front (native) */
+function deskN(c, y0, y1, x0, x1, b) {
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+    let col = grainCol(x, y * 3, b);
+    if (y === y0) col = C(WD, b - 1);
+    px(c, x, y, col);
+  }
+  // reflections of windows on polished top
+  for (let x = x0; x < x1; x++) if (((x / 9) | 0) % 5 === 1) px(c, x, y1 - 2, C(WD, b + 1));
+  fill(c, x0, y1, x1 - x0, 1, WD[6]);
+  for (let x = x0 + 3; x < x1; x += 19) { px(c, x, y1, WHITE); px(c, x + 1, y1, WHITE); }
+  fill(c, x0, y1 + 1, x1 - x0, 1, C(WD, b + 1)); fill(c, x0, y1 + 2, x1 - x0, 1, C(WD, b - 1));
+  fill(c, x0, y1 + 3, x1 - x0, NH - y1 - 3, C(WD, b - 2));
+  for (let x = x0 + 3; x + 20 < x1 + 3; x += 24) { panel(c, x, y1 + 5, 20, NH - y1 - 4, b - 1); rosette(c, x + 22, y1 + 8); }
 }
 
-/* ---------------- background people (sprites) ---------------- */
-const SKINS = [R.skinL, R.skinM, R.skinD];
-const HAIRS = [R.hairBrown, R.hairBlack, R.hairBlond, R.hairRed, R.hairGrey];
-const CLOTH = [R.blue, R.red, R.green, R.purple, R.teal, NE, R.stone, R.wood, R.gold];
-/* draw a person (head+shoulders) into a sprite. o: {s(scale), skin, hair, style, cloth, glasses, dim, look} ; frame: 0 normal, 1 blink, 2 turned */
-function personSprite(o, frame) {
-  const s = o.s || 1;
-  const W = Math.round(30 * s), H = Math.round(40 * s);
-  const dim = o.dim || 0;
-  const sk = i => C(o.skin, i - dim), hr = i => C(o.hair, i - dim), cl = i => C(o.cloth, i - dim);
-  return G.makeSprite(W, H, c => {
-    const cx = (W >> 1), hy = Math.round(13 * s);
-    const rx = Math.max(3, Math.round(5 * s * (o.wide || 1))), ry = Math.max(4, Math.round(6 * s));
-    const turn = frame === 2 ? (o.look || -1) : 0;
-    // shoulders / torso
-    const sw = Math.round(13 * s * (o.bulk || 1)), ty = hy + ry + Math.round(2 * s);
-    for (let y = ty; y < H; y++) {
-      const k = y - ty, half = Math.min(sw, Math.round(sw * 0.55 + k * 2.2));
+/* ---------------- small pixel people (native) ---------------- */
+const HEADS = {
+  s: { rows: [2, 3, 3, 3, 3, 3, 3, 2], ey: 4, sw: 6, H: 20 },
+  m: { rows: [2, 3, 4, 4, 4, 4, 4, 4, 3, 2], ey: 5, sw: 8, H: 26 },
+};
+function personFn(o, frame) {
+  const S = HEADS[o.size || 'm'];
+  const W = S.sw * 2 + 6, H = S.H;
+  return [W, H, c => {
+    const d = o.dim || 0;
+    const sk = i => C(o.skin, i - d), hr = i => C(o.hair, i - d), cl = i => C(o.cloth, i - d);
+    const cx = W >> 1, hy = 2, hh = S.rows.length;
+    const look = frame === 2 ? (o.look || -1) : 0;
+    const hx = cx + (frame === 2 ? (o.look || -1) * 0 : 0);
+    // long hair behind
+    if (o.style === 'long') fill(c, hx - S.rows[3] - 1, hy + 3, S.rows[3] * 2 + 3, hh + 2, hr(2));
+    // body
+    const by = hy + hh + 1;
+    for (let y = by; y < H; y++) {
+      const k = y - by, half = Math.min(S.sw, 2 + k * 3);
       for (let x = -half; x <= half; x++) {
         let col = cl(3);
-        if (x < -half + 2 + k * 0.1) col = cl(4); else if (x > half - 3) col = cl(2);
-        if (y === ty) col = cl(4);
+        if (x <= -half + 1) col = cl(4); else if (x >= half - 1) col = cl(2);
+        if (k === 0 || (k === 1 && Math.abs(x) > half - 3)) col = cl(4);
         px(c, cx + x, y, col);
       }
     }
-    // collar / shirt V
-    if (o.collar) { for (let k = 0; k < Math.round(5 * s); k++) { px(c, cx - 1 - (k >> 1), ty + k, o.collar); px(c, cx + (k >> 1), ty + k, o.collar); } }
-    if (o.tie) fill(c, cx, ty + 1, 1, Math.round(7 * s), o.tie);
+    if (o.lapel) { for (let k = 0; k < 4; k++) { px(c, cx - 1 - (k >> 1), by + 1 + k, cl(2)); px(c, cx + 1 + (k >> 1), by + 1 + k, cl(2)); } }
+    if (o.collar) { px(c, cx - 1, by, o.collar); px(c, cx + 1, by, o.collar); px(c, cx, by + 1, o.collar); px(c, cx - 1, by + 1, o.collar); }
+    if (o.tie) fill(c, cx, by + 1, 1, 5, o.tie);
+    if (o.pearls) for (let x = -2; x <= 2; x++) px(c, cx + x, by + 1 + (Math.abs(x) < 2 ? 1 : 0), WHITE);
     // neck
-    fill(c, cx - Math.round(2 * s), hy + ry - 2, Math.round(4 * s) + 1, Math.round(4 * s), sk(1));
-    // long hair behind
-    if (o.style === 'long' || o.style === 'bob') G.ellipse(c, cx, hy + Math.round(2 * s), rx + 2, ry + (o.style === 'long' ? Math.round(5 * s) : 1), hr(2));
-    if (o.style === 'curly') G.ellipse(c, cx, hy - 1, rx + 3, ry + 1, hr(2));
+    fill(c, cx - 1, hy + hh - 1, 3, 2, sk(1));
     // head
-    G.ellipse(c, cx + turn, hy, rx, ry, sk(2));
-    for (let y = -ry; y <= ry; y++) { // lit left side, shade right
-      const wv = Math.round(rx * Math.sqrt(Math.max(0, 1 - y * y / (ry * ry + 0.01))));
-      px(c, cx + turn - wv, hy + y, sk(3)); if (wv > 1) px(c, cx + turn - wv + 1, hy + y, sk(3));
-      px(c, cx + turn + wv, hy + y, sk(1));
-    }
-    // ear
-    px(c, cx + turn + rx, hy, sk(1)); px(c, cx + turn + rx, hy + 1, sk(1));
-    // hair styles
-    const hx = cx + turn;
-    if (o.style !== 'bald') {
-      for (let y = -ry - 1; y <= -Math.round(ry * 0.15); y++) {
-        const wv = Math.round((rx + 1) * Math.sqrt(Math.max(0, 1 - y * y / ((ry + 1) * (ry + 1)))));
-        for (let x = -wv; x <= wv; x++) {
-          // hairline: curved, fringe dips on the left (side part)
-          const edge = -Math.round(ry * 0.15) - Math.round(((x + wv) / (2 * wv + 1)) * ry * 0.45) + ((x & 1) ? 0 : 1);
-          if (y > edge && Math.abs(x) < wv - 1) continue;
-          const lit = (x + y * 0.5) < -wv * 0.3;
-          px(c, hx + x, hy + y, lit ? hr(4) : (x > wv / 2 ? hr(1) : ((x + y) % 3 === 0 ? hr(2) : hr(3))));
-        }
+    S.rows.forEach((hw, j) => {
+      for (let x = -hw; x <= hw - 1; x++) {
+        let col = sk(2);
+        if (x === -hw) col = sk(3); else if (x === hw - 1) col = sk(1);
+        if (j >= hh - 2 && x > 0) col = sk(1);
+        px(c, hx + x, hy + j, col);
       }
-      if (o.style === 'bob' || o.style === 'long') { fill(c, hx - rx - 1, hy - 2, 2, ry + 2, hr(3)); fill(c, hx + rx - 1, hy - 2, 2, ry + 2, hr(1)); }
-      if (o.style === 'bun') { G.ellipse(c, hx, hy - ry - 2, 2, 2, hr(3)); px(c, hx - 1, hy - ry - 3, hr(4)); }
-      if (o.style === 'cap') { fill(c, hx - rx - 1, hy - ry, rx * 2 + 3, Math.round(3 * s), o.capCol || R.red[3]); fill(c, hx - rx - 4, hy - ry + Math.round(3 * s) - 1, rx + 3, 1, o.capCol2 || R.red[2]); }
-      if (o.style === 'curly') for (let k = 0; k < 6; k++) px(c, hx - rx + k * 2, hy - ry - 1 + (k & 1), hr(4));
-      // side part fringe
-      px(c, hx - rx + 1, hy - Math.round(ry * 0.2), hr(2));
-    } else { px(c, hx - 2, hy - ry + 1, sk(4)); px(c, hx - 1, hy - ry + 1, sk(4)); fill(c, hx - rx, hy - 1, 1, 3, C(R.hairGrey, 2 - dim)); fill(c, hx + rx, hy - 1, 1, 3, C(R.hairGrey, 1 - dim)); }
-    // face: eyes looking left (or turned)
-    const ey = hy + Math.round(ry * 0.1), lk = (o.look || -1);
-    const ex1 = hx - Math.round(rx * 0.45) + (frame === 2 ? lk : 0) - 1, ex2 = hx + Math.round(rx * 0.35) + (frame === 2 ? lk : 0) - 1;
-    if (frame === 1) { fill(c, ex1, ey, 2, 1, sk(1)); fill(c, ex2, ey, 2, 1, sk(1)); }
-    else { px(c, ex1, ey, C(NE, 1)); px(c, ex2, ey, C(NE, 1)); if (s > 1.2) { px(c, ex1 + 1, ey, NE[8 - dim * 2]); px(c, ex2 + 1, ey, NE[8 - dim * 2]); } }
-    px(c, ex1, ey - 2, hr(1)); px(c, ex2 + 1, ey - 2, hr(1)); if (s > 1.2) { px(c, ex1 + 1, ey - 2, hr(1)); px(c, ex2, ey - 2, hr(1)); } // brows
-    px(c, ex1 - 1, ey + 2, sk(3)); // cheek light
-    if (o.glasses) { G.frame(c, ex1 - 1, ey - 1, 4, 3, o.glasses); G.frame(c, ex2 - 1, ey - 1, 4, 3, o.glasses); }
-    px(c, hx - 1 + (frame === 2 ? lk : 0), ey + Math.round(ry * 0.35), sk(1)); // nose
-    fill(c, hx - 1 + (frame === 2 ? lk : 0), ey + Math.round(ry * 0.6), 2, 1, sk(0)); // mouth
-    if (o.beard) for (let y = 0; y < 3; y++) fill(c, hx - rx + 1 + y, ey + Math.round(ry * 0.45) + y, rx * 2 - 1 - y * 2, 1, hr(2));
+    });
+    px(c, hx + S.rows[4], hy + S.ey, sk(1)); // ear
+    // hair
+    const top = o.style === 'bald' ? 0 : (o.size === 's' ? 2 : 3);
+    if (o.style !== 'bald') {
+      for (let j = -1; j < top; j++) {
+        const hw = j < 0 ? S.rows[0] : S.rows[j] + (j > 0 ? 1 : 0);
+        for (let x = -hw; x <= hw - 1; x++) px(c, hx + x, hy + j, (x < -hw / 2 && j < 1) ? hr(4) : (x >= hw - 2 ? hr(1) : hr(3)));
+      }
+      // fringe / side part
+      px(c, hx - S.rows[3] + 1, hy + top, hr(3)); px(c, hx - S.rows[3] + 2, hy + top, hr(2));
+      if (o.style === 'bob' || o.style === 'long' || o.style === 'curly') {
+        const sideLen = o.style === 'curly' ? hh - 3 : hh - 2;
+        fill(c, hx - S.rows[3] - 1, hy + 1, 2, sideLen, hr(3)); px(c, hx - S.rows[3] - 1, hy + 1, hr(4));
+        fill(c, hx + S.rows[3] - 1, hy + 1, 2, sideLen, hr(1));
+      }
+      if (o.style === 'curly') for (let x = -S.rows[0] - 2; x <= S.rows[0] + 1; x += 2) { px(c, hx + x, hy - 2, hr(3)); px(c, hx + x, hy - 1, hr(4)); }
+      if (o.style === 'bun') { fill(c, hx - 1, hy - 3, 3, 2, hr(3)); px(c, hx - 1, hy - 3, hr(4)); }
+      if (o.style === 'cap') { fill(c, hx - S.rows[2] - 1, hy - 1, S.rows[2] * 2 + 1, 3, o.capCol || R.blue[3]); fill(c, hx - S.rows[2] - 3, hy + 2, S.rows[2] + 2, 1, o.capCol2 || R.blue[2]); px(c, hx - 2, hy - 1, WHITE); }
+      if (o.style === 'grey') { /* receding */ }
+    } else {
+      px(c, hx - 2, hy, sk(4)); px(c, hx - 1, hy, WHITE);
+      fill(c, hx - S.rows[3], hy + 2, 1, 3, C(R.hairGrey, 2)); fill(c, hx + S.rows[3] - 1, hy + 2, 1, 3, C(R.hairGrey, 1));
+    }
+    // face
+    const ey = hy + S.ey, ex1 = hx - 2 + look, ex2 = hx + 1 + look;
+    if (frame === 1) { px(c, ex1, ey, sk(1)); px(c, ex2, ey, sk(1)); }
+    else { px(c, ex1, ey, NE[1]); px(c, ex2, ey, NE[1]); }
+    if (o.glasses) { px(c, ex1 - 1, ey, o.glasses); px(c, ex2 + 1, ey, o.glasses); px(c, hx + look, ey - 1, o.glasses); px(c, ex1, ey - 1, WHITE); }
+    else if (o.size !== 's') { px(c, ex1, ey - 1, hr(1)); px(c, ex2, ey - 1, hr(1)); }
+    px(c, hx + look - (look < 0 ? 1 : 0), ey + 2, sk(1)); // nose shadow
+    if (o.beard) { fill(c, hx - S.rows[6] + 1, hy + hh - 3, S.rows[6] * 2 - 2, 2, hr(2)); px(c, hx - 1, hy + hh - 3, sk(1)); }
+    if (o.lips) px(c, hx + look, ey + 3, o.lips);
+    if (frame === 2) px(c, hx + look, ey + 3 + (o.size === 's' ? 0 : 1), R.red[1]);
+    if (o.earring) px(c, hx + S.rows[4], hy + S.ey + 2, WHITE);
+  }];
+}
+function people(key, list) {
+  return list.map((p, i) => {
+    const fr = [0, 1, 2].map(f => { const [w, h, fn] = personFn(p.o, f); return x2(key + '/p' + i + '/f' + f, w, h, fn); });
+    return Object.assign({ i, fr }, p);
   });
 }
-function randPerson(r, s, dim) {
-  const style = ['short', 'bob', 'bald', 'bun', 'long', 'curly', 'short', 'cap', 'long', 'short'][Math.floor(r() * 10)];
-  return {
-    s, dim, style,
-    skin: SKINS[Math.floor(r() * 3)],
-    hair: HAIRS[Math.floor(r() * 5)],
-    cloth: CLOTH[Math.floor(r() * CLOTH.length)],
-    glasses: r() < 0.3 ? NE[2] : null,
-    collar: r() < 0.5 ? NE[8] : null,
-    tie: r() < 0.25 ? R.red[2] : null,
-    bulk: 0.85 + r() * 0.35, wide: 0.9 + r() * 0.25,
-    look: r() < 0.5 ? -1 : 1, beard: r() < 0.15,
-    capCol: R.blue[3], capCol2: R.blue[2],
-  };
-}
-/* crowd of animated background people: each has frames, whisper pairs, breathing */
-function crowd(list) {
-  return list.map((p, i) => ({ ...p, fr: [0, 1, 2].map(f => personSprite(p.o, f)), i }));
-}
-function drawCrowd(c, cr, t, clipFn) {
-  for (const p of cr) {
-    const ph = p.i * 1.37 + p.x * 0.05;
-    const breath = Math.sin(t * 2.2 + ph) > 0.6 ? 1 : 0;
-    const blink = ((t + ph) % 3.7) < 0.13;
-    // whisper window: lean toward neighbour for ~1.6s every ~7s
-    const wcyc = (t + ph * 3) % 7.3;
-    const whisper = p.whisper && wcyc < 1.6;
-    const turn = whisper || ((t * 0.6 + ph) % 9) < 1.2;
+function drawPeople(ctx, list, t) { // ctx in screen space (cached sprites are x2)
+  for (const p of list) {
+    const ph = p.i * 1.37 + p.x * 0.11;
+    const breath = Math.sin(t * 2.0 + ph) > 0.55 ? 1 : 0;
+    const blink = ((t + ph) % 3.9) < 0.14;
+    const cyc = (t + ph * 3) % 7.7;
+    const whisper = p.whisper && cyc < 1.8;
+    const turn = whisper || ((t * 0.6 + ph) % 9.5) < 1.3;
     const fr = blink ? 1 : turn ? 2 : 0;
-    const lean = whisper ? (p.o.look || -1) * (wcyc < 0.25 || wcyc > 1.35 ? 1 : 2) : 0;
-    const shift = Math.round(Math.sin(t * 0.23 + ph * 2) * 0.6);
-    G.blit(c, p.fr[fr], p.x + lean + shift - (p.fr[0].width >> 1), p.y - p.fr[0].height + breath + (whisper ? 1 : 0));
+    const lean = whisper ? (p.o.look || -1) : 0;
+    const shift = (((t * 0.21 + ph) % 6) < 0.8) ? (p.o.look || -1) : 0;
+    const spr = p.fr[fr];
+    ctx.drawImage(spr, (p.x + lean + shift) * 2 - (spr.width >> 1), (p.y + breath) * 2 - spr.height);
   }
 }
+const SKINS = [R.skinL, R.skinM, R.skinD];
+const LOOKS = [
+  { style: 'bun', skin: R.skinL, hair: R.hairGrey, cloth: R.purple, glasses: NE[2], earring: 1 },
+  { style: 'short', skin: R.skinD, hair: R.hairBlack, cloth: R.stone, tie: R.red[2], collar: NE[8], lapel: 1 },
+  { style: 'long', skin: R.skinL, hair: R.hairBlond, cloth: R.teal, lips: R.red[2] },
+  { style: 'bald', skin: R.skinM, hair: R.hairBrown, cloth: R.green, beard: 1 },
+  { style: 'curly', skin: R.skinD, hair: R.hairBlack, cloth: R.gold },
+  { style: 'cap', skin: R.skinL, hair: R.hairRed, cloth: R.red },
+  { style: 'bob', skin: R.skinM, hair: R.hairBlack, cloth: R.blue, glasses: NE[1], pearls: 1 },
+  { style: 'short', skin: R.skinL, hair: R.hairBrown, cloth: NE, collar: NE[8], lapel: 1, tie: R.blue[3] },
+  { style: 'bob', skin: R.skinL, hair: R.hairRed, cloth: R.green, lips: R.red[2] },
+  { style: 'short', skin: R.skinM, hair: R.hairGrey, cloth: R.wood, glasses: GO[2] },
+  { style: 'long', skin: R.skinD, hair: R.hairBrown, cloth: R.purple, earring: 1 },
+  { style: 'short', skin: R.skinL, hair: R.hairBlack, cloth: R.blue, collar: NE[8] },
+];
+function look(i, extra) { return Object.assign({}, LOOKS[i % LOOKS.length], extra); }
 
-/* ---------------- common props ---------------- */
-function legalPad(c, pts, lines, seed) {
-  // pts: quad [tl,tr,br,bl]
-  G.poly(c, pts, GO[5]);
-  const [tl, tr, br, bl] = pts;
-  // binding strip
-  G.poly(c, [tl, tr, [tr[0] + (br[0] - tr[0]) * 0.12, tr[1] + (br[1] - tr[1]) * 0.12], [tl[0] + (bl[0] - tl[0]) * 0.12, tl[1] + (bl[1] - tl[1]) * 0.12]], R.red[2]);
-  const r = G.rng(seed || 5);
-  for (let i = 0; i < lines; i++) {
-    const f = 0.2 + i * (0.75 / lines);
-    const ax = tl[0] + (bl[0] - tl[0]) * f, ay = tl[1] + (bl[1] - tl[1]) * f;
-    const bx = tr[0] + (br[0] - tr[0]) * f, by = tr[1] + (br[1] - tr[1]) * f;
-    // rule
-    G.line(c, Math.round(ax), Math.round(ay), Math.round(bx), Math.round(by), GO[4]);
-    // handwriting squiggle above rule
-    const n = Math.floor(Math.hypot(bx - ax, by - ay));
-    let x = 2, end = n * (0.5 + r() * 0.45);
-    while (x < end) {
-      const wl = 3 + Math.floor(r() * 6);
-      for (let k = 0; k < wl && x < end; k++, x++) {
-        const qx = ax + (bx - ax) * x / n, qy = ay + (by - ay) * x / n;
-        px(c, Math.round(qx), Math.round(qy) - 1 - ((k + Math.floor(r() * 2)) % 2), P.ink);
-      }
-      x += 2;
-    }
-  }
-}
-function pen(c, x, y, len, col) {
-  for (let i = 0; i < len; i++) { px(c, x + i, y - (i >> 2), col || P.inkDark); px(c, x + i, y - (i >> 2) + 1, NE[1]); }
-  px(c, x + len - 1, y - ((len - 1) >> 2), GO[4]); px(c, x, y, NE[6]);
-}
-function glass(c, x, y, h, full) {
-  fill(c, x, y - h, 7, h, R.blue[5]);
-  fill(c, x, y - h, 1, h, NE[8]); fill(c, x + 6, y - h, 1, h, R.blue[4]);
-  if (full) { fill(c, x + 1, y - Math.round(h * 0.6), 5, Math.round(h * 0.6) - 1, R.blue[6]); fill(c, x + 1, y - Math.round(h * 0.6), 5, 1, NE[9]); }
-  fill(c, x, y - h, 7, 1, NE[8]); fill(c, x, y - 1, 7, 1, R.blue[4]); px(c, x + 2, y - h + 2, NE[9]); px(c, x + 2, y - h + 3, NE[9]);
-}
-function pitcherBig(c, x, y) {
-  // stainless steel water pitcher
-  for (let j = 0; j < 22; j++) {
-    const w = 6 + Math.round(Math.sin(j / 22 * Math.PI) * 2) + (j > 18 ? -1 : 0);
-    for (let i = -w; i <= w; i++) {
-      let col = NE[6];
-      if (i < -w + 2) col = NE[8]; else if (i < -w + 4) col = NE[7]; else if (i > w - 2) col = NE[4]; else if (i > w - 5) col = NE[5];
-      if (i === -w + 5 && j > 3 && j < 18) col = NE[9];
-      px(c, x + i, y - 22 + j, col);
-    }
-  }
-  fill(c, x - 6, y - 23, 12, 2, NE[7]); px(c, x - 8, y - 23, NE[7]); px(c, x - 9, y - 24, NE[6]); // spout
-  // handle
-  fill(c, x + 8, y - 19, 3, 1, NE[5]); fill(c, x + 10, y - 19, 1, 12, NE[4]); fill(c, x + 8, y - 8, 3, 1, NE[4]);
-  fill(c, x - 6, y, 13, 1, NE[3]);
-}
-function folderStack(c, x, y, n, seed) {
-  const r = G.rng(seed);
-  const cols = [R.paper, R.stone, GO, R.blue, R.red];
-  for (let i = 0; i < n; i++) {
-    const dx = Math.round(r() * 4 - 2), ramp = i % 3 === 2 ? cols[Math.floor(r() * 5)] : R.paper;
-    const yy = y - i * 3;
-    G.poly(c, [[x + dx, yy - 3], [x + 46 + dx, yy - 3], [x + 52 + dx, yy], [x + 6 + dx, yy]], C(ramp, 3));
-    fill(c, x + 6 + dx, yy, 47, 2, C(ramp, 1)); fill(c, x + 6 + dx, yy, 47, 1, C(ramp, 2));
-    if (r() < 0.6) fill(c, x + 20 + dx + Math.floor(r() * 20), yy - 4, 6, 1, [R.red[3], R.blue[4], R.green[4], GO[4]][i % 4]); // tab
-    if (r() < 0.4) fill(c, x + 8 + dx, yy + 1, 45, 1, R.paper[4]); // sheets peeking
-  }
-  // rubber band / clip
-  fill(c, x + 30, y - n * 3 - 2, 2, n * 3 + 3, R.red[3]);
-}
-function laptopBack(c, x, y) {
-  // lid seen from behind (screen faces the speaker)
-  G.poly(c, [[x, y - 28], [x + 44, y - 30], [x + 46, y], [x + 2, y]], NE[5]);
-  G.poly(c, [[x + 1, y - 27], [x + 43, y - 29], [x + 44, y - 2], [x + 3, y - 2]], NE[6]);
-  fill(c, x + 2, y - 2, 44, 2, NE[3]);
-  G.line(c, x + 1, y - 27, x + 43, y - 29, NE[8]);
-  G.ellipse(c, x + 23, y - 15, 3, 3, NE[7]); px(c, x + 22, y - 16, NE[9]);
-  fill(c, x - 4, y, 54, 3, NE[4]); fill(c, x - 4, y, 54, 1, NE[7]);
-}
-function shotDesk(c, y0, y1, x0, x1, base, topRamp) {
-  // perspective table top from y0 (far edge) to y1 (near edge) + front edge below
-  topRamp = topRamp || WD;
-  for (let y = y0; y < y1; y++) {
-    const f = (y - y0) / (y1 - y0);
-    for (let x = x0; x < x1; x++) {
-      let col = C(topRamp, base);
-      const g = Math.sin(x * 0.07 + Math.sin(y * 0.9 + x * 0.013) * 2.2);
-      if (g > 0.85) col = C(topRamp, base - 1);
-      if (f < 0.12 && G.bayer(x, y) < 6) col = C(topRamp, base - 1);
-      px(c, x, y, col);
-    }
-  }
-  // reflections of windows on polished top
-  fill(c, x0, y1, x1 - x0, 1, C(topRamp, base + 2));
-  fill(c, x0, y1 + 1, x1 - x0, 2, C(topRamp, base + 1));
-  fill(c, x0, y1 + 3, x1 - x0, 1, C(topRamp, base - 2));
-  fill(c, x0, y1 + 4, x1 - x0, SH - y1 - 4, C(topRamp, base - 2));
-  for (let x = x0 + 6; x < x1; x += 46) panelRect(c, x, y1 + 8, 40, SH - y1 - 6, topRamp, base - 1, 2);
-}
+/* ---------------- shot registry ---------------- */
+const SH_INFO = E.shots;
+Object.assign(SH_INFO, {
+  judge: { anchor: { x: 192, y: 184 }, flip: false },
+  witness: { anchor: { x: 210, y: 184 }, flip: false },
+  defense: { anchor: { x: 120, y: 186 }, flip: true },
+  prosecution: { anchor: { x: 264, y: 186 }, flip: false },
+  jury: { anchor: { x: 192, y: 190 }, flip: false, extras: [] },
+  visit: { anchor: { x: 196, y: 186 }, flip: false },
+  defendant: { anchor: { x: 236, y: 188 }, flip: false },
+  office: { anchor: { x: 128, y: 216 }, flip: true, extras: [{ x: 276, y: 216, flip: false }] },
+  hallway: { anchor: { x: 140, y: 216 }, flip: true, extras: [{ x: 262, y: 216, flip: false }] },
+});
+const BUILT = {};
+function get(id, builder) { return BUILT[id] || (BUILT[id] = builder()); }
 
 /* ======================= JUDGE ======================= */
 function buildJudge() {
-  const back = G.makeCanvas(SW, SH), b = back.getContext('2d');
-  // tall walnut wall, low camera: verticals lean in slightly toward the top
-  panelWall(b, 0, SW, 0, 170, 0, 170, 1, [], [], 2, 2);
-  // side wings (darker, receding)
-  panelWall(b, 0, 70, 6, 170, 0, 170, 1.0, [0.12, 0.88], [0.12, 0.45, 0.52, 0.92], 1, 2);
-  panelWall(b, 314, SW, 0, 170, 6, 170, 1.0, [0.12, 0.88], [0.12, 0.45, 0.52, 0.92], 1, 2);
-  // central backdrop
-  panelWall(b, 84, 300, 22, 170, 22, 170, 1, [0.05, 0.95], [0.04, 0.96], 2, 3);
-  // pilasters
-  for (const x of [70, 300]) {
-    fill(b, x, 0, 14, 170, WD[3]); fill(b, x, 0, 2, 170, WD[5]); fill(b, x + 12, 0, 2, 170, WD[1]);
-    for (let k = 0; k < 3; k++) { fill(b, x + 4 + k * 3, 14, 1, 150, WD[1]); fill(b, x + 5 + k * 3, 14, 1, 150, WD[4]); }
-    moulding(b, x - 2, 10, 18, WD, [6, 4, 2, 1]);
-  }
-  // cornice
-  moulding(b, 0, 0, SW, WD, [1, 3, 5, 6, 4, 3, 2, 1, 0]);
-  for (let x = 2; x < SW; x += 5) { fill(b, x, 9, 3, 3, WD[4]); fill(b, x, 11, 3, 1, WD[2]); fill(b, x + 2, 9, 1, 3, WD[2]); }
-  moulding(b, 0, 12, SW, WD, [1, 0, 4, 3]);
-  // seal (big) with halo shadow
-  b.globalAlpha = 0.35; G.ellipse(b, 196, 78, 44, 44, P.shadow); b.globalAlpha = 1;
-  drawSeal(b, 192, 74, 42);
-  // ring text dots enhancement: "THE GREAT SEAL OF THE STATE OF CALIFORNIA" suggested by tick marks
-  // flag stands
-  bigPole(b, 40, 22, 170); bigPole(b, 342, 22, 170);
-  // light shaft from upper-left
-  const sh = [[0, 0], [60, 0], [210, 170], [120, 170]];
-  // lower shadow under bench overhang
-  for (let y = 150; y < 170; y++) G.dither(b, 0, y, SW, 1, P.black, (y - 150) >> 1);
-  vignette(b, 9);
-  const shaft = beam(b, sh);
-  // ---- front: bench ----
-  const front = G.makeCanvas(SW, SH), f = front.getContext('2d');
-  // bench top seen from below: big overhanging cornice
-  moulding(f, 0, 140, SW, WD, [6, 5, 5, 4, 3]);
-  fill(f, 0, 145, SW, 6, WD[2]);
-  for (let x = 0; x < SW; x += 6) { fill(f, x, 146, 4, 3, WD[3]); px(f, x, 146, WD[5]); fill(f, x, 149, 4, 1, WD[1]); }
-  moulding(f, 0, 151, SW, WD, [1, 0, 3, 2]);
-  fill(f, 0, 155, SW, SH - 155, WD[2]);
-  for (let x = 4; x < SW; x += 64) panelRect(f, x, 160, 56, 54, WD, 3, 3);
-  // banker's lamp (left)
-  const lx = 30;
-  fill(f, lx - 8, 136, 18, 4, GO[2]); fill(f, lx - 8, 136, 18, 1, GO[4]);
-  fill(f, lx, 122, 2, 14, GO[3]); px(f, lx, 122, GO[5]);
-  G.poly(f, [[lx - 14, 122], [lx + 16, 122], [lx + 12, 112], [lx - 10, 112]], R.green[3]);
-  fill(f, lx - 10, 112, 22, 2, R.green[4]); fill(f, lx - 13, 120, 28, 2, R.green[2]); px(f, lx - 6, 114, R.green[6]); px(f, lx - 5, 114, R.green[5]);
-  fill(f, lx - 12, 122, 26, 1, P.glow);
-  // gavel on sound block
-  const gx = 74;
-  G.ellipse(f, gx, 138, 12, 3, WD[1]); G.ellipse(f, gx, 137, 12, 2, WD[3]); fill(f, gx - 12, 137, 24, 1, WD[4]);
-  fill(f, gx - 22, 127, 16, 7, WD[3]); fill(f, gx - 22, 127, 16, 2, WD[5]); fill(f, gx - 22, 133, 16, 1, WD[1]);
-  fill(f, gx - 20, 127, 1, 7, GO[4]); fill(f, gx - 9, 127, 1, 7, GO[4]);
-  G.line(f, gx - 6, 131, gx + 20, 135, WD[4]); G.line(f, gx - 6, 132, gx + 20, 136, WD[2]);
-  // nameplate: HON. H. WHITAKER
-  const nx = 258, ny = 122;
-  G.poly(f, [[nx - 4, 140], [nx + 80, 140], [nx + 76, 136], [nx, 136]], WD[1]);
-  fill(f, nx, ny, 76, 14, GO[3]); fill(f, nx, ny, 76, 1, GO[5]); fill(f, nx, ny + 13, 76, 1, GO[1]);
-  fill(f, nx, ny, 1, 14, GO[4]); fill(f, nx + 75, ny, 1, 14, GO[2]);
-  G.frame(f, nx + 2, ny + 2, 72, 10, GO[2]);
-  const tx = 'HON. H. WHITAKER';
-  text3(f, tx, nx + 38 - (text3W(tx) >> 1), ny + 4, GO[1], GO[4]);
-  // microphone
-  fill(f, 330, 136, 14, 4, NE[2]); fill(f, 330, 136, 14, 1, NE[4]);
-  G.line(f, 336, 136, 334, 120, NE[3]); G.line(f, 334, 120, 326, 110, NE[3]); fill(f, 322, 106, 5, 6, NE[1]); px(f, 323, 107, NE[4]);
-  return { back, front, shaft, flags: [0, 1, 2, 3].map(i => [bigFlag('us', 30, 90, i * 1.57), bigFlag('ca', 30, 90, i * 1.57 + 0.8)]), motes: makeMotes(11, 40, [0, 0, 210, 170]) };
+  const K = 'env/shot/judge/';
+  const SHP = [[0, 0], [34, 0], [112, 76], [62, 76]];
+  return {
+    back: x2(K + 'back', NW, NH, b => {
+      woodFill(b, 0, 0, NW, NH, 1);
+      // side wings (darker), stacked panels
+      for (const x0 of [0, 162]) { panel(b, x0 + 3, 14, 24, 30, 1); panel(b, x0 + 3, 47, 24, 24, 1); rosette(b, x0 + 15, 45); }
+      // pilasters
+      for (const x of [33, 151]) {
+        fill(b, x, 8, 8, 70, WD[3]); fill(b, x, 8, 1, 70, WD[5]); fill(b, x + 7, 8, 1, 70, WD[1]);
+        for (let k = 0; k < 3; k++) { fill(b, x + 2 + k * 2, 13, 1, 60, WD[1]); fill(b, x + 3 + k * 2, 13, 1, 60, WD[4]); }
+        for (let y = 16; y < 70; y += 13) px(b, x + 1, y, WHITE);
+        mould(b, x - 1, 8, 10, [6, 5, 3, 1], true); fill(b, x - 1, 76, 10, 2, WD[4]);
+      }
+      // central backdrop frame
+      fill(b, 43, 10, 106, 68, WD[2]);
+      panel(b, 45, 12, 102, 64, 2);
+      // cornice
+      mould(b, 0, 0, NW, [0, 3, 6, 5, 3, 1], true);
+      for (let x = 1; x < NW; x += 3) { fill(b, x, 6, 2, 2, WD[4]); px(b, x, 6, WD[6]); px(b, x + 1, 7, WD[1]); }
+      mould(b, 0, 8, NW, [0, 2], false);
+      // halo shadow + seal
+      b.globalAlpha = 0.35; G.ellipse(b, 98, 38, 23, 23, P.shadow); b.globalAlpha = 1;
+      seal(b, 96, 36, 22);
+      // "IN GOD WE TRUST" small brass letters above
+      // poles
+      pole(b, 18, 14, 76); pole(b, 172, 14, 76);
+      // under-bench shadow
+      ditherRows(b, 66, 76, P.black);
+      vignette(b, 8);
+    }),
+    flags: [0, 1, 2, 3].map(i => [x2(K + 'flag/us/' + i, 16, 50, flagFn('us', 16, 46, i * 1.57)), x2(K + 'flag/ca/' + i, 16, 50, flagFn('ca', 16, 46, i * 1.57 + 0.8))]),
+    shaft: x2(K + 'shaft', NW, NH, beamFn(SHP)), shp: SHP, motes: motes(11, 26, [0, 0, 112, 76]),
+    front: x2(K + 'front', NW, NH, f => {
+      // bench top: overhanging cornice
+      mould(f, 0, 70, NW, [6, 5, 4, 3], true);
+      fill(f, 0, 74, NW, 3, WD[2]);
+      for (let x = 0; x < NW; x += 4) { fill(f, x, 74, 3, 2, WD[3]); px(f, x, 74, WD[5]); }
+      mould(f, 0, 77, NW, [1, 0, 3], false);
+      fill(f, 0, 80, NW, NH - 80, WD[2]);
+      for (let x = 3; x < NW; x += 32) { panel(f, x, 82, 28, 26, 3); rosette(f, x + 30, 85); }
+      // banker's lamp
+      const lx = 13;
+      fill(f, lx - 4, 67, 10, 3, GO[2]); fill(f, lx - 4, 67, 10, 1, GO[4]); px(f, lx - 3, 67, WHITE);
+      fill(f, lx, 59, 1, 8, GO[4]); px(f, lx, 60, WHITE);
+      G.poly(f, [[lx - 8, 59], [lx + 9, 59], [lx + 7, 54], [lx - 6, 54]], GR[3]);
+      fill(f, lx - 6, 54, 13, 1, GR[5]); fill(f, lx - 8, 58, 17, 1, GR[2]); px(f, lx - 4, 55, WHITE); px(f, lx - 3, 55, GR[6]);
+      fill(f, lx - 7, 59, 15, 1, P.glow);
+      // gavel + sound block
+      const gx = 36;
+      fill(f, gx - 6, 67, 13, 3, WD[1]); fill(f, gx - 6, 67, 13, 1, WD[4]); px(f, gx - 5, 67, WD[6]);
+      fill(f, gx - 12, 62, 8, 4, WD[3]); fill(f, gx - 12, 62, 8, 1, WD[5]); px(f, gx - 11, 62, WHITE); fill(f, gx - 12, 65, 8, 1, WD[1]);
+      px(f, gx - 11, 63, GO[4]); px(f, gx - 6, 63, GO[4]);
+      G.line(f, gx - 4, 64, gx + 9, 66, WD[4]); G.line(f, gx - 4, 65, gx + 9, 67, WD[1]);
+      // nameplate
+      const nx = 122, ny = 60, tw = text3W('HON. H. WHITAKER');
+      fill(f, nx - 2, 68, tw + 10, 2, WD[1]); fill(f, nx - 2, 68, tw + 10, 1, WD[4]);
+      fill(f, nx, ny, tw + 6, 8, GO[3]); fill(f, nx, ny, tw + 6, 1, GO[5]); fill(f, nx, ny + 7, tw + 6, 1, GO[1]);
+      fill(f, nx, ny, 1, 8, GO[4]); fill(f, nx + tw + 5, ny, 1, 8, GO[2]);
+      px(f, nx + 1, ny + 1, WHITE); px(f, nx + 2, ny + 1, WHITE); px(f, nx + 12, ny, WHITE);
+      text3(f, 'HON. H. WHITAKER', nx + 3, ny + 2, GO[1]);
+      px(f, nx + 1, ny + 4, GO[1]); px(f, nx + tw + 4, ny + 4, GO[1]); // screws
+      // papers + pen on bench
+      fill(f, 52, 68, 16, 2, R.paper[4]); fill(f, 53, 67, 15, 1, R.paper[3]); px(f, 52, 68, WHITE); penN(f, 60, 69, 8);
+    }),
+  };
 }
-let J = null;
 SHOTS.judge = function (ctx, layer, t) {
-  if (!J) J = buildJudge();
+  const S = get('judge', buildJudge);
   if (layer === 'back') {
-    ctx.drawImage(J.back, 0, 0);
+    ctx.drawImage(S.back, 0, 0);
     const k = Math.floor(t * 1.3) % 4, k2 = (k + 1) % 4;
-    G.blit(ctx, J.flags[k][0], 43, 24);
-    G.blit(ctx, J.flags[k2][1], 341 - 30, 24, true);
-    ctx.globalAlpha = 0.12 + 0.04 * Math.sin(t * 0.4);
-    ctx.drawImage(J.shaft, 0, 0); ctx.globalAlpha = 1;
-    drawMotes(ctx, J.motes, t, (x, y) => inPoly([[0, 0], [60, 0], [210, 170], [120, 170]], x, y));
+    ctx.drawImage(S.flags[k][0], 20 * 2, 15 * 2);
+    G.blit(ctx, S.flags[k2][1], 171 * 2 - 32, 15 * 2, true);
+    shaftDraw(ctx, S.shaft, t);
+    nat(ctx, c => drawMotes(c, S.motes, t, S.shp));
   } else {
-    ctx.drawImage(J.front, 0, 0);
-    // lamp light flicker + glint on the nameplate
-    ctx.globalAlpha = 0.18 + 0.03 * Math.sin(t * 9) * Math.sin(t * 2.3);
-    G.dither(ctx, 14, 123, 34, 13, P.glow, 8); ctx.globalAlpha = 1;
-    const gl = ((t * 0.35) % 1.6) * 60;
-    if (gl < 80) { px(ctx, 258 + gl | 0, 123, GO[5]); px(ctx, 259 + gl | 0, 123, P.white); }
+    ctx.drawImage(S.front, 0, 0);
+    nat(ctx, c => {
+      c.globalAlpha = 0.16 + 0.03 * Math.sin(t * 9) * Math.sin(t * 2.3); G.dither(c, 5, 60, 18, 8, P.glow, 8); c.globalAlpha = 1;
+      const g = ((t * 0.4) % 2.2) * 40; if (g < 70) { px(c, 122 + (g | 0), 60, WHITE); px(c, 123 + (g | 0), 60, GO[5]); }
+    });
   }
 };
 
 /* ======================= WITNESS ======================= */
 function buildWitness() {
-  const back = G.makeCanvas(SW, SH), b = back.getContext('2d');
-  // back wall: plaster top, walnut wainscot, receding to the left
-  plaster(b, 0, 0, SW, 110, 4, 3);
-  G.dither(b, 0, 0, SW, 14, ST[3], 8);
-  moulding(b, 0, 0, SW, WD, [1, 4, 3, 2, 1]);
-  moulding(b, 0, 30, SW, WD, [3, 1]);
-  panelWall(b, 0, SW, 96, 170, 92, 170, 1, [0.01, 0.09, 0.11, 0.19, 0.21, 0.29, 0.31, 0.39, 0.41, 0.49, 0.51, 0.59, 0.61, 0.69, 0.71, 0.79, 0.81, 0.89, 0.91, 0.99], [0.15, 0.85], 3, 2);
-  moulding(b, 0, 91, SW, WD, [5, 4, 3, 1]);
-  // tall window, left, with light
-  const wx = 18, ww = 50;
-  fill(b, wx - 5, 10, ww + 10, 86, WD[2]); fill(b, wx - 5, 10, ww + 10, 1, WD[4]); fill(b, wx - 5, 10, 1, 86, WD[4]);
-  for (let y = 14; y < 92; y++) for (let x = wx; x < wx + ww; x++) {
-    const f = (y - 14) / 78;
-    let col = f < 0.3 ? P.sky : f < 0.65 ? P.sky2 : P.glow;
-    if (f > 0.25 && f < 0.3 && G.bayer(x, y) < 8) col = P.sky2;
-    if (f > 0.6 && f < 0.65 && G.bayer(x, y) < 8) col = P.glow;
-    px(b, x, y, col);
-  }
-  // palm silhouettes outside
-  for (let y = 40; y < 92; y++) px(b, wx + 14 + ((y / 11) | 0) % 2, y, R.green[2]);
-  [[-12, 4], [-9, 8], [10, 3], [12, 9], [-4, 10], [5, 11]].forEach(([dx, dy]) => G.line(b, wx + 15, 40, wx + 15 + dx, 40 + dy, R.green[2]));
-  for (let y = 40; y < 92; y++) px(b, wx + 38, y, R.green[3]);
-  [[-7, 3], [7, 3], [-5, 6], [6, 6]].forEach(([dx, dy]) => G.line(b, wx + 38, 40, wx + 38 + dx, 40 + dy, R.green[3]));
-  fill(b, wx + 24, 14, 2, 78, WD[2]); for (let y = 30; y < 92; y += 16) fill(b, wx, y, ww, 1, WD[2]);
-  fill(b, wx, 14, ww, 6, ST[4]); for (let k = 0; k < 6; k += 2) fill(b, wx, 14 + k, ww, 1, ST[3]);
-  fill(b, wx - 6, 94, ww + 12, 3, WD[4]);
-  // clock
-  G.ellipse(b, 128, 46, 13, 13, WD[1]); G.ellipse(b, 128, 46, 12, 12, GO[3]); G.ellipse(b, 128, 46, 10, 10, NE[9]);
-  for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; px(b, 128 + Math.round(Math.sin(a) * 8), 46 - Math.round(Math.cos(a) * 8), NE[3]); }
-  px(b, 121, 39, GO[5]); px(b, 122, 38, GO[5]);
-  b.globalAlpha = 0.3; G.ellipse(b, 131, 49, 13, 13, P.shadow); b.globalAlpha = 1;
-  G.ellipse(b, 128, 46, 13, 13, WD[1]); G.ellipse(b, 128, 46, 12, 12, GO[3]); G.ellipse(b, 128, 46, 10, 10, NE[9]);
-  for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; px(b, 128 + Math.round(Math.sin(a) * 8), 46 - Math.round(Math.cos(a) * 8), i % 3 ? NE[5] : NE[2]); }
-  px(b, 121, 39, NE[9]);
-  // judge's bench mass on the right (closer, darker)
-  panelWall(b, 300, SW, 30, 170, 18, 170, 1, [0.1, 0.9], [0.18, 0.55, 0.62, 0.95], 2, 2);
-  moulding(b, 296, 26, 88, WD, [6, 5, 4, 2, 1, 0]);
-  fill(b, 296, 26, 3, 144, WD[4]); fill(b, 299, 26, 1, 144, WD[1]);
-  // CA flag pole in front of the bench edge
-  bigPole(b, 284, 14, 170);
-  // floor (carpet) below the wainscot
-  for (let y = 170; y < SH; y++) for (let x = 0; x < SW; x++) px(b, x, y, ((x + y * 2) % 16 === 0) ? R.carpet[2] : R.carpet[1]);
-  vignette(b, 7);
-  for (let y = 150; y < 170; y++) G.dither(b, 0, y, SW, 1, P.black, (y - 150) >> 1);
-  const shaft = beam(b, [[wx, 14], [wx + ww, 14], [wx + ww + 150, 170], [wx + 70, 170]]);
-  // ---- front: witness stand ----
-  const front = G.makeCanvas(SW, SH), f = front.getContext('2d');
-  // stand top rail (angled slightly, receding to the left)
-  for (let x = 92; x < SW; x++) {
-    const top = 146 + Math.round((x - 92) * 0.02);
-    for (let y = top; y < top + 9; y++) px(f, x, y, y === top ? WD[6] : y < top + 3 ? WD[5] : y < top + 6 ? WD[4] : WD[3]);
-    for (let y = top + 9; y < SH; y++) px(f, x, y, WD[2]);
-  }
-  // side panel of the stand (left, receding)
-  quad(f, 70, 92, 150, SH, 146, SH, (x, y, u, v) => v < 0.04 ? WD[5] : panelCol(Math.round(u * 21) - 3, 18 - Math.round(u * 21), Math.round(v * 70) - 8, 60 - Math.round(v * 70), WD, 1, 1, x, y) || WD[1], 1);
-  fill(f, 92, 146, 1, 70, WD[6]);
-  for (let x = 100; x < SW; x += 70) panelRect(f, x, 160, 62, 56, WD, 3, 2);
-  // gooseneck mic
-  fill(f, 136, 143, 18, 4, NE[1]); fill(f, 136, 143, 18, 1, NE[4]); fill(f, 138, 141, 14, 2, NE[2]);
-  const neck = [[145, 141], [146, 134], [146, 127], [144, 121], [140, 116], [135, 113]];
-  for (let i = 0; i + 1 < neck.length; i++) { G.line(f, neck[i][0], neck[i][1], neck[i + 1][0], neck[i + 1][1], NE[3]); G.line(f, neck[i][0] + 1, neck[i][1], neck[i + 1][0] + 1, neck[i + 1][1], NE[1]); }
-  for (let i = 0; i < 5; i++) px(f, neck[i][0], neck[i][1] - 2, NE[5]);
-  fill(f, 126, 108, 10, 7, NE[1]); fill(f, 126, 108, 10, 1, NE[4]); for (let k = 0; k < 3; k++) px(f, 128 + k * 3, 110, NE[3]); fill(f, 126, 114, 10, 1, NE[2]);
-  // glass of water + carafe
-  glass(f, 300, 147, 14, true);
-  pitcherBig(f, 330, 147);
-  // nameplate-free; a folded tissue & sheet of exhibit
-  G.poly(f, [[200, 147], [236, 147], [240, 150], [196, 150]], R.paper[4]); fill(f, 196, 150, 44, 1, R.paper[2]);
-  return { back, front, shaft, flag: [0, 1, 2, 3].map(i => bigFlag('ca', 26, 80, i * 1.57)), motes: makeMotes(21, 36, [18, 14, 220, 156]) };
+  const K = 'env/shot/witness/';
+  const SHP = [[8, 4], [26, 4], [100, 85], [42, 85]];
+  return {
+    back: x2(K + 'back', NW, NH, b => {
+      plaster(b, 0, 0, NW, 50, 4, 6);
+      mould(b, 0, 0, NW, [1, 4, 6, 3, 1], true); fill(b, 0, 5, NW, 1, ST[3]);
+      mould(b, 0, 15, NW, [4, 1], false);
+      // wainscot
+      fill(b, 0, 47, NW, 40, WD[1]);
+      mould(b, 0, 45, NW, [6, 5, 3, 1], true);
+      for (let x = 2; x < NW; x += 18) panel(b, x, 51, 15, 30, 3);
+      fill(b, 0, 84, NW, 3, WD[0]);
+      for (let y = 87; y < NH; y++) for (let x = 0; x < NW; x++) px(b, x, y, ((x + y * 2) % 8 === 0) ? R.carpet[2] : R.carpet[1]);
+      windowN(b, 8, 4, 18, 38, true);
+      // clock
+      clockFace(b, 40, 24, 7);
+      // framed portrait of a former judge
+      fill(b, 104, 9, 18, 23, GO[2]); fill(b, 104, 9, 18, 1, GO[5]); fill(b, 104, 9, 1, 23, GO[4]); px(b, 104, 9, WHITE);
+      fill(b, 106, 11, 14, 19, R.wood[0]);
+      G.ellipse(b, 113, 17, 3, 4, R.skinL[1]); px(b, 112, 16, R.skinL[2]); fill(b, 109, 21, 9, 9, NE[1]); fill(b, 112, 22, 3, 2, NE[8]);
+      fill(b, 108, 13, 10, 2, R.hairGrey[1]);
+      fill(b, 108, 33, 10, 2, GO[3]); px(b, 108, 33, WHITE); // plaque
+      // power outlet + vent
+      fill(b, 88, 60, 3, 5, ST[5]); px(b, 89, 61, NE[3]); px(b, 89, 63, NE[3]);
+      // judge's bench side mass (right)
+      fill(b, 148, 10, 44, 77, WD[1]);
+      mould(b, 146, 10, 46, [6, 5, 4, 2, 0], true);
+      panel(b, 151, 17, 18, 30, 2); panel(b, 171, 17, 18, 30, 2); panel(b, 151, 50, 38, 32, 2);
+      fill(b, 146, 10, 2, 77, WD[4]); px(b, 146, 20, WHITE); px(b, 146, 40, WHITE);
+      pole(b, 140, 8, 85);
+      ditherRows(b, 76, 87, P.black);
+      vignette(b, 7);
+    }),
+    flag: [0, 1, 2, 3].map(i => x2(K + 'flag/ca/' + i, 14, 44, flagFn('ca', 14, 40, i * 1.57))),
+    shaft: x2(K + 'shaft', NW, NH, beamFn(SHP)), shp: SHP, motes: motes(21, 24, [8, 4, 100, 82]),
+    front: x2(K + 'front', NW, NH, f => {
+      // side panel (receding)
+      for (let x = 18; x < 24; x++) { const tp = 75 - (x - 18); fill(f, x, tp, 1, NH - tp, WD[1]); px(f, x, tp, WD[5]); }
+      fill(f, 0, 82, 18, NH - 82, WD[0]);
+      // stand top rail
+      for (let x = 24; x < NW; x++) {
+        const tp = 70 + ((x - 24) >> 5);
+        px(f, x, tp, WD[6]); fill(f, x, tp + 1, 1, 2, WD[5]); fill(f, x, tp + 3, 1, 2, WD[4]); px(f, x, tp + 5, WD[1]);
+        if ((x * 7) % 23 === 0) px(f, x, tp, WHITE);
+        fill(f, x, tp + 6, 1, NH - tp - 6, WD[2]);
+      }
+      fill(f, 24, 70, 1, NH - 70, WD[6]);
+      for (let x = 28; x < NW; x += 34) { panel(f, x, 80, 30, 28, 3); rosette(f, x + 32, 83); }
+      // gooseneck mic
+      fill(f, 52, 68, 9, 2, NE[1]); fill(f, 52, 68, 9, 1, NE[4]); px(f, 53, 68, WHITE);
+      const neck = [[56, 68], [57, 63], [57, 59], [55, 55], [52, 53]];
+      for (let i = 0; i + 1 < neck.length; i++) { G.line(f, neck[i][0], neck[i][1], neck[i + 1][0], neck[i + 1][1], NE[3]); }
+      px(f, 57, 62, NE[6]); px(f, 57, 60, NE[6]); px(f, 56, 57, NE[6]);
+      fill(f, 46, 50, 6, 4, NE[1]); fill(f, 46, 50, 6, 1, NE[4]); px(f, 47, 50, WHITE); px(f, 48, 52, NE[3]); px(f, 50, 52, NE[3]);
+      // water glass, carafe, sheet, tissue box
+      glassN(f, 150, 70, 7, true);
+      pitcherN(f, 166, 70);
+      fill(f, 98, 68, 18, 2, R.paper[4]); fill(f, 99, 67, 17, 1, R.paper[3]); px(f, 98, 68, WHITE);
+      for (let k = 0; k < 3; k++) fill(f, 101 + k * 4, 68, 3, 1, R.paper[2]);
+      fill(f, 176, 63, 12, 7, R.blue[4]); fill(f, 176, 63, 12, 1, R.blue[5]); px(f, 176, 63, WHITE);
+      G.poly(f, [[180, 63], [184, 63], [185, 59], [181, 58]], NE[9]); px(f, 182, 60, WHITE);
+    }),
+  };
 }
-let Wt = null;
 SHOTS.witness = function (ctx, layer, t) {
-  if (!Wt) Wt = buildWitness();
+  const S = get('witness', buildWitness);
   if (layer === 'back') {
-    ctx.drawImage(Wt.back, 0, 0);
-    const k = Math.floor(t * 1.2) % 4;
-    G.blit(ctx, Wt.flag[k], 287 - 26, 16, true);
-    // clock hands
-    const a = Lb.clockHands(t);
-    const hand = (ang, r, col) => { for (let i = 1; i <= r; i++) px(ctx, 128 + Math.round(Math.sin(ang) * i), 46 - Math.round(Math.cos(ang) * i), col); };
-    hand(a.h, 5, NE[1]); hand(a.m, 8, NE[1]); hand(a.s, 8, R.red[3]); px(ctx, 128, 46, GO[2]);
-    ctx.globalAlpha = 0.13 + 0.04 * Math.sin(t * 0.33); ctx.drawImage(Wt.shaft, 0, 0); ctx.globalAlpha = 1;
-    drawMotes(ctx, Wt.motes, t, (x, y) => inPoly([[18, 14], [68, 14], [218, 170], [88, 170]], x, y));
+    ctx.drawImage(S.back, 0, 0);
+    G.blit(ctx, S.flag[Math.floor(t * 1.2) % 4], 142 * 2 - 28 - 2, 9 * 2, true);
+    nat(ctx, c => clockHandsN(c, 40, 24, 7, t));
+    shaftDraw(ctx, S.shaft, t);
+    nat(ctx, c => drawMotes(c, S.motes, t, S.shp));
   } else {
-    ctx.drawImage(Wt.front, 0, 0);
-    // mic LED + glass shimmer
-    px(ctx, 134, 113, (t % 1.4) < 1.0 ? R.red[4] : R.red[2]);
-    const s = Math.floor(t * 3) % 6;
-    px(ctx, 301, 140 + (s % 3), NE[9]);
+    ctx.drawImage(S.front, 0, 0);
+    nat(ctx, c => {
+      px(c, 51, 53, (t % 1.4) < 1.0 ? R.red[4] : R.red[2]);
+      px(c, 151, 64 + Math.floor(t * 2) % 3, WHITE);
+    });
   }
 };
 
 /* ======================= COUNSEL (defense / prosecution) ======================= */
 function buildCounsel(side) {
-  const L = side === 'def';
-  const back = G.makeCanvas(SW, SH), b = back.getContext('2d');
-  // back wall (gallery side): plaster with windows on the left wall (def) or door/clock (pro)
-  plaster(b, 0, 0, SW, 120, 3, L ? 7 : 9);
-  G.dither(b, 0, 0, SW, 16, ST[2], 8);
-  moulding(b, 0, 0, SW, WD, [0, 3, 2, 1, 0]);
-  moulding(b, 0, 26, SW, WD, [2, 0]);
-  // receding side wall with tall windows (perspective) on the far side
-  const sx0 = L ? 300 : 0, sx1 = L ? SW : 84;
-  if (L) {
-    quad(b, sx0, sx1, 12, 132, 0, 150, (x, y, u, v) => {
-      const inW = (u > 0.12 && u < 0.42) || (u > 0.6 && u < 0.9);
-      if (inW && v > 0.1 && v < 0.62) { const f = (v - 0.1) / 0.52; return f < 0.4 ? P.sky : f < 0.75 ? P.sky2 : P.glow; }
-      if (inW && v >= 0.62 && v < 0.66) return WD[4];
-      if (v > 0.72) return v < 0.74 ? WD[4] : WD[1];
-      return h2(x, y) < 0.05 ? ST[3] : ST[4];
-    }, 1.6);
-  } else {
-    quad(b, sx0, sx1, 0, 150, 12, 132, (x, y, u, v) => {
-      if (v > 0.72) return v < 0.74 ? WD[4] : WD[1];
-      return h2(x, y) < 0.05 ? ST[2] : ST[3];
-    }, 0.6);
-  }
-  // wainscot on back wall
-  const wx0 = L ? 0 : 84, wx1 = L ? 300 : SW;
-  panelWall(b, wx0, wx1, 82, 140, 82, 140, 1, (() => { const a = []; for (let u = 0; u < 1; u += 0.1) a.push(u + 0.01, u + 0.09); return a; })(), [0.12, 0.85], 2, 2);
-  moulding(b, wx0, 80, wx1 - wx0, WD, [5, 4, 3, 1]);
-  if (L) {
-    // windows' light pool on back wall + shaft
-  } else {
-    // exit door + sign + clock
-    const dx = 120;
-    fill(b, dx - 4, 22, 58, 100, WD[3]); fill(b, dx - 4, 22, 58, 1, WD[5]); fill(b, dx - 4, 22, 1, 100, WD[4]);
-    fill(b, dx, 26, 50, 96, WD[0]);
-    for (let k = 0; k < 2; k++) { fill(b, dx + k * 25, 26, 24, 96, WD[2]); panelRect(b, dx + 2 + k * 25, 52, 20, 30, WD, 2, 2); fill(b, dx + 4 + k * 25, 30, 16, 18, NE[3]); G.dither(b, dx + 4 + k * 25, 30, 16, 18, NE[4], 4); }
-    fill(b, dx - 2, 88, 54, 3, NE[5]); fill(b, dx - 2, 88, 54, 1, NE[7]);
-    fill(b, dx + 6, 8, 38, 12, NE[8]); fill(b, dx + 6, 8, 38, 1, NE[9]); fill(b, dx + 6, 19, 38, 1, NE[5]);
-    const s = 'EXIT'; for (let i = 0; i < 4; i++) { const g = Lb.F3[s[i]]; for (let k = 0; k < 15; k++) if (g[k] === '1') fill(b, dx + 10 + i * 8 + (k % 3) * 2, 10 + ((k / 3) | 0) * 2 - 1, 2, 2, R.red[3]); }
-    // clock
-    const ccx = 262, ccy = 40;
-    G.ellipse(b, ccx, ccy, 12, 12, WD[1]); G.ellipse(b, ccx, ccy, 11, 11, GO[3]); G.ellipse(b, ccx, ccy, 9, 9, NE[9]);
-    for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; px(b, ccx + Math.round(Math.sin(a) * 7), ccy - Math.round(Math.cos(a) * 7), i % 3 ? NE[5] : NE[2]); }
-  }
-  // gallery pews (back row), people get drawn per-frame, then bar railing in front of them
-  const rail = G.makeCanvas(SW, SH), rr = rail.getContext('2d');
-  // pew backs
-  fill(rr, 0, 122, SW, 4, WD[4]); fill(rr, 0, 122, SW, 1, WD[5]); fill(rr, 0, 126, SW, 6, WD[2]);
-  // bar rail
-  fill(rr, 0, 132, SW, 3, WD[5]); fill(rr, 0, 132, SW, 1, WD[6]); fill(rr, 0, 135, SW, 2, WD[2]);
-  for (let x = 3; x < SW; x += 9) { fill(rr, x, 137, 4, 18, WD[3]); fill(rr, x, 137, 1, 18, WD[5]); fill(rr, x + 3, 137, 1, 18, WD[1]); fill(rr, x, 142, 4, 1, WD[4]); fill(rr, x, 145, 4, 1, WD[1]); }
-  fill(rr, 0, 155, SW, 3, WD[2]);
-  // darken rail a bit (depth)
-  // crowd
-  const r = G.rng(L ? 101 : 202);
-  const ppl = [];
-  const xs = L ? [186, 222, 262, 298, 338, 372, 18, 52] : [14, 50, 88, 124, 162, 208, 340, 372];
-  xs.forEach((x, i) => {
-    const o = randPerson(r, 1.45 + (i % 3) * 0.06, 1);
-    ppl.push({ x, y: 140 + (i % 2) * 2, o, whisper: i % 2 === 0 });
-  });
-  // sometimes neighbour looks toward whisperer
-  ppl.forEach((p, i) => { if (i % 2 === 0 && ppl[i + 1]) { p.o.look = (ppl[i + 1].x > p.x) ? 1 : -1; } });
-  const cr = crowd(ppl);
-  // shaft from side windows (def) / overhead light (pro)
-  const shPts = L ? [[310, 20], [372, 10], [160, 170], [40, 170]] : [[0, 0], [70, 0], [190, 170], [100, 170]];
-  const shaft = beam(b, shPts);
-  vignette(b, 7);
-  // ---- front: counsel table ----
-  const front = G.makeCanvas(SW, SH), f = front.getContext('2d');
-  shotDesk(f, 148, 160, 0, SW, 4);
-  if (L) {
-    folderStack(f, 2, 152, 6, 7);
-    legalPad(f, [[150, 148], [196, 148], [204, 160], [146, 160]], 4, 3);
-    pen(f, 206, 156, 14);
-    laptopBack(f, 232, 154);
-    pitcherBig(f, 312, 158);
-    glass(f, 330, 158, 12, true);
-    G.poly(f, [[338, 152], [384, 150], [384, 158], [344, 160]], R.paper[4]); fill(f, 344, 160, 40, 1, R.paper[2]);
-    for (let k = 0; k < 4; k++) fill(f, 348 + k, 153 + k * 2, 26, 1, R.paper[2]);
-    // paper clip, sticky note
-    fill(f, 116, 151, 8, 6, GO[5]); fill(f, 116, 151, 8, 1, GO[4]);
-  } else {
-    pitcherBig(f, 36, 158);
-    glass(f, 52, 158, 12, true);
-    laptopBack(f, 96, 154);
-    legalPad(f, [[178, 148], [222, 148], [228, 160], [172, 160]], 4, 9);
-    pen(f, 160, 157, 14, R.red[2]);
-    // binders
-    for (let i = 0; i < 3; i++) {
-      const bx = 316 + i * 3, by = 160 - i * 6, col = [R.red, R.blue, NE][i];
-      fill(f, bx, by - 6, 62, 6, C(col, 3)); fill(f, bx, by - 6, 62, 1, C(col, 4)); fill(f, bx + 62, by - 6, 3, 6, R.paper[3]);
-      fill(f, bx + 4, by - 4, 14, 2, NE[8]);
-    }
-  }
-  return { back, rail, front, cr, shaft, shPts, motes: makeMotes(L ? 31 : 32, 34, L ? [40, 10, 330, 160] : [0, 0, 190, 170]), L };
+  const L = side === 'def', K = 'env/shot/' + (L ? 'defense' : 'prosecution') + '/';
+  const SHP = L ? [[154, 6], [184, 2], [96, 76], [44, 76]] : [[0, 0], [30, 0], [96, 76], [52, 76]];
+  const xs = L ? [92, 110, 130, 148, 168, 186, 8, 26] : [6, 24, 44, 62, 82, 104, 168, 186];
+  const ppl = xs.map((x, i) => ({ x, y: 66 + (i % 2), o: look(i * 5 + (L ? 1 : 3), { size: 'm', dim: 1, look: (i % 2) ? -1 : 1 }), whisper: i % 2 === 0 }));
+  return {
+    back: x2(K + 'back', NW, NH, b => {
+      plaster(b, 0, 0, NW, 46, 3, 6);
+      mould(b, 0, 0, NW, [0, 3, 5, 2, 1], true);
+      mould(b, 0, 12, NW, [3, 1], false);
+      fill(b, 0, 40, NW, 26, WD[1]);
+      mould(b, 0, 38, NW, [6, 5, 3, 1], true);
+      for (let x = 2; x < NW; x += 18) panel(b, x, 44, 15, 18, 2);
+      if (L) {
+        // receding side wall with windows (right)
+        for (let x = 150; x < NW; x++) {
+          const s = (x - 150) / 42, tp = Math.round(6 - s * 6), bt = Math.round(66 + s * 8);
+          for (let y = tp; y < bt; y++) {
+            const v = (y - tp) / (bt - tp);
+            const inW = (s > 0.08 && s < 0.42) || (s > 0.58 && s < 0.92);
+            let col = ST[4];
+            if (inW && v > 0.08 && v < 0.6) { const q = (v - 0.08) / 0.52; col = q < 0.4 ? P.sky : q < 0.75 ? P.sky2 : P.glow; if (((x + y) % 7) === 0 && q > 0.2) col = WHITE; }
+            else if (inW && v >= 0.6 && v < 0.64) col = WD[5];
+            else if (v > 0.66) col = v < 0.68 ? WD[5] : WD[1];
+            px(b, x, y, col);
+          }
+        }
+        fill(b, 149, 0, 1, 66, WD[1]);
+        // brass wall sconces
+        for (const sx of [40, 118]) { fill(b, sx, 20, 3, 6, GO[3]); px(b, sx, 20, WHITE); fill(b, sx - 1, 17, 5, 3, ST[5]); px(b, sx, 17, WHITE); b.globalAlpha = 0.2; G.dither(b, sx - 5, 12, 13, 10, P.glow, 8); b.globalAlpha = 1; }
+        // framed portrait
+        fill(b, 70, 10, 16, 20, GO[2]); fill(b, 70, 10, 16, 1, GO[5]); px(b, 70, 10, WHITE); fill(b, 72, 12, 12, 16, R.green[0]);
+        G.ellipse(b, 78, 18, 3, 3, R.skinL[1]); fill(b, 74, 22, 9, 6, NE[1]); px(b, 77, 17, R.skinL[2]);
+      } else {
+        // exit door
+        const dx = 56;
+        fill(b, dx - 2, 10, 30, 56, WD[3]); fill(b, dx - 2, 10, 30, 1, WD[5]); fill(b, dx - 2, 10, 1, 56, WD[4]); px(b, dx - 2, 10, WHITE);
+        for (let k = 0; k < 2; k++) { fill(b, dx + k * 13, 12, 12, 54, WD[2]); fill(b, dx + 2 + k * 13, 14, 8, 10, NE[3]); G.dither(b, dx + 2 + k * 13, 14, 8, 10, NE[4], 4); px(b, dx + 2 + k * 13, 14, WHITE); panel(b, dx + 1 + k * 13, 28, 10, 16, 2); }
+        fill(b, dx - 1, 46, 28, 2, NE[6]); fill(b, dx - 1, 46, 28, 1, NE[8]); px(b, dx, 46, WHITE);
+        fill(b, dx + 3, 2, 20, 7, NE[8]); fill(b, dx + 3, 2, 20, 1, WHITE); text3(b, 'EXIT', dx + 6, 3, R.red[3]);
+        clockFace(b, 130, 20, 7);
+        // bulletin / seal plaque
+        fill(b, 160, 10, 22, 16, WD[1]); fill(b, 161, 11, 20, 14, ST[3]);
+        fill(b, 163, 13, 6, 7, R.paper[4]); fill(b, 171, 12, 7, 5, R.paper[3]); fill(b, 172, 19, 6, 5, R.paper[4]);
+        px(b, 165, 13, R.red[3]); px(b, 174, 12, R.blue[4]); px(b, 174, 19, GO[4]); px(b, 163, 13, WHITE);
+        fill(b, 30, 30, 3, 5, ST[5]); px(b, 31, 31, NE[3]); px(b, 31, 33, NE[3]);
+      }
+      vignette(b, 7);
+    }),
+    rail: x2(K + 'rail', NW, NH, rr => {
+      // pew back
+      fill(rr, 0, 61, NW, 2, WD[5]); fill(rr, 0, 61, NW, 1, WD[6]); fill(rr, 0, 63, NW, 3, WD[2]);
+      for (let x = 5; x < NW; x += 29) px(rr, x, 61, WHITE);
+      // bar rail with balusters
+      fill(rr, 0, 66, NW, 2, WD[5]); fill(rr, 0, 66, NW, 1, WD[6]); fill(rr, 0, 68, NW, 1, WD[2]);
+      for (let x = 7; x < NW; x += 23) { px(rr, x, 66, WHITE); px(rr, x + 1, 66, WHITE); }
+      for (let x = 1; x < NW; x += 5) { fill(rr, x, 69, 2, 9, WD[3]); px(rr, x, 69, WD[5]); px(rr, x, 72, WD[6]); fill(rr, x + 1, 70, 1, 8, WD[1]); }
+      fill(rr, 0, 77, NW, 2, WD[2]);
+    }),
+    ppl: people(K + 'crowd', ppl),
+    shaft: x2(K + 'shaft', NW, NH, beamFn(SHP)), shp: SHP, motes: motes(L ? 31 : 32, 24, L ? [44, 2, 140, 74] : [0, 0, 96, 76]), L,
+    front: x2(K + 'front', NW, NH, f => {
+      deskN(f, 74, 80, 0, NW, 4);
+      if (L) {
+        folderStackN(f, 2, 77, 6, 7);
+        stickyN(f, 30, 72, GO[5]); stickyN(f, 35, 73, R.red[5]);
+        legalPadN(f, 74, 74, 24, 6, 3);
+        penN(f, 100, 78, 8);
+        laptopBackN(f, 116, 77);
+        pitcherN(f, 147, 79); glassN(f, 153, 79, 6, true);
+        tentCard(f, 160, 79, 'DEFENSE');
+      } else {
+        tentCard(f, 2, 79, 'PEOPLE');
+        pitcherN(f, 34, 79); glassN(f, 42, 79, 6, true);
+        laptopBackN(f, 52, 77);
+        legalPadN(f, 88, 74, 24, 6, 9);
+        penN(f, 114, 78, 8, R.red[2]);
+        for (let i = 0; i < 3; i++) {
+          const bx = 154 + i * 2, by = 79 - i * 3, col = [R.red, R.blue, NE][i];
+          fill(f, bx, by - 3, 34, 3, C(col, 3)); fill(f, bx, by - 3, 34, 1, C(col, 4)); px(f, bx, by - 3, WHITE);
+          fill(f, bx + 34, by - 3, 2, 3, R.paper[4]); fill(f, bx + 3, by - 2, 8, 1, NE[8]);
+        }
+        stickyN(f, 140, 74, R.teal[5]);
+      }
+    }),
+  };
 }
-const CS = {};
-function counselShot(side) {
+function counsel(side) {
   return function (ctx, layer, t) {
-    if (!CS[side]) CS[side] = buildCounsel(side);
-    const S = CS[side];
+    const S = get(side, () => buildCounsel(side));
     if (layer === 'back') {
       ctx.drawImage(S.back, 0, 0);
-      if (!S.L) {
-        const a = Lb.clockHands(t);
-        const hand = (ang, r, col) => { for (let i = 1; i <= r; i++) px(ctx, 262 + Math.round(Math.sin(ang) * i), 40 - Math.round(Math.cos(ang) * i), col); };
-        hand(a.h, 4, NE[1]); hand(a.m, 7, NE[1]); hand(a.s, 7, R.red[3]);
-      }
-      drawCrowd(ctx, S.cr, t);
+      if (!S.L) nat(ctx, c => clockHandsN(c, 130, 20, 7, t));
+      drawPeople(ctx, S.ppl, t);
       ctx.drawImage(S.rail, 0, 0);
-      ctx.globalAlpha = 0.12 + 0.04 * Math.sin(t * 0.31); ctx.drawImage(S.shaft, 0, 0); ctx.globalAlpha = 1;
-      drawMotes(ctx, S.motes, t, (x, y) => inPoly(S.shPts, x, y));
+      shaftDraw(ctx, S.shaft, t, 0.12);
+      nat(ctx, c => drawMotes(c, S.motes, t, S.shp));
     } else {
       ctx.drawImage(S.front, 0, 0);
-      if (S.L) { // laptop power LED, paper corner lifting in air from vent
-        px(ctx, 270, 152, (t % 2) < 1.6 ? R.green[5] : R.green[3]);
-        const l = [0, 1, 2, 1][Math.floor(t * 6) % 4];
-        G.poly(ctx, [[372, 150 - l], [384, 148 - l * 2], [384, 151], [374, 152]], R.paper[3]);
-      } else {
-        px(ctx, 134, 152, (t % 2) < 1.6 ? R.green[5] : R.green[3]);
-      }
+      nat(ctx, c => {
+        if (S.L) {
+          px(c, 135, 76, (t % 2) < 1.6 ? GR[5] : GR[3]);
+          const l = [0, 1, 1, 0][Math.floor(t * 5) % 4]; // sheet corner lifting in the vent draft
+          fill(c, 186, 75 - l, 6, 1, R.paper[4]); px(c, 186, 75 - l, WHITE);
+        } else px(c, 71, 76, (t % 2) < 1.6 ? GR[5] : GR[3]);
+      });
     }
   };
 }
-SHOTS.defense = counselShot('def');
-SHOTS.prosecution = counselShot('pro');
+SHOTS.defense = counsel('def');
+SHOTS.prosecution = counsel('pro');
 
 /* ======================= JURY ======================= */
 function buildJury() {
-  const back = G.makeCanvas(SW, SH), b = back.getContext('2d');
-  plaster(b, 0, 0, SW, 70, 4, 13);
-  G.dither(b, 0, 0, SW, 12, ST[3], 8);
-  moulding(b, 0, 0, SW, WD, [1, 4, 3, 2, 1]);
-  // back wall of the jury box: walnut
-  panelWall(b, 0, SW, 60, 120, 60, 120, 1, (() => { const a = []; for (let u = 0; u < 1; u += 1 / 8) a.push(u + 0.008, u + 0.117); return a; })(), [0.1, 0.9], 2, 2);
-  moulding(b, 0, 58, SW, WD, [5, 4, 3, 1]);
-  // a framed seal plaque and the clock
-  drawSeal(b, 192, 30, 16);
-  // rear tier riser + chairs
-  fill(b, 0, 118, SW, 4, WD[4]); fill(b, 0, 118, SW, 1, WD[5]);
-  const r = G.rng(404);
-  const rear = [], frontRow = [];
-  const rearX = [34, 92, 150, 224, 286, 346], frontX = [52, 118, 192, 266, 332];
-  // fixed variety for readability
-  const looks = [
-    { style: 'bun', skin: R.skinL, hair: R.hairGrey, cloth: R.purple, glasses: NE[2] },
-    { style: 'short', skin: R.skinD, hair: R.hairBlack, cloth: R.stone, tie: R.red[2], collar: NE[8] },
-    { style: 'long', skin: R.skinL, hair: R.hairBlond, cloth: R.teal },
-    { style: 'bald', skin: R.skinM, hair: R.hairBrown, cloth: R.green, beard: true },
-    { style: 'curly', skin: R.skinD, hair: R.hairBlack, cloth: R.gold },
-    { style: 'cap', skin: R.skinL, hair: R.hairRed, cloth: R.red, capCol: R.blue[3], capCol2: R.blue[2] },
-    { style: 'bob', skin: R.skinM, hair: R.hairBlack, cloth: R.blue, glasses: NE[1] },
-    { style: 'short', skin: R.skinL, hair: R.hairBrown, cloth: NE, collar: NE[8] },
-    { style: 'bob', skin: R.skinL, hair: R.hairRed, cloth: R.green },
-    { style: 'short', skin: R.skinM, hair: R.hairGrey, cloth: R.wood, glasses: GO[2] },
-    { style: 'long', skin: R.skinD, hair: R.hairBrown, cloth: R.purple },
-  ];
-  let li = 0;
-  rearX.forEach((x, i) => rear.push({ x, y: 130, o: Object.assign({ s: 1.0, dim: 1, bulk: 0.9 + r() * 0.3, look: i < 3 ? -1 : 1 }, looks[li++ % looks.length]), whisper: i === 1 || i === 4 }));
-  frontX.forEach((x, i) => frontRow.push({ x, y: 164, o: Object.assign({ s: 1.45, dim: 0, bulk: 0.9 + r() * 0.3, look: i < 2 ? 1 : -1 }, looks[li++ % looks.length]), whisper: i === 0 || i === 3 }));
-  // chair backs
-  const chairs = G.makeCanvas(SW, SH), ch = chairs.getContext('2d');
-  rearX.forEach(x => { fill(ch, x - 13, 96, 26, 26, R.red[1]); fill(ch, x - 13, 96, 26, 2, R.red[2]); fill(ch, x - 13, 96, 1, 26, R.red[2]); });
-  const chairs2 = G.makeCanvas(SW, SH), ch2 = chairs2.getContext('2d');
-  frontX.forEach(x => { fill(ch2, x - 17, 116, 34, 30, R.red[2]); fill(ch2, x - 17, 116, 34, 2, R.red[3]); fill(ch2, x - 17, 116, 2, 30, R.red[3]); fill(ch2, x + 15, 116, 2, 30, R.red[1]); });
-  // mid parapet between tiers
-  const mid = G.makeCanvas(SW, SH), md = mid.getContext('2d');
-  fill(md, 0, 126, SW, 3, WD[5]); fill(md, 0, 126, SW, 1, WD[6]); fill(md, 0, 129, SW, 12, WD[2]);
-  for (let x = 4; x < SW; x += 32) panelRect(md, x, 130, 28, 10, WD, 2, 1);
-  // front rail (front layer)
-  const front = G.makeCanvas(SW, SH), f = front.getContext('2d');
-  fill(f, 0, 150, SW, 4, WD[6]); fill(f, 0, 152, SW, 3, WD[5]); fill(f, 0, 155, SW, 3, WD[3]); fill(f, 0, 158, SW, SH - 158, WD[2]);
-  for (let x = 6; x < SW; x += 48) panelRect(f, x, 162, 42, 50, WD, 3, 2);
-  // notepads on the rail
-  G.poly(f, [[60, 149], [80, 149], [82, 152], [58, 152]], R.paper[4]);
-  G.poly(f, [[300, 149], [322, 149], [324, 152], [298, 152]], R.paper[4]);
-  pen(f, 84, 151, 10);
-  vignette(b, 7);
-  const shaft = beam(b, [[0, 0], [80, 0], [230, 170], [120, 170]]);
-  return { back, chairs, chairs2, mid, front, rear: crowd(rear), fr: crowd(frontRow), shaft, motes: makeMotes(41, 30, [0, 0, 230, 170]) };
+  const K = 'env/shot/jury/';
+  const SHP = [[0, 0], [36, 0], [112, 76], [56, 76]];
+  const rearX = [16, 46, 76, 116, 146, 176], frontX = [24, 58, 96, 134, 168];
+  const rear = rearX.map((x, i) => ({ x, y: 62, o: look(i, { size: 's', dim: 1, look: i < 3 ? -1 : 1 }), whisper: i === 1 || i === 4 }));
+  const front = frontX.map((x, i) => ({ x, y: 84, o: look(i + 6, { size: 'm', look: i < 2 ? 1 : -1 }), whisper: i === 0 || i === 3 }));
+  return {
+    back: x2(K + 'back', NW, NH, b => {
+      plaster(b, 0, 0, NW, 32, 4, 5);
+      mould(b, 0, 0, NW, [1, 4, 6, 3, 1], true);
+      seal(b, 96, 15, 9);
+      clockFace(b, 160, 15, 6);
+      // two framed portraits
+      for (const fx of [22, 140 - 120 + 40]) { }
+      fill(b, 26, 6, 14, 18, GO[2]); fill(b, 26, 6, 14, 1, GO[5]); px(b, 26, 6, WHITE); fill(b, 28, 8, 10, 14, R.red[0]);
+      G.ellipse(b, 33, 13, 2, 3, R.skinL[1]); fill(b, 30, 17, 7, 5, NE[1]);
+      // jury box back wall
+      fill(b, 0, 30, NW, 30, WD[1]);
+      mould(b, 0, 28, NW, [6, 5, 3, 1], true);
+      for (let x = 2; x < NW; x += 24) panel(b, x, 33, 21, 22, 2);
+      fill(b, 0, 56, NW, 3, WD[4]); fill(b, 0, 56, NW, 1, WD[5]);
+      // rear chairs
+      rearX.forEach(x => { fill(b, x - 7, 44, 14, 16, R.red[1]); fill(b, x - 7, 44, 14, 1, R.red[3]); fill(b, x - 7, 44, 1, 16, R.red[2]); px(b, x - 6, 45, R.red[4]); for (let k = 0; k < 3; k++) px(b, x - 5 + k * 5, 45, GO[4]); });
+    }),
+    mid: x2(K + 'mid', NW, NH, md => {
+      fill(md, 0, 61, NW, 2, WD[5]); fill(md, 0, 61, NW, 1, WD[6]); fill(md, 0, 63, NW, 8, WD[2]);
+      for (let x = 3; x < NW; x += 9 * 3) { px(md, x, 61, WHITE); }
+      for (let x = 2; x < NW; x += 16) panel(md, x, 64, 13, 6, 2);
+      // front chairs
+      frontX.forEach(x => { fill(md, x - 9, 60, 18, 24, R.red[2]); fill(md, x - 9, 60, 18, 1, R.red[4]); fill(md, x - 9, 60, 1, 24, R.red[3]); fill(md, x + 8, 60, 1, 24, R.red[1]); px(md, x - 8, 61, WHITE); for (let k = 0; k < 4; k++) px(md, x - 7 + k * 5, 61, GO[4]); });
+    }),
+    rear: people(K + 'rear', rear), front: people(K + 'front', front),
+    shaft: x2(K + 'shaft', NW, NH, beamFn(SHP)), shp: SHP, motes: motes(41, 22, [0, 0, 112, 76]),
+    fg: x2(K + 'front', NW, NH, f => {
+      fill(f, 0, 74, NW, 1, WD[6]); fill(f, 0, 75, NW, 2, WD[5]); fill(f, 0, 77, NW, 2, WD[3]); fill(f, 0, 79, NW, NH - 79, WD[2]);
+      for (let x = 4; x < NW; x += 31) { px(f, x, 74, WHITE); px(f, x + 1, 74, WHITE); }
+      for (let x = 3; x < NW; x += 24) { panel(f, x, 82, 20, 26, 3); rosette(f, x + 22, 85); }
+      // notepads + pens on the rail
+      fill(f, 18, 72, 12, 2, R.paper[4]); px(f, 18, 72, WHITE); for (let k = 0; k < 3; k++) fill(f, 20 + k * 3, 72, 2, 1, P.ink); penN(f, 31, 73, 6);
+      fill(f, 150, 72, 12, 2, R.paper[4]); px(f, 150, 72, WHITE);
+    }),
+  };
 }
-let JY = null;
 SHOTS.jury = function (ctx, layer, t) {
-  if (!JY) JY = buildJury();
+  const S = get('jury', buildJury);
   if (layer === 'back') {
-    ctx.drawImage(JY.back, 0, 0);
-    ctx.drawImage(JY.chairs, 0, 0);
-    drawCrowd(ctx, JY.rear, t);
-    ctx.drawImage(JY.mid, 0, 0);
-    ctx.drawImage(JY.chairs2, 0, 0);
-    drawCrowd(ctx, JY.fr, t);
+    ctx.drawImage(S.back, 0, 0);
+    nat(ctx, c => clockHandsN(c, 160, 15, 6, t));
+    drawPeople(ctx, S.rear, t);
+    ctx.drawImage(S.mid, 0, 0);
+    drawPeople(ctx, S.front, t);
     // a juror fans herself with a sheet
-    const fx = 332 + 16, fy = 132, ph = Math.floor(t * 8) % 4;
-    const off = [0, -2, -3, -2][ph];
-    G.poly(ctx, [[fx - 2, fy + 4], [fx + 6, fy + off], [fx + 8, fy + off + 6], [fx, fy + 10]], R.paper[4]);
-    fill(ctx, fx - 3, fy + 8, 4, 4, R.skinL[3]);
-    ctx.globalAlpha = 0.11 + 0.03 * Math.sin(t * 0.3); ctx.drawImage(JY.shaft, 0, 0); ctx.globalAlpha = 1;
-    drawMotes(ctx, JY.motes, t, (x, y) => inPoly([[0, 0], [80, 0], [230, 170], [120, 170]], x, y));
+    nat(ctx, c => {
+      const off = [0, -1, -2, -1][Math.floor(t * 7) % 4];
+      G.poly(c, [[176, 74], [181, 70 + off], [183, 74 + off], [178, 78]], R.paper[4]); px(c, 181, 70 + off, WHITE);
+    });
+    shaftDraw(ctx, S.shaft, t, 0.11);
+    nat(ctx, c => drawMotes(c, S.motes, t, S.shp));
   } else {
-    ctx.drawImage(JY.front, 0, 0);
-    // pen writing scratch on a notepad
-    if ((t % 3) < 1.5) { const k = Math.floor(t * 10) % 6; px(ctx, 64 + k * 2, 150, P.ink); }
+    ctx.drawImage(S.fg, 0, 0);
+    nat(ctx, c => { if ((t % 3) < 1.5) px(c, 20 + Math.floor(t * 8) % 9, 73, P.ink); });
   }
 };
 
-/* ======================= VISIT (county jail) ======================= */
+/* ======================= VISIT ======================= */
 function buildVisit() {
-  const back = G.makeCanvas(SW, SH), b = back.getContext('2d');
-  const GR = R.green;
-  // cinder block wall (institutional green) behind the glass
-  for (let y = 0; y < 170; y++) for (let x = 0; x < SW; x++) {
-    const row = Math.floor(y / 9), off = (row & 1) * 12;
-    const bx = (x + off) % 24, by = y % 9;
-    let col = GR[3];
-    if (by === 0 || bx === 0) col = GR[2];
-    else if (by === 1 || bx === 1) col = GR[4];
-    else if (h2(x, y) < 0.08) col = GR[2];
-    if (y > 120) col = (by === 0 || bx === 0) ? GR[1] : (y > 124 ? GR[2] : col);
-    px(b, x, y, col);
-  }
-  // painted lower band (darker)
-  fill(b, 0, 120, SW, 2, GR[1]);
-  // steel door far right with tiny window
-  fill(b, 284, 28, 64, 142, NE[3]); fill(b, 286, 30, 60, 140, NE[4]); fill(b, 286, 30, 60, 1, NE[6]);
-  fill(b, 300, 44, 18, 26, NE[1]); fill(b, 302, 46, 14, 22, R.blue[1]);
-  for (let k = 0; k < 22; k += 4) G.line(b, 302, 46 + k, 302 + Math.min(14, 22 - k), 46 + k + Math.min(14, 22 - k), NE[3]);
-  fill(b, 336, 98, 6, 3, NE[6]); fill(b, 338, 96, 2, 8, NE[2]);
-  // sign
-  fill(b, 92, 30, 64, 22, NE[8]); fill(b, 92, 30, 64, 1, NE[9]); fill(b, 92, 51, 64, 1, NE[5]);
-  text3(b, 'NO CONTACT', 105, 34, R.red[2]);
-  text3(b, 'VISIT 15 MIN', 101, 43, NE[2]);
-  // the inmate side counter
-  fill(b, 0, 150, SW, 20, NE[3]); fill(b, 0, 150, SW, 1, NE[5]);
-  // fluorescent fixture (visible over the glass)
-  fill(b, 120, 0, 150, 7, NE[6]); fill(b, 122, 7, 146, 3, NE[9]); fill(b, 120, 10, 150, 1, NE[5]);
-  const glare = G.makeCanvas(SW, SH), gl = glare.getContext('2d');
-  G.dither(gl, 60, 10, 270, 60, P.white, 3); G.dither(gl, 110, 10, 170, 30, P.white, 5);
-  // ---- front: glass + booth ----
-  const front = G.makeCanvas(SW, SH), f = front.getContext('2d');
-  // glass reflections (semi transparent streaks)
-  const refl = G.makeCanvas(SW, SH), rf = refl.getContext('2d');
-  for (const [x0, w] of [[90, 26], [128, 8], [262, 18], [292, 6]]) G.poly(rf, [[x0, 14], [x0 + w, 14], [x0 + w - 70, 150], [x0 - 70, 150]], P.white);
-  // smudge (hand print)
-  G.dither(rf, 250, 92, 16, 14, P.white, 5); G.dither(rf, 246, 86, 4, 8, P.white, 5); G.dither(rf, 252, 82, 4, 10, P.white, 5);
-  // booth dividers (steel, perspective)
-  quad(f, 0, 70, 0, SH, 14, 150, (x, y, u, v) => {
-    if (u > 0.94) return NE[2];
-    if (u > 0.88) return GR[1];
-    return ((y + Math.round(u * 40)) % 23 === 0) ? GR[1] : (u < 0.1 ? GR[4] : GR[3]);
-  }, 0.5);
-  quad(f, 314, SW, 14, 150, 0, SH, (x, y, u, v) => {
-    if (u < 0.06) return NE[5];
-    if (u < 0.12) return GR[4];
-    return ((y + Math.round(u * 40)) % 23 === 0) ? GR[1] : (u > 0.9 ? GR[1] : GR[2]);
-  }, 2.0);
-  // glass frame
-  fill(f, 70, 10, 244, 5, NE[3]); fill(f, 70, 10, 244, 1, NE[6]); fill(f, 70, 14, 244, 1, NE[1]);
-  fill(f, 68, 10, 4, 140, NE[3]); fill(f, 68, 10, 1, 140, NE[6]); fill(f, 312, 10, 4, 140, NE[3]); fill(f, 315, 10, 1, 140, NE[1]);
-  // counter (our side)
-  fill(f, 0, 148, SW, 3, NE[7]); fill(f, 0, 148, SW, 1, NE[8]); fill(f, 0, 151, SW, 6, NE[5]); fill(f, 0, 157, SW, SH - 157, GR[2]);
-  for (let k = 0; k < 14; k++) { const x = 30 + (k * 53) % 330; G.line(f, x, 152 + (k % 4), x + 6 + (k % 5), 153 + (k % 3), NE[4]); }
-  // phone on the left divider
-  fill(f, 26, 74, 18, 30, NE[2]); fill(f, 26, 74, 18, 1, NE[4]); fill(f, 28, 78, 14, 2, NE[1]);
-  for (let k = 0; k < 3; k++) for (let j = 0; j < 3; j++) fill(f, 30 + k * 4, 84 + j * 4, 2, 2, NE[5]);
-  // handset on hook
-  fill(f, 18, 70, 6, 34, NE[1]); fill(f, 18, 70, 2, 34, NE[3]); fill(f, 16, 68, 10, 6, NE[1]); fill(f, 16, 100, 10, 6, NE[1]); px(f, 17, 69, NE[4]);
-  // armored cord (coiled steel)
-  for (let y = 106; y < 140; y += 2) { fill(f, 20 + ((y >> 1) & 1), y, 4, 1, NE[5]); fill(f, 20 + ((y >> 1) & 1), y + 1, 4, 1, NE[3]); }
-  // sticker
-  fill(f, 30, 110, 12, 8, GO[4]); fill(f, 31, 112, 10, 1, NE[1]); fill(f, 31, 114, 7, 1, NE[1]);
-  return { back, glare, front, refl };
+  const K = 'env/shot/visit/';
+  return {
+    back: x2(K + 'back', NW, NH, b => {
+      for (let y = 0; y < 85; y++) for (let x = 0; x < NW; x++) {
+        const row = Math.floor(y / 5), bx = (x + (row & 1) * 6) % 12, by = y % 5;
+        let col = GR[3];
+        if (by === 0 || bx === 0) col = GR[2];
+        else if (by === 1 || bx === 1) col = GR[4];
+        if (y > 60) col = (by === 0 || bx === 0) ? GR[1] : GR[2];
+        px(b, x, y, col);
+      }
+      fill(b, 0, 60, NW, 1, GR[1]);
+      // steel door + wire glass window
+      fill(b, 142, 14, 32, 71, NE[3]); fill(b, 143, 15, 30, 70, NE[4]); fill(b, 143, 15, 30, 1, NE[6]); px(b, 143, 15, WHITE);
+      fill(b, 150, 22, 9, 13, NE[1]); fill(b, 151, 23, 7, 11, R.blue[1]);
+      for (let k = 0; k < 11; k += 3) { px(b, 151 + (k % 7), 23 + k, NE[3]); }
+      px(b, 151, 23, WHITE);
+      fill(b, 168, 48, 3, 2, NE[7]); px(b, 168, 48, WHITE); fill(b, 169, 47, 1, 4, NE[2]);
+      // sign
+      fill(b, 44, 13, 51, 13, NE[8]); fill(b, 44, 13, 51, 1, WHITE); fill(b, 44, 25, 51, 1, NE[5]); px(b, 45, 14, NE[4]); px(b, 93, 14, NE[4]);
+      text3(b, 'NO CONTACT', 50, 14, R.red[2]);
+      text3(b, 'VISIT 15 MIN', 46, 20, NE[2]);
+      // red alarm button + CCTV dome
+      fill(b, 118, 6, 7, 4, NE[2]); G.ellipse(b, 121, 10, 3, 2, NE[1]); px(b, 120, 9, WHITE);
+      // counter (inmate side)
+      fill(b, 0, 75, NW, 10, NE[3]); fill(b, 0, 75, NW, 1, NE[6]);
+      // fluorescent fixture
+      fill(b, 60, 0, 76, 4, NE[6]); fill(b, 60, 3, 76, 1, NE[5]);
+    }),
+    glare: x2(K + 'glare', NW, NH, g => { G.dither(g, 30, 4, 136, 30, WHITE, 3); G.dither(g, 56, 4, 84, 14, WHITE, 5); }),
+    refl: x2(K + 'refl', NW, NH, rf => {
+      for (const [x0, w] of [[46, 12], [64, 4], [130, 9], [146, 3]]) G.poly(rf, [[x0, 7], [x0 + w, 7], [x0 + w - 35, 74], [x0 - 35, 74]], WHITE);
+      G.dither(rf, 124, 46, 8, 7, WHITE, 6); G.dither(rf, 122, 42, 2, 4, WHITE, 6); G.dither(rf, 126, 40, 2, 5, WHITE, 6);
+    }),
+    front: x2(K + 'front', NW, NH, f => {
+      // booth dividers (steel, perspective)
+      for (let x = 0; x < 35; x++) { const tp = Math.round(x * 0.2), bt = NH - Math.round(x * 0.9); for (let y = tp; y < bt; y++) px(f, x, y, x > 32 ? NE[2] : x > 30 ? GR[1] : ((y + x) % 12 === 0 ? GR[2] : x < 3 ? GR[4] : GR[3])); }
+      for (let x = 157; x < NW; x++) { const s = NW - 1 - x, tp = Math.round(s * 0.2), bt = NH - Math.round(s * 0.9); for (let y = tp; y < bt; y++) px(f, x, y, x < 159 ? NE[5] : x < 161 ? GR[4] : ((y + x) % 12 === 0 ? GR[1] : GR[2])); }
+      fill(f, 159, 7, 1, 60, WHITE);
+      // glass frame
+      fill(f, 35, 5, 122, 2, NE[3]); fill(f, 35, 5, 122, 1, NE[6]); for (let x = 40; x < 156; x += 19) px(f, x, 5, WHITE);
+      fill(f, 34, 5, 2, 70, NE[3]); px(f, 34, 6, WHITE); fill(f, 156, 5, 2, 70, NE[2]);
+      // speaking holes / screws
+      px(f, 37, 8, NE[1]); px(f, 154, 8, NE[1]);
+      // counter (our side)
+      fill(f, 0, 74, NW, 1, NE[8]); fill(f, 0, 75, NW, 1, NE[7]); fill(f, 0, 76, NW, 3, NE[5]); fill(f, 0, 79, NW, NH - 79, GR[2]);
+      for (let x = 10; x < NW; x += 29) px(f, x, 74, WHITE);
+      for (let k = 0; k < 9; k++) { const x = 16 + (k * 31) % 160; G.line(f, x, 76 + (k % 3), x + 3 + (k % 3), 77, NE[4]); }
+      // phone on the left divider
+      fill(f, 13, 37, 9, 15, NE[2]); fill(f, 13, 37, 9, 1, NE[4]); px(f, 13, 37, WHITE);
+      for (let k = 0; k < 3; k++) for (let j = 0; j < 3; j++) px(f, 15 + k * 2, 41 + j * 2, NE[6]);
+      fill(f, 9, 35, 3, 17, NE[1]); px(f, 9, 36, NE[4]); fill(f, 8, 34, 5, 3, NE[1]); fill(f, 8, 50, 5, 3, NE[1]); px(f, 8, 34, NE[5]);
+      for (let y = 53; y < 70; y += 2) { fill(f, 10, y, 2, 1, NE[5]); px(f, 10, y, WHITE); }
+      fill(f, 15, 55, 6, 4, GO[4]); fill(f, 16, 56, 4, 1, NE[1]);
+    }),
+  };
 }
-let V = null;
 SHOTS.visit = function (ctx, layer, t) {
-  if (!V) V = buildVisit();
-  // fluorescent flicker: mostly steady, occasional stutters
+  const S = get('visit', buildVisit);
   const cyc = t % 6.3;
-  const flick = (cyc > 4.1 && cyc < 4.5) ? ((Math.floor(t * 30) % 3) === 0 ? 0 : 1) : 1;
+  const on = !(cyc > 4.1 && cyc < 4.5 && (Math.floor(t * 30) % 3) === 0);
   if (layer === 'back') {
-    ctx.drawImage(V.back, 0, 0);
-    // guard's shadow passing behind door window
-    const gp = (t % 11) / 11;
-    if (gp < 0.25) {
-      const gx = 296 + Math.round(gp / 0.25 * 30);
-      G.ellipse(ctx, gx, 54, 4, 5, NE[1]); fill(ctx, gx - 6, 59, 12, 9, NE[1]);
-    }
-    fill(ctx, 122, 7, 146, 3, flick ? NE[9] : NE[6]);
-    ctx.globalAlpha = flick ? 0.12 : 0.03; ctx.drawImage(V.glare, 0, 0); ctx.globalAlpha = 1;
-    if (!flick) { ctx.globalAlpha = 0.25; G.dither(ctx, 0, 0, SW, SH, P.black, 8); ctx.globalAlpha = 1; }
+    ctx.drawImage(S.back, 0, 0);
+    nat(ctx, c => {
+      const gp = (t % 11) / 11;
+      if (gp < 0.25) { const gx = 148 + Math.round(gp / 0.25 * 16); G.ellipse(c, gx, 27, 2, 3, NE[1]); fill(c, gx - 3, 30, 7, 5, NE[1]); }
+      fill(c, 61, 3, 74, 1, on ? WHITE : NE[6]);
+      if (on) px(c, 120, 10, (t % 1) < 0.5 ? R.red[4] : R.red[2]);
+    });
+    ctx.globalAlpha = on ? 0.12 : 0.03; ctx.drawImage(S.glare, 0, 0); ctx.globalAlpha = 1;
+    if (!on) { ctx.globalAlpha = 0.25; G.dither(ctx, 0, 0, SW, SH, P.black, 8); ctx.globalAlpha = 1; }
   } else {
-    ctx.globalAlpha = 0.1 + (flick ? 0.04 : 0); ctx.drawImage(V.refl, 0, 0); ctx.globalAlpha = 1;
-    ctx.drawImage(V.front, 0, 0);
-    if (!flick) { ctx.globalAlpha = 0.2; G.dither(ctx, 0, 0, SW, SH, P.black, 6); ctx.globalAlpha = 1; }
+    ctx.globalAlpha = on ? 0.13 : 0.06; ctx.drawImage(S.refl, 0, 0); ctx.globalAlpha = 1;
+    ctx.drawImage(S.front, 0, 0);
+    if (!on) { ctx.globalAlpha = 0.2; G.dither(ctx, 0, 0, SW, SH, P.black, 6); ctx.globalAlpha = 1; }
   }
 };
 
 /* ======================= DEFENDANT ======================= */
 function buildDefendant() {
-  const back = G.makeCanvas(SW, SH), b = back.getContext('2d');
-  // far view toward the bench (left), receding wall to the right
-  plaster(b, 0, 0, SW, 110, 3, 21);
-  G.dither(b, 0, 0, SW, 16, ST[2], 8);
-  moulding(b, 0, 0, SW, WD, [0, 3, 2, 1, 0]);
-  // bench backdrop far left
-  panelWall(b, 0, 150, 14, 120, 18, 118, 1, [0.06, 0.48, 0.52, 0.94], [0.08, 0.92], 1, 1);
-  moulding(b, 0, 12, 150, WD, [4, 3, 1]);
-  drawSeal(b, 76, 50, 16);
-  bigPole(b, 160, 20, 120);
-  // judge's bench (distant, dark)
-  fill(b, 0, 96, 190, 50, WD[2]); fill(b, 0, 96, 190, 3, WD[4]); fill(b, 0, 96, 190, 1, WD[5]);
-  for (let x = 4; x < 186; x += 30) panelRect(b, x, 104, 26, 38, WD, 2, 1);
-  // empty judge's chair top over the bench
-  fill(b, 60, 70, 30, 26, R.red[1]); fill(b, 60, 70, 30, 2, R.red[2]); for (let k = 0; k < 6; k++) px(b, 62 + k * 5, 72, GO[3]);
-  // right side wall: windows light
-  quad(b, 190, SW, 18, 146, 0, 170, (x, y, u, v) => {
-    const inW = (u > 0.18 && u < 0.4) || (u > 0.62 && u < 0.86);
-    if (inW && v > 0.08 && v < 0.6) { const f = (v - 0.08) / 0.52; return f < 0.4 ? P.sky : f < 0.75 ? P.sky2 : P.glow; }
-    if (v > 0.66) return v < 0.68 ? WD[4] : (((x >> 3) & 1) ? WD[2] : WD[1]);
-    return h2(x, y) < 0.05 ? ST[3] : ST[4];
-  }, 1.8);
-  // bailiff and clerk silhouettes in the distance
-  const people = crowd([
-    { x: 216, y: 146, o: { s: 0.9, dim: 1, style: 'bald', skin: R.skinD, hair: R.hairBlack, cloth: R.green, look: -1 }, whisper: false },
-    { x: 26, y: 112, o: { s: 0.75, dim: 1, style: 'bun', skin: R.skinL, hair: R.hairBlack, cloth: R.teal, glasses: NE[2], look: 1 }, whisper: false },
-  ]);
-  for (let y = 146; y < 170; y++) G.dither(b, 0, y, SW, 1, P.black, (y - 146) >> 2);
-  vignette(b, 7);
-  const shPts = [[250, 10], [330, 0], [230, 170], [120, 170]];
-  const shaft = beam(b, shPts);
-  // ---- front: defense table (side view) ----
-  const front = G.makeCanvas(SW, SH), f = front.getContext('2d');
-  shotDesk(f, 152, 164, 0, SW, 4);
-  // paper cup of water, legal pad with nervous doodles, tissue box
-  fill(f, 96, 146, 10, 14, NE[8]); fill(f, 96, 146, 10, 1, NE[9]); fill(f, 104, 146, 2, 14, NE[6]); fill(f, 97, 147, 8, 2, R.blue[5]);
-  legalPad(f, [[124, 152], [168, 152], [174, 164], [118, 164]], 3, 17);
-  for (let k = 0; k < 5; k++) px(f, 150 + k, 160 - (k & 1), P.ink);
-  fill(f, 300, 140, 34, 20, R.blue[4]); fill(f, 300, 140, 34, 1, R.blue[5]); fill(f, 300, 140, 1, 20, R.blue[5]); fill(f, 333, 140, 1, 20, R.blue[2]);
-  G.poly(f, [[312, 140], [322, 140], [324, 132], [316, 130], [310, 134]], NE[9]); px(f, 316, 132, NE[7]);
-  for (let x = 302; x < 332; x += 6) fill(f, x, 150, 3, 3, R.blue[3]);
-  return { back, front, people, shaft, shPts, motes: makeMotes(51, 30, [120, 0, 220, 170]) };
+  const K = 'env/shot/defendant/';
+  const SHP = [[126, 4], [164, 0], [116, 80], [60, 80]];
+  return {
+    back: x2(K + 'back', NW, NH, b => {
+      plaster(b, 0, 0, NW, 56, 3, 6);
+      mould(b, 0, 0, NW, [0, 3, 5, 2, 1], true);
+      // bench backdrop far left
+      fill(b, 0, 7, 76, 56, WD[1]); mould(b, 0, 6, 76, [5, 3, 1], true);
+      panel(b, 3, 11, 34, 45, 1); panel(b, 39, 11, 34, 45, 1);
+      seal(b, 38, 25, 8);
+      pole(b, 80, 10, 62);
+      // distant bench
+      fill(b, 0, 48, 96, 25, WD[2]); mould(b, 0, 47, 96, [6, 5, 3], true);
+      for (let x = 2; x < 94; x += 16) panel(b, x, 52, 13, 19, 2);
+      fill(b, 30, 35, 15, 13, R.red[1]); fill(b, 30, 35, 15, 1, R.red[3]); px(b, 31, 36, WHITE); for (let k = 0; k < 4; k++) px(b, 31 + k * 4, 36, GO[4]);
+      // receding right wall with windows
+      for (let x = 96; x < NW; x++) {
+        const s = (x - 96) / 96, tp = Math.round(9 - s * 9), bt = Math.round(73 + s * 12);
+        for (let y = tp; y < bt; y++) {
+          const v = (y - tp) / (bt - tp);
+          const inW = (s > 0.16 && s < 0.38) || (s > 0.6 && s < 0.84);
+          let col = h2(x, y) < 0.03 ? ST[3] : ST[4];
+          if (inW && v > 0.08 && v < 0.6) { const q = (v - 0.08) / 0.52; col = q < 0.4 ? P.sky : q < 0.75 ? P.sky2 : P.glow; if ((x + y * 2) % 9 === 0 && q > 0.3) col = WHITE; }
+          else if (v > 0.66) col = v < 0.68 ? WD[5] : (((x >> 2) & 1) ? WD[2] : WD[1]);
+          px(b, x, y, col);
+        }
+      }
+      ditherRows(b, 73, 86, P.black);
+      vignette(b, 7);
+    }),
+    flag: [0, 1, 2, 3].map(i => x2(K + 'flag/us/' + i, 12, 34, flagFn('us', 12, 30, i * 1.57))),
+    ppl: people(K + 'ppl', [
+      { x: 108, y: 74, o: { size: 'm', dim: 1, style: 'bald', skin: R.skinD, hair: R.hairBlack, cloth: GR, look: -1 } },
+      { x: 12, y: 54, o: { size: 's', dim: 1, style: 'bun', skin: R.skinL, hair: R.hairBlack, cloth: R.teal, glasses: NE[2], look: 1 } },
+    ]),
+    shaft: x2(K + 'shaft', NW, NH, beamFn(SHP)), shp: SHP, motes: motes(51, 22, [60, 0, 110, 80]),
+    front: x2(K + 'front', NW, NH, f => {
+      deskN(f, 76, 82, 0, NW, 4);
+      // paper cup, legal pad with doodles, tissue box, pencil
+      fill(f, 48, 72, 5, 8, NE[8]); fill(f, 48, 72, 5, 1, WHITE); fill(f, 52, 72, 1, 8, NE[6]); fill(f, 49, 73, 3, 1, R.blue[5]);
+      legalPadN(f, 60, 76, 22, 5, 17);
+      for (let k = 0; k < 4; k++) px(f, 74 + k, 79 - (k & 1), P.ink);
+      penN(f, 84, 80, 7, GO[4]);
+      fill(f, 150, 70, 17, 10, R.blue[4]); fill(f, 150, 70, 17, 1, R.blue[5]); fill(f, 150, 70, 1, 10, R.blue[5]); fill(f, 166, 70, 1, 10, R.blue[2]);
+      G.poly(f, [[156, 70], [161, 70], [162, 66], [158, 65], [155, 67]], NE[9]); px(f, 158, 66, WHITE);
+      for (let x = 152; x < 166; x += 3) fill(f, x, 75, 2, 2, R.blue[3]);
+    }),
+  };
 }
-let DF = null;
 SHOTS.defendant = function (ctx, layer, t) {
-  if (!DF) DF = buildDefendant();
+  const S = get('defendant', buildDefendant);
   if (layer === 'back') {
-    ctx.drawImage(DF.back, 0, 0);
-    drawCrowd(ctx, DF.people, t);
-    ctx.globalAlpha = 0.12 + 0.04 * Math.sin(t * 0.29); ctx.drawImage(DF.shaft, 0, 0); ctx.globalAlpha = 1;
-    drawMotes(ctx, DF.motes, t, (x, y) => inPoly(DF.shPts, x, y));
-  } else {
-    ctx.drawImage(DF.front, 0, 0);
+    ctx.drawImage(S.back, 0, 0);
+    ctx.drawImage(S.flag[Math.floor(t * 1.2) % 4], 82 * 2, 11 * 2);
+    drawPeople(ctx, S.ppl, t);
+    shaftDraw(ctx, S.shaft, t, 0.12);
+    nat(ctx, c => drawMotes(c, S.motes, t, S.shp));
+  } else ctx.drawImage(S.front, 0, 0);
+};
+
+/* ======================= OFFICE (night) ======================= */
+function buildOffice() {
+  const K = 'env/shot/office/';
+  const r = G.rng(808);
+  const lights = [];
+  const BL = [[106, 40], [114, 30], [122, 44], [128, 22], [138, 36], [146, 18], [156, 32], [164, 26], [174, 40], [180, 34], [186, 0]];
+  for (let i = 0; i < 90 && lights.length < 46; i++) {
+    const x = 107 + Math.floor(r() * 78), y = 26 + Math.floor(r() * 37);
+    const seg = BL.findIndex((q, k) => x >= q[0] && x < BL[k + 1][0]);
+    if (seg < 0 || y < 64 - BL[seg][1] + 2 || x === 145 || x === 146 || y === 35) continue;
+    lights.push([x, y, r()]);
   }
+  return {
+    lights,
+    back: x2(K + 'back', NW, NH, b => {
+      // dark wall
+      fill(b, 0, 0, NW, NH, R.blue[1]);
+      for (let x = 0; x < NW; x += 12) fill(b, x, 0, 1, 70, R.blue[0]);
+      // bookshelves (left)
+      fill(b, 2, 4, 46, 72, WD[0]); fill(b, 2, 4, 46, 1, WD[2]);
+      const bc = [R.red, R.blue, GR, GO, R.purple, R.teal, NE, R.wood];
+      for (let sy = 8; sy < 72; sy += 16) {
+        fill(b, 3, sy + 12, 44, 2, WD[2]); fill(b, 3, sy + 12, 44, 1, WD[3]);
+        let x = 4;
+        while (x < 45) {
+          const w = 2 + Math.floor(r() * 3), h = 8 + Math.floor(r() * 4), ramp = bc[Math.floor(r() * bc.length)];
+          if (x + w > 46) break;
+          if (r() < 0.1) { // leaning book
+            G.line(b, x, sy + 12, x + 4, sy + 12 - h + 2, C(ramp, 2)); x += 5; continue;
+          }
+          fill(b, x, sy + 12 - h, w, h, C(ramp, 1)); fill(b, x, sy + 12 - h, 1, h, C(ramp, 2));
+          if (r() < 0.6) fill(b, x, sy + 14 - h, w, 1, GO[3]);
+          x += w;
+        }
+      }
+      // diplomas on the wall
+      for (const [dx, dy] of [[56, 10], [76, 12]]) {
+        fill(b, dx, dy, 16, 12, WD[1]); fill(b, dx + 1, dy + 1, 14, 10, R.paper[3]); px(b, dx, dy, GO[4]);
+        for (let k = 0; k < 3; k++) fill(b, dx + 3, dy + 3 + k * 2, 10, 1, R.paper[1]);
+        px(b, dx + 11, dy + 8, R.red[3]); px(b, dx + 1, dy + 1, R.paper[4]);
+      }
+      // window with LA skyline at night
+      fill(b, 104, 6, 84, 60, WD[1]);
+      for (let y = 8; y < 64; y++) for (let x = 106; x < 186; x++) {
+        const f = (y - 8) / 56;
+        let col = f < 0.4 ? R.blue[1] : f < 0.75 ? R.blue[2] : R.purple[2];
+        if (f > 0.36 && f < 0.4 && G.bayer(x, y) < 8) col = R.blue[2];
+        if (f > 0.71 && f < 0.75 && G.bayer(x, y) < 8) col = R.purple[2];
+        px(b, x, y, col);
+      }
+      // stars + moon
+      for (let i = 0; i < 12; i++) px(b, 108 + Math.floor(r() * 76), 9 + Math.floor(r() * 16), NE[7]);
+      G.ellipse(b, 170, 16, 3, 3, R.paper[4]); px(b, 171, 15, R.paper[3]); px(b, 169, 15, WHITE);
+      // skyline silhouettes
+      const bl = [[106, 40], [114, 30], [122, 44], [128, 22], [138, 36], [146, 18], [156, 32], [164, 26], [174, 40], [180, 34]];
+      bl.forEach(([x, h], i) => fill(b, x, 64 - h, (bl[i + 1] ? bl[i + 1][0] : 186) - x, h, R.blue[0]));
+      fill(b, 140, 30, 5, 34, R.blue[0]); fill(b, 141, 24, 3, 6, R.blue[0]); px(b, 142, 21, R.blue[0]); px(b, 142, 22, R.blue[0]); // city hall
+      // mullions
+      fill(b, 145, 8, 2, 56, WD[1]); fill(b, 106, 35, 80, 1, WD[1]);
+      // blinds half down
+      for (let y = 8; y < 22; y += 2) { fill(b, 106, y, 80, 1, R.stone[1]); }
+      fill(b, 106, 22, 80, 1, R.stone[2]);
+      fill(b, 102, 65, 88, 3, WD[2]); fill(b, 102, 65, 88, 1, WD[4]);
+      // wall clock
+      clockFace(b, 92, 40, 5);
+      // floor
+      fill(b, 0, 76, NW, NH - 76, R.wood[0]);
+    }),
+    front: x2(K + 'front', NW, NH, f => {
+      // desk (mid-ground) across the frame
+      for (let y = 66; y < 74; y++) for (let x = 0; x < NW; x++) px(f, x, y, grainCol(x, y * 3, 2));
+      fill(f, 0, 74, NW, 1, WD[4]); fill(f, 0, 75, NW, NH - 75, WD[0]);
+      // lamp pool of light (pre-lit desk area)
+      for (let y = 66; y < 74; y++) for (let x = 90; x < 150; x++) {
+        const d = Math.abs(x - 120) / 30 + Math.abs(y - 70) / 8;
+        if (d < 1 && G.bayer(x, y) < (1 - d) * 22) px(f, x, y, grainCol(x, y * 3, 4));
+      }
+      // brass desk lamp
+      fill(f, 120, 64, 8, 2, GO[2]); fill(f, 120, 64, 8, 1, GO[4]); px(f, 121, 64, WHITE);
+      G.line(f, 124, 64, 128, 52, GO[3]); G.line(f, 128, 52, 122, 46, GO[3]); px(f, 127, 53, WHITE);
+      G.poly(f, [[114, 50], [124, 44], [127, 48], [118, 53]], GR[3]); px(f, 120, 46, GR[5]); px(f, 121, 46, WHITE);
+      fill(f, 116, 51, 5, 1, P.glow);
+      // case files, coffee mug, phone, papers
+      folderStackN(f, 6, 72, 5, 12);
+      for (let i = 0; i < 3; i++) { fill(f, 92 + i * 2, 70 - i, 16, 1, R.paper[4 - (i & 1)]); px(f, 92 + i * 2, 70 - i, WHITE); }
+      fill(f, 136, 64, 6, 7, NE[8]); fill(f, 136, 64, 6, 1, WHITE); fill(f, 142, 65, 2, 1, NE[7]); fill(f, 143, 66, 1, 2, NE[7]); fill(f, 137, 65, 4, 1, R.wood[1]);
+      fill(f, 136, 67, 6, 1, R.red[3]);
+      fill(f, 158, 66, 14, 5, NE[1]); fill(f, 158, 66, 14, 1, NE[3]); fill(f, 160, 64, 10, 2, NE[2]); px(f, 160, 64, NE[5]); px(f, 170, 68, GR[5]);
+      penN(f, 70, 71, 9); stickyN(f, 54, 67, GO[5]);
+      // file box
+      fill(f, 176, 56, 16, 12, R.paper[1]); fill(f, 176, 56, 16, 1, R.paper[3]); fill(f, 180, 60, 7, 2, R.paper[0]);
+    }),
+  };
+}
+SHOTS.office = function (ctx, layer, t) {
+  const S = get('office', buildOffice);
+  if (layer === 'back') {
+    ctx.drawImage(S.back, 0, 0);
+    nat(ctx, c => {
+      for (const [x, y, ph] of S.lights) {
+        const on = Math.sin(t * (0.2 + ph * 0.5) + ph * 30) > -0.6;
+        if (!on) continue;
+        // only on buildings: below silhouette tops (approx by y > 26)
+        px(c, x, y, ph < 0.3 ? P.glow : ph < 0.6 ? GO[4] : NE[8]);
+      }
+      if ((t % 1.6) < 0.2) px(c, 142, 20, R.red[4]); // antenna light
+      clockHandsN(c, 92, 40, 5, t + 13.5 * 3600);
+    });
+  } else {
+    ctx.drawImage(S.front, 0, 0);
+    nat(ctx, c => {
+      c.globalAlpha = 0.16 + 0.03 * Math.sin(t * 7) * Math.sin(t * 1.9); G.dither(c, 96, 64, 50, 10, P.glow, 8); G.dither(c, 106, 66, 30, 6, P.glow, 6); c.globalAlpha = 1;
+      // steam from the mug
+      for (let k = 0; k < 4; k++) {
+        const y = 62 - ((t * 5 + k * 3) % 12), x = 139 + Math.round(Math.sin(t * 2 + k) * 1.5);
+        c.globalAlpha = 0.35 * (1 - (62 - y) / 12); px(c, x, Math.round(y), NE[8]);
+      }
+      c.globalAlpha = 1;
+      // moth around the lamp
+      const a = t * 3.3; px(c, 120 + Math.round(Math.cos(a) * 5 + Math.sin(t * 9) * 1), 48 + Math.round(Math.sin(a * 1.4) * 3), ST[5]);
+    });
+  }
+};
+
+/* ======================= HALLWAY ======================= */
+function buildHallway() {
+  const K = 'env/shot/hallway/';
+  const VX = 96, VY = 44; // vanishing point
+  return {
+    back: x2(K + 'back', NW, NH, b => {
+      // ceiling
+      for (let y = 0; y < VY; y++) for (let x = 0; x < NW; x++) {
+        const d = (VY - y) / VY; px(b, x, y, d > 0.7 ? ST[3] : ST[4]);
+      }
+      // walls: left/right receding (per column)
+      for (let x = 0; x < NW; x++) {
+        const s = Math.abs(x - VX) / VX;
+        const top = Math.round(VY - s * VY * 0.95), bot = Math.round(VY + s * 60 * 0.9) + 4;
+        for (let y = top; y < bot; y++) {
+          const v = (y - top) / (bot - top);
+          let col = ST[4];
+          if (v > 0.62) col = v < 0.64 ? WD[5] : WD[2];
+          if (v > 0.98) col = WD[0];
+          px(b, x, y, col);
+        }
+      }
+      // far end wall with elevator
+      fill(b, 82, 30, 28, 24, ST[4]);
+      fill(b, 88, 34, 16, 20, NE[6]); fill(b, 95, 34, 1, 20, NE[4]); fill(b, 88, 34, 16, 1, WHITE);
+      fill(b, 91, 30, 10, 3, NE[1]);
+      fill(b, 106, 42, 2, 3, NE[5]); px(b, 106, 42, WHITE);
+      // floor: marble with reflections
+      for (let x = 0; x < NW; x++) for (let y = Math.max(VY + 6, Math.round(VY + Math.abs(x - VX) / VX * 54) + 4); y < NH; y++) {
+        const d = (y - VY) / (NH - VY);
+        const u = (x - VX) / Math.max(1, (y - VY));
+        const tile = (Math.floor(u * 3 + 100) + Math.floor(Math.log(y - VY + 1) * 4)) & 1;
+        let col = tile ? ST[4] : ST[3];
+        if (Math.abs(x - VX) < 3 + d * 14 && G.bayer(x, y) < 5) col = ST[5]; // light reflection
+        if (Math.abs(x - VX) < 1 + d * 4 && G.bayer(x, y) < 3) col = WHITE;
+        px(b, x, y, col);
+      }
+      // courtroom doors along the walls with brass plaques
+      const door = (x, y, w, h, label) => {
+        fill(b, x - 1, y - 1, w + 2, h + 1, WD[4]); fill(b, x, y, w, h, WD[2]);
+        panel(b, x + 1, y + 2, w - 2, h - 4, 2);
+        fill(b, x + w - 3, y + (h >> 1), 1, 2, GO[4]); px(b, x + w - 3, y + (h >> 1), WHITE);
+        if (label) { fill(b, x + 1, y - 7, text3W(label) + 2, 6, GO[3]); px(b, x + 1, y - 7, WHITE); text3(b, label, x + 2, y - 6, GO[1]); }
+      };
+      door(14, 34, 18, 46, 'DEPT 112'); door(52, 38, 10, 22, ''); door(158, 34, 18, 46, 'DEPT 113'); door(130, 38, 10, 22, '');
+      // benches
+      for (const bx of [36, 136]) { fill(b, bx, 70, 20, 2, WD[5]); px(b, bx, 70, WHITE); fill(b, bx, 72, 20, 4, WD[2]); fill(b, bx + 1, 76, 2, 4, WD[1]); fill(b, bx + 17, 76, 2, 4, WD[1]); fill(b, bx, 62, 20, 6, WD[3]); fill(b, bx, 62, 20, 1, WD[5]); }
+      // ceiling lights
+      for (const [y, w] of [[3, 30], [14, 18], [22, 10], [27, 6]]) { fill(b, VX - (w >> 1), y, w, 2, WHITE); fill(b, VX - (w >> 1), y + 2, w, 1, ST[3]); }
+      // directory sign + flag
+      fill(b, 120, 22, 14, 10, NE[2]); for (let k = 0; k < 4; k++) fill(b, 122, 24 + k * 2, 9, 1, NE[7]);
+      // water fountain
+      fill(b, 64, 56, 7, 5, NE[6]); fill(b, 64, 56, 7, 1, WHITE);
+    }),
+    walkers: people(K + 'walk', [0, 1, 2, 3].map(i => ({ x: 0, y: 0, o: look(i * 3 + 1, { size: 's', dim: 1 }) }))),
+    front: x2(K + 'front', NW, NH, () => {}),
+  };
+}
+SHOTS.hallway = function (ctx, layer, t) {
+  const S = get('hallway', buildHallway);
+  if (layer === 'back') {
+    ctx.drawImage(S.back, 0, 0);
+    // elevator floor indicator
+    nat(ctx, c => { const fl = 1 + Math.floor(t / 3) % 9; text3(c, String(fl), 94, 30, (t % 3) > 2.6 ? GO[4] : R.red[4]); });
+    // people walking across the far corridor
+    S.walkers.forEach((p, i) => {
+      const per = 14 + i * 3, ph = (t + i * 5.3) % per, dir = i & 1 ? -1 : 1;
+      const xn = dir > 0 ? 60 + ph * 5 : 132 - ph * 5;
+      if (xn < 60 || xn > 132) return;
+      const bob = Math.floor(t * 6 + i) % 2;
+      const spr = p.fr[0];
+      ctx.globalAlpha = 0.9; ctx.drawImage(spr, Math.round(xn) * 2 - (spr.width >> 1), (58 + bob) * 2 - spr.height); ctx.globalAlpha = 1;
+      nat(ctx, c => { fill(c, Math.round(xn) - 3, 58 + bob, 6, 4, C(p.o.cloth, 1)); px(c, Math.round(xn) - 2 + (bob ? 0 : 3), 62, NE[1]); });
+    });
+  } else ctx.drawImage(S.front, 0, 0);
 };
 
 /* ======================= EXTERIOR ======================= */
 function buildExterior() {
-  const sky = G.makeCanvas(SW, SH), s = sky.getContext('2d');
-  // golden hour sky: dithered bands from blue (top) to warm gold at the horizon
-  const bands = [R.blue[4], R.blue[5], P.sky, P.sky2, GO[5], R.red[5], GO[4]];
-  const by = [0, 24, 50, 78, 104, 124, 140, 160];
-  for (let i = 0; i < bands.length; i++) {
-    fill(s, 0, by[i], SW, by[i + 1] - by[i], bands[i]);
-    if (i + 1 < bands.length) for (let k = 0; k < 4; k++) G.dither(s, 0, by[i + 1] - 4 + k, SW, 1, bands[i], 12 - k * 3);
-  }
-  // sun low on the right
-  for (let k = 3; k >= 0; k--) { s.globalAlpha = 0.2; G.ellipse(s, 30, 140, 16 + k * 9, 10 + k * 6, P.glow); } s.globalAlpha = 1;
-  G.ellipse(s, 30, 140, 11, 11, GO[5]); G.ellipse(s, 30, 140, 9, 9, P.white);
-  // distant city: LA City Hall tower + skyline silhouettes (cool purple haze)
-  const skyline = [[0, 14], [18, 22], [30, 10], [44, 30], [60, 18], [74, 26], [88, 12], [98, 20]];
-  skyline.forEach(([x, h], i) => { fill(s, x, 150 - h, (skyline[i + 1] ? skyline[i + 1][0] : 112) - x, h + 10, R.purple[3]); });
-  // City Hall tower
-  fill(s, 52, 92, 18, 60, R.purple[3]); fill(s, 55, 78, 12, 14, R.purple[3]); fill(s, 58, 68, 6, 10, R.purple[3]); fill(s, 60, 60, 2, 8, R.purple[3]);
-  fill(s, 52, 92, 2, 60, R.purple[4]); fill(s, 55, 78, 1, 14, R.purple[4]);
-  for (let y = 96; y < 148; y += 4) for (let x = 56; x < 68; x += 3) px(s, x, y, GO[4]);
-  // ground below the skyline: hedges + lawn
-  for (let y = 150; y < 186; y++) for (let x = 0; x < SW; x++) {
-    let col = y < 156 ? R.purple[2] : y < 166 ? (((x * 3 + y) % 7 === 0) ? R.green[1] : R.green[2]) : (((x + y * 3) % 9 === 0) ? R.green[2] : R.green[3]);
-    if (y >= 166 && y < 168 && G.bayer(x, y) < 8) col = R.green[2];
-    if (y >= 156 && y < 160 && (x % 9) < 6) col = R.green[3];
-    px(s, x, y, col);
-  }
-  for (let x = 0; x < SW; x += 2) if (h2(x, 3) < 0.4) px(s, x, 165, GO[4]);
-  // ---- building (right) ----
-  const bl = G.makeCanvas(SW, SH), b = bl.getContext('2d');
-  const X0 = 136, X1 = SW, top = 64;
-  // main block
-  for (let y = top; y < 176; y++) for (let x = X0; x < X1; x++) {
-    let col = ST[3];
-    if (((y - top) % 8 === 0)) col = ST[2];
-    else if (((x + ((((y - top) / 8) | 0) & 1) * 10) % 20) === 0) col = ST[2];
-    else if (h2(x, y) < 0.04) col = ST[4];
-    px(b, x, y, col);
-  }
-  // warm sunlit right faces / shadow left: sun from right -> faces lit warm
-  // cornice + attic
-  fill(b, X0 - 6, top - 14, X1 - X0 + 6, 14, ST[4]);
-  moulding(b, X0 - 8, top - 16, X1 - X0 + 8, ST, [5, 4, 3, 1]);
-  for (let x = X0 - 6; x < X1; x += 6) { fill(b, x, top - 12, 4, 3, ST[5]); fill(b, x, top - 9, 4, 1, ST[2]); }
-  moulding(b, X0 - 6, top - 2, X1 - X0 + 6, ST, [1, 2, 4, 5]);
-  // entablature with engraving
-  fill(b, X0, top + 2, X1 - X0, 22, ST[4]); fill(b, X0, top + 2, X1 - X0, 1, ST[5]); fill(b, X0, top + 23, X1 - X0, 1, ST[1]);
-  const t1 = 'SUPERIOR COURT OF CALIFORNIA', t2 = 'COUNTY OF LOS ANGELES';
-  const cxm = ((X0 + X1) >> 1);
-  // engraved: dark letter with lit lower edge
-  const eng = (txt, y) => {
-    const x = cxm - (text3W(txt) >> 1);
-    text3(b, txt, x, y + 1, ST[5]);
-    text3(b, txt, x, y, ST[1]);
-  };
-  eng(t1, top + 6); eng(t2, top + 15);
-  // colonnade
-  const colTop = top + 26, colBot = 166;
-  fill(b, X0, colTop, X1 - X0, colBot - colTop, ST[1]); // deep shadow behind columns
-  // windows/doors deep inside the portico
-  for (let x = X0 + 12; x < X1 - 8; x += 26) {
-    fill(b, x, colTop + 16, 12, 44, NE[2]); fill(b, x + 1, colTop + 17, 10, 42, R.blue[1]);
-    G.dither(b, x + 1, colTop + 17, 10, 20, GO[2], 3);
-    fill(b, x + 5, colTop + 17, 1, 42, NE[2]); fill(b, x + 1, colTop + 37, 10, 1, NE[2]);
-  }
-  // central bronze doors
-  fill(b, cxm - 14, colTop + 30, 28, 46, GO[1]); fill(b, cxm - 12, colTop + 32, 11, 44, GO[2]); fill(b, cxm + 1, colTop + 32, 11, 44, GO[2]);
-  G.dither(b, cxm - 12, colTop + 32, 24, 10, GO[3], 4);
-  // columns
-  for (let x = X0 + 4; x < X1; x += 26) {
-    const w = 12;
-    for (let y = colTop; y < colBot; y++) for (let i = 0; i < w; i++) {
-      let col = ST[3];
-      if (i < 1) col = ST[3]; else if (i < 3) col = ST[5]; else if (i < 6) col = ST[4]; else if (i < 9) col = ST[3]; else if (i < 11) col = ST[2]; else col = ST[1];
-      if ((i === 3 || i === 6 || i === 9) && y > colTop + 6 && y < colBot - 6) col = shade(col, -1); // flutes
-      px(b, x + i, y, col);
-    }
-    // capital & base
-    fill(b, x - 2, colTop, w + 4, 4, ST[4]); fill(b, x - 2, colTop, w + 4, 1, ST[5]); fill(b, x - 2, colTop + 3, w + 4, 1, ST[2]);
-    fill(b, x - 2, colBot - 4, w + 4, 4, ST[4]); fill(b, x - 2, colBot - 4, w + 4, 1, ST[5]);
-    // warm light on the right edge (sun)
-    fill(b, x + 1, colTop + 4, 1, colBot - colTop - 8, GO[5]);
-  }
-  // stylobate + steps
-  for (let k = 0; k < 6; k++) {
-    const y = colBot + k * 3, ext = k * 6;
-    fill(b, X0 - 6 - ext, y, X1 - X0 + 6 + ext, 3, ST[4]); fill(b, X0 - 6 - ext, y, X1 - X0 + 6 + ext, 1, ST[5]);
-    fill(b, X0 - 6 - ext, y + 2, X1 - X0 + 6 + ext, 1, ST[2]);
-  }
-  // plaza
-  for (let y = 184; y < SH; y++) for (let x = 0; x < SW; x++) {
-    let col = ST[2];
-    if ((x + y * 2) % 24 === 0 || y % 8 === 0) col = ST[1];
-    else if (h2(x, y) < 0.05) col = ST[3];
-    px(b, x, y, col);
-  }
-  // long shadows of columns across plaza (sun from right)
-  b.globalAlpha = 0.25; for (let x = X0 + 4; x < SW; x += 26) G.poly(b, [[x, 184], [x + 12, 184], [x + 52, SH], [x + 36, SH]], P.shadow); b.globalAlpha = 1;
-  // building's left side face (in shade), gives depth
-  for (let y = top - 16; y < 184; y++) for (let x = X0 - 14; x < X0 - 6; x++) {
-    const d = (X0 - 6 - x); if (y < top - 16 + d) continue;
-    px(b, x, y, ((y - top) % 8 === 0) ? ST[1] : (x === X0 - 7 ? ST[4] : ST[2]));
-  }
-  // planters with agaves along the steps
-  for (const px0 of [148, 340]) {
-    fill(b, px0, 174, 22, 10, ST[3]); fill(b, px0, 174, 22, 1, ST[5]); fill(b, px0 + 21, 174, 1, 10, ST[1]);
-    for (let k = 0; k < 7; k++) G.line(b, px0 + 11, 174, px0 + 2 + k * 3, 162 + Math.abs(3 - k) * 2, R.teal[3 + (k & 1)]);
-  }
-  // lamp posts by the steps
-  for (const lx of [118, 368]) {
-    fill(b, lx, 140, 3, 46, NE[1]); fill(b, lx - 3, 184, 9, 3, NE[1]);
-    fill(b, lx - 2, 132, 7, 9, NE[1]); fill(b, lx - 1, 133, 5, 6, GO[5]); px(b, lx, 134, P.white);
-  }
-  // flagpole on the roof (centre)
-  fill(b, cxm, 10, 2, top - 18, NE[6]); fill(b, cxm + 1, 10, 1, top - 18, NE[4]); fill(b, cxm - 1, 8, 4, 2, GO[4]);
-  // palm trees (foreground, left and far right)
-  const palms = G.makeCanvas(SW, SH), pl = palms.getContext('2d');
-  const palm = (x, yb, h, lean) => {
-    for (let y = 0; y < h; y++) {
-      const xx = x + Math.round(lean * (y / h) * (y / h) * 12);
-      fill(pl, xx, yb - y, 3, 1, (y % 4 === 0) ? WD[1] : WD[2]); px(pl, xx + 2, yb - y, WD[0]);
-      if (y % 4 === 0) px(pl, xx - 1, yb - y, WD[3]);
-    }
-    return [x + Math.round(lean * 12), yb - h];
-  };
-  const heads = [palm(22, 200, 150, 1), palm(64, 196, 118, -0.6), palm(100, 190, 80, 0.4)];
-  const fronds = (c, hx, hy, ph, sc) => {
-    for (let k = 0; k < 9; k++) {
-      const a = -Math.PI * 0.95 + k * (Math.PI * 1.9 / 8) + Math.sin(ph + k) * 0.06;
-      const len = (16 + (k % 3) * 4) * sc;
-      let px0 = hx, py0 = hy;
-      for (let i = 1; i <= len; i++) {
-        const droop = (i / len) * (i / len) * 10 * sc;
-        const xx = Math.round(hx + Math.cos(a) * i), yy = Math.round(hy + Math.sin(a) * i * 0.6 + droop);
-        G.line(c, px0, py0, xx, yy, k % 2 ? R.green[2] : R.green[3]);
-        const lf = Math.round(4 * sc * Math.sin(i / len * Math.PI));
-        if (i > 2) for (let q = 1; q <= lf; q++) { px(c, xx - (q >> 1), yy + q, (q & 1) ? R.green[1] : R.green[2]); px(c, xx + (q >> 1), yy + q, R.green[1]); }
-        if (i % 3 === 0) px(c, xx, yy - 1, R.green[4]);
-        px0 = xx; py0 = yy;
+  const K = 'env/exterior/';
+  const X0 = 64, X1 = NW, TOP = 28, CB = 82;
+  return {
+    X0, X1, TOP, CB,
+    sky: x2(K + 'sky', NW, NH, s => {
+      const bands = [R.blue[4], R.blue[5], P.sky, P.sky2, GO[5], R.red[5], GO[4]];
+      const by = [0, 12, 26, 40, 54, 64, 72, 80];
+      for (let i = 0; i < bands.length; i++) {
+        fill(s, 0, by[i], NW, by[i + 1] - by[i], bands[i]);
+        if (i + 1 < bands.length) for (let k = 0; k < 3; k++) G.dither(s, 0, by[i + 1] - 3 + k, NW, 1, bands[i], 12 - k * 4);
       }
-    }
-    G.ellipse(c, hx + 1, hy + 1, 3, 2, WD[1]);
+      for (let k = 3; k >= 0; k--) { s.globalAlpha = 0.2; G.ellipse(s, 16, 70, 8 + k * 5, 5 + k * 3, P.glow); } s.globalAlpha = 1;
+      G.ellipse(s, 16, 70, 6, 6, GO[5]); G.ellipse(s, 16, 70, 5, 5, WHITE);
+      // skyline + City Hall
+      const sk = [[0, 6], [8, 10], [14, 5], [20, 14], [30, 8], [36, 12], [44, 6], [52, 9], [60, 5]];
+      sk.forEach(([x, h], i) => { fill(s, x, 76 - h, (sk[i + 1] ? sk[i + 1][0] : 66) - x, h + 4, R.purple[3]); });
+      fill(s, 24, 46, 9, 30, R.purple[3]); fill(s, 26, 39, 5, 7, R.purple[3]); fill(s, 27, 34, 3, 5, R.purple[3]); fill(s, 28, 30, 1, 4, R.purple[3]);
+      fill(s, 24, 46, 1, 30, R.purple[4]); px(s, 26, 39, R.purple[4]);
+      for (let y = 48; y < 74; y += 3) for (let x = 26; x < 32; x += 2) px(s, x, y, GO[4]);
+      px(s, 28, 30, R.red[4]);
+      // lawn & hedges
+      for (let y = 76; y < 92; y++) for (let x = 0; x < NW; x++) {
+        let col = y < 79 ? R.purple[2] : y < 84 ? (((x * 3 + y) % 5 === 0) ? GR[1] : GR[2]) : (((x + y * 3) % 7 === 0) ? GR[2] : GR[3]);
+        if (y === 79 && (x % 5) < 3) col = GR[3];
+        px(s, x, y, col);
+      }
+    }),
+    bld: x2(K + 'building', NW, NH, b => {
+      // side face (shade) for depth
+      for (let y = TOP - 8; y < 92; y++) for (let x = X0 - 6; x < X0; x++) { if (y < TOP - 8 + (X0 - x)) continue; px(b, x, y, ((y - TOP) % 4 === 0) ? ST[1] : ST[2]); }
+      // attic + cornice
+      fill(b, X0, TOP - 10, X1 - X0, 10, ST[4]);
+      fill(b, X0, TOP - 11, X1 - X0, 1, ST[5]); for (let x = X0; x < X1; x += 9) px(b, x + 3, TOP - 11, WHITE);
+      for (let x = X0 + 2; x < X1; x += 8) { fill(b, x, TOP - 8, 5, 5, ST[3]); fill(b, x, TOP - 8, 5, 1, ST[5]); fill(b, x + 4, TOP - 8, 1, 5, ST[2]); } // attic panels
+      mould(b, X0 - 2, TOP - 2, X1 - X0 + 2, [], false);
+      [ST[5], ST[4], ST[2], ST[1]].forEach((col, j) => fill(b, X0 - 2, TOP - 2 + j, X1 - X0 + 2, 1, col));
+      for (let x = X0 - 1; x < X1; x += 3) { px(b, x, TOP + 2, ST[5]); px(b, x, TOP + 3, ST[2]); } // dentils
+      // entablature + engraved inscription
+      fill(b, X0, TOP + 4, X1 - X0, 13, ST[4]); fill(b, X0, TOP + 4, X1 - X0, 1, WHITE); fill(b, X0, TOP + 16, X1 - X0, 1, ST[1]);
+      const cx = (X0 + X1) >> 1;
+      const eng = (txt, y) => { const x = cx - (text3W(txt) >> 1); text3(b, txt, x, y + 1, ST[5]); text3(b, txt, x, y, ST[1]); };
+      eng('SUPERIOR COURT OF CALIFORNIA', TOP + 5); eng('COUNTY OF LOS ANGELES', TOP + 11);
+      // portico depth
+      fill(b, X0, TOP + 17, X1 - X0, CB - TOP - 17, ST[1]);
+      for (let x = X0 + 6; x < X1 - 4; x += 13) {
+        fill(b, x, TOP + 26, 6, 22, NE[2]); fill(b, x + 1, TOP + 27, 4, 20, R.blue[1]); G.dither(b, x + 1, TOP + 27, 4, 8, GO[2], 4);
+        fill(b, x + 1, TOP + 36, 4, 1, NE[2]); px(b, x + 1, TOP + 27, GO[4]);
+      }
+      // bronze doors, glowing
+      fill(b, cx - 7, TOP + 30, 14, 24, GO[1]); fill(b, cx - 6, TOP + 31, 6, 23, GO[2]); fill(b, cx + 1, TOP + 31, 6, 23, GO[2]);
+      G.dither(b, cx - 6, TOP + 31, 13, 6, GO[4], 6); px(b, cx - 1, TOP + 42, WHITE); px(b, cx + 1, TOP + 42, WHITE);
+      // columns, lit from the left by the setting sun
+      for (let x = X0 + 2; x < X1; x += 13) {
+        for (let y = TOP + 17; y < CB; y++) for (let i = 0; i < 7; i++) {
+          let col = [ST[3], ST[5], ST[5], ST[4], ST[3], ST[2], ST[1]][i];
+          if ((i === 2 || i === 4) && y > TOP + 20 && y < CB - 3) col = shade(col, -1);
+          px(b, x + i, y, col);
+        }
+        fill(b, x + 1, TOP + 21, 1, CB - TOP - 25, GO[5]);
+        for (let y = TOP + 22; y < CB - 4; y += 9) px(b, x + 1, y, WHITE);
+        fill(b, x - 1, TOP + 17, 9, 2, ST[4]); fill(b, x - 1, TOP + 17, 9, 1, WHITE); fill(b, x - 1, TOP + 19, 9, 1, ST[2]);
+        fill(b, x - 1, CB - 2, 9, 2, ST[4]); fill(b, x - 1, CB - 2, 9, 1, ST[5]);
+      }
+      // steps
+      for (let k = 0; k < 6; k++) {
+        const y = CB + k * 2, ext = k * 4;
+        fill(b, X0 - 6 - ext, y, X1 - X0 + 6 + ext, 2, ST[4]); fill(b, X0 - 6 - ext, y, X1 - X0 + 6 + ext, 1, ST[5]);
+        for (let x = X0 - 6 - ext + (k * 5) % 11; x < X1; x += 23) px(b, x, y, WHITE);
+      }
+      // plaza
+      for (let y = 94; y < NH; y++) for (let x = 0; x < NW; x++) {
+        let col = ST[2];
+        if ((x + y * 2) % 16 === 0 || y % 5 === 0) col = ST[1];
+        px(b, x, y, col);
+      }
+      for (let x = 0; x < NW; x++) if (x % 4 === 0) px(b, x, 94, ST[3]);
+      b.globalAlpha = 0.25; for (let x = X0 + 2; x < NW; x += 13) G.poly(b, [[x, 94], [x + 7, 94], [x + 26, NH], [x + 18, NH]], P.shadow); b.globalAlpha = 1;
+      // lamp posts
+      for (const lx of [56, 184]) {
+        fill(b, lx, 70, 2, 25, NE[1]); fill(b, lx - 2, 93, 6, 2, NE[1]); fill(b, lx - 1, 66, 4, 5, NE[1]); fill(b, lx, 67, 2, 3, GO[5]); px(b, lx, 67, WHITE);
+      }
+      // planters with agaves
+      for (const p0 of [70, 172]) {
+        fill(b, p0, 88, 12, 5, ST[3]); fill(b, p0, 88, 12, 1, WHITE); fill(b, p0 + 11, 88, 1, 5, ST[1]);
+        for (let k = 0; k < 5; k++) G.line(b, p0 + 6, 88, p0 + 1 + k * 2, 82 + Math.abs(2 - k) * 2, R.teal[3 + (k & 1)]);
+      }
+      // roof flagpole
+      fill(b, cx, 4, 1, TOP - 14, NE[7]); px(b, cx, 3, GO[5]); px(b, cx, 3, WHITE);
+    }),
+    palms: x2(K + 'palms', NW, NH, pl => {
+      const trunk = (x, yb, h, lean) => { for (let y = 0; y < h; y++) { const xx = x + Math.round(lean * (y / h) * (y / h) * 6); fill(pl, xx, yb - y, 2, 1, (y % 3 === 0) ? WD[1] : WD[2]); if (y % 3 === 0) px(pl, xx - 1, yb - y, WD[3]); } };
+      trunk(10, 104, 78, 1); trunk(30, 100, 60, -0.6); trunk(48, 96, 40, 0.4);
+    }),
+    heads: [[16, 26, 1.3], [26, 40, 1.0], [50, 56, 0.8]],
+    clouds: [[10, 10, 30, 0.45], [70, 18, 22, 0.3], [130, 6, 36, 0.38], [40, 34, 24, 0.25]].map(([x, y, w, sp], i) => ({ x, y, w, sp, spr: x2(K + 'cloud/' + i, w, Math.round(w * 0.34), cloudFn(w, Math.round(w * 0.34), i)) })),
+    birds: motes(91, 5, [0, 4, NW, 34]),
   };
-  return { sky, bl, palms, heads, fronds, cxm, top,
-    clouds: [[20, 22, 60, 0.9], [150, 40, 44, 0.6], [260, 16, 70, 0.75], [90, 70, 50, 0.5]],
-    birds: makeMotes(91, 6, [0, 10, SW, 80]) };
 }
-const CLOUDS = {};
-function cloudSprite(w) {
-  if (CLOUDS[w]) return CLOUDS[w];
-  const h = Math.round(w * 0.32);
-  const spr = G.makeSprite(w, h, c => {
-    const r = G.rng(w * 13);
-    const puffs = [];
-    for (let i = 0; i < 7; i++) puffs.push([Math.round(w * (0.12 + r() * 0.76)), Math.round(h * (0.45 + r() * 0.3)), Math.round(h * (0.22 + r() * 0.25))]);
-    puffs.push([w >> 1, Math.round(h * 0.45), Math.round(h * 0.42)]);
-    const inside = (x, y) => puffs.some(([px0, py0, pr]) => (x - px0) ** 2 + ((y - py0) * 1.4) ** 2 < pr * pr * 1.4) || (y > h * 0.62 && y < h * 0.82 && x > w * 0.08 && x < w * 0.92);
+function cloudFn(w, h, seed) {
+  return c => {
+    const r = G.rng(seed * 31 + 7), puffs = [];
+    for (let i = 0; i < 6; i++) puffs.push([Math.round(w * (0.15 + r() * 0.7)), Math.round(h * (0.45 + r() * 0.25)), h * (0.25 + r() * 0.2)]);
+    puffs.push([w >> 1, Math.round(h * 0.45), h * 0.42]);
+    const ins = (x, y) => puffs.some(([a, b, pr]) => (x - a) ** 2 + ((y - b) * 1.5) ** 2 < pr * pr * 1.6) || (y > h * 0.6 && y < h * 0.85 && x > w * 0.1 && x < w * 0.9);
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      if (!inside(x, y)) continue;
-      // shading: lit from the lower-left (setting sun), warm underside
-      const up = !inside(x, y - 2), dn = !inside(x, y + 2), lf = !inside(x - 3, y);
+      if (!ins(x, y)) continue;
       let col = P.sky2;
-      if (dn) col = (G.bayer(x, y) < 8) ? R.red[5] : GO[5];
-      else if (lf) col = GO[5];
-      else if (up) col = P.white;
-      else if (y > h * 0.6) col = (G.bayer(x, y) < 6) ? GO[5] : P.sky2;
-      else if (G.bayer(x, y) < 3 && x > w * 0.6) col = R.blue[6];
+      if (!ins(x, y + 1)) col = (G.bayer(x, y) < 8) ? R.red[5] : GO[5];
+      else if (!ins(x - 2, y)) col = GO[5];
+      else if (!ins(x, y - 1)) col = WHITE;
+      else if (y > h * 0.62) col = GO[5];
       px(c, x, y, col);
     }
-  });
-  CLOUDS[w] = spr; return spr;
+  };
 }
-function cloud(c, x, y, w) { c.drawImage(cloudSprite(w), x, y - Math.round(w * 0.16)); }
-let EX = null;
-E._exterior = function (ctx, t) {
-  if (!EX) EX = buildExterior();
-  ctx.drawImage(EX.sky, 0, 0);
-  // drifting clouds (wrap)
-  for (const [x, y, w, sp] of EX.clouds) {
-    const xx = Math.round(((x + t * sp * 2) % (SW + w + 40)) - w - 20 + 40);
-    cloud(ctx, xx, y, w);
-  }
-  ctx.drawImage(EX.bl, 0, 0);
-  // waving flag on the roof pole
-  const fx = EX.cxm + 2, fy = 11;
-  for (let x = 0; x < 22; x++) {
-    const wv = Math.round(Math.sin(t * 5 - x * 0.45) * (x / 22) * 2.5);
-    for (let y = 0; y < 13; y++) {
-      let col = (Math.floor(y / 2) % 2 === 0) ? R.red[3] : NE[8];
-      if (x < 9 && y < 7) col = ((x + y) % 3 === 0) ? NE[9] : R.blue[3];
-      if (Math.sin(t * 5 - x * 0.45) > 0.5) col = shade(col, -1);
-      px(ctx, fx + x, fy + y + wv, col);
+function fronds(c, hx, hy, ph, sc) {
+  for (let k = 0; k < 8; k++) {
+    const a = -Math.PI * 0.95 + k * (Math.PI * 1.9 / 7) + Math.sin(ph + k) * 0.07;
+    const len = Math.round((8 + (k % 3) * 2) * sc);
+    let x0 = hx, y0 = hy;
+    for (let i = 1; i <= len; i++) {
+      const dr = (i / len) * (i / len) * 5 * sc;
+      const xx = Math.round(hx + Math.cos(a) * i), yy = Math.round(hy + Math.sin(a) * i * 0.6 + dr);
+      G.line(c, x0, y0, xx, yy, k % 2 ? GR[2] : GR[3]);
+      if (i > 2 && i < len - 1) { px(c, xx, yy + 1, GR[1]); if (i % 2) px(c, xx, yy + 2, GR[0]); }
+      if (i % 3 === 0) px(c, xx, yy - 1, GR[4]);
+      x0 = xx; y0 = yy;
     }
   }
-  // palms sway
-  ctx.drawImage(EX.palms, 0, 0);
-  EX.heads.forEach(([hx, hy], i) => EX.fronds(ctx, hx, hy, t * 0.9 + i * 2, i === 0 ? 1.4 : i === 1 ? 1.1 : 0.9));
-  // birds gliding (V shapes)
-  for (const m of EX.birds) {
-    const x = ((m.x * SW + t * 14 * m.sp) % (SW + 20)) - 10, y = 14 + m.y * 70 + Math.sin(t * 0.8 + m.ph) * 4;
-    const fl = Math.floor(t * 6 + m.ph * 3) % 2;
-    const X = Math.round(x), Y = Math.round(y);
-    px(ctx, X, Y, NE[2]); px(ctx, X - 1, Y - fl, NE[2]); px(ctx, X + 1, Y - fl, NE[2]); px(ctx, X - 2, Y - 1 + fl * 0, NE[3]); px(ctx, X + 2, Y - 1, NE[3]);
+  fill(c, hx - 1, hy, 3, 2, WD[1]); px(c, hx, hy, WD[3]);
+}
+E._exterior = function (ctx, t) {
+  const S = get('exterior', buildExterior);
+  ctx.drawImage(S.sky, 0, 0);
+  for (const cl of S.clouds) {
+    const xx = Math.round(((cl.x + t * cl.sp) % (NW + cl.w + 20)) - cl.w - 10 + 20);
+    ctx.drawImage(cl.spr, xx * 2, (cl.y - (cl.w * 0.17 | 0)) * 2);
   }
-  // pigeons pecking on the steps / plaza
-  [[178, 183], [196, 189], [300, 190], [252, 186]].forEach(([x, y], i) => {
-    const peck = ((t * 1.3 + i * 0.7) % 2) < 0.3 ? 1 : 0;
-    const walk = Math.round(Math.sin(t * 0.3 + i) * 3);
-    const X = x + walk;
-    fill(ctx, X, y - 3, 4, 3, NE[5]); px(ctx, X + 3, y - 3, NE[4]); fill(ctx, X + 1, y - 2, 2, 1, NE[6]);
-    px(ctx, X - 1 + (i & 1 ? 5 : 0), y - 4 + peck * 2, NE[4]);
-    px(ctx, X + 1, y, R.red[3]); px(ctx, X + 2, y, R.red[3]);
-    px(ctx, X + (i & 1 ? 0 : 3), y - 4 + peck, R.teal[4]);
+  ctx.drawImage(S.bld, 0, 0);
+  nat(ctx, c => {
+    const cx = (S.X0 + S.X1) >> 1;
+    // roof flag
+    for (let x = 0; x < 11; x++) {
+      const w = Math.sin(t * 5 - x * 0.6), wv = Math.round(w * (x / 11) * 1.5);
+      for (let y = 0; y < 7; y++) {
+        let col = (y % 2 === 0) ? R.red[3] : NE[8];
+        if (x < 5 && y < 4) col = ((x + y) % 2 === 0) ? WHITE : R.blue[3];
+        if (w > 0.5) col = shade(col, -1);
+        px(c, cx + 1 + x, 4 + y + wv, col);
+      }
+    }
+    // lamp glow
+    for (const lx of [56, 184]) { c.globalAlpha = 0.18 + 0.03 * Math.sin(t * 3 + lx); G.dither(c, lx - 5, 63, 12, 10, P.glow, 8); c.globalAlpha = 1; }
+    // people walking on the plaza
+    for (let i = 0; i < 5; i++) {
+      const per = 40 + i * 9, dir = (i & 1) ? -1 : 1;
+      const p = ((t + i * 17) % per) / per;
+      const x = Math.round(dir > 0 ? -6 + p * 204 : 198 - p * 204), y = 99 + (i % 3) * 3;
+      const st = Math.floor(t * 4 + i) % 2;
+      const cl = [R.blue, R.red, NE, R.teal, GO][i];
+      fill(c, x - 1, y - 9, 3, 3, [R.skinL, R.skinM, R.skinD][i % 3][2]); fill(c, x - 1, y - 10, 3, 1, [R.hairBlack, R.hairBrown, R.hairBlond][i % 3][2]);
+      fill(c, x - 2, y - 6, 5, 4, cl[3]); px(c, x - 2, y - 6, cl[4]);
+      px(c, x - 1, y - 2 + 0, NE[1]); px(c, x + 1, y - 2, NE[1]); px(c, x - 1 + st, y - 1, NE[1]); px(c, x + 1 - st, y - 1, NE[1]);
+      if (i === 2) fill(c, x + 2 * dir, y - 4, 2, 2, WD[1]); // briefcase
+      c.globalAlpha = 0.3; fill(c, x - 1, y, 5, 1, P.shadow); c.globalAlpha = 1;
+    }
+    // pigeons
+    [[86, 93], [96, 95], [150, 96], [124, 93]].forEach(([x, y], i) => {
+      const peck = ((t * 1.3 + i * 0.7) % 2) < 0.3 ? 1 : 0, X = x + Math.round(Math.sin(t * 0.3 + i) * 2);
+      fill(c, X, y - 2, 3, 2, NE[5]); px(c, X, y - 2, NE[6]); px(c, X + (i & 1 ? -1 : 3), y - 3 + peck, NE[4]); px(c, X + 1, y, R.red[3]);
+    });
+    // birds
+    for (const m of S.birds) {
+      const x = Math.round(((m.x * NW + t * 7 * m.sp) % (NW + 10)) - 5), y = Math.round(6 + m.y * 30 + Math.sin(t * 0.8 + m.ph) * 2);
+      const fl = Math.floor(t * 6 + m.ph * 3) % 2;
+      px(c, x, y, NE[2]); px(c, x - 1, y - fl, NE[2]); px(c, x + 1, y - fl, NE[2]);
+    }
   });
+  ctx.drawImage(S.palms, 0, 0);
+  nat(ctx, c => S.heads.forEach(([hx, hy, sc], i) => fronds(c, hx + Math.round(sc * 4), hy, t * 0.9 + i * 2, sc)));
 };
 
-/* expose for tests */
-E._buildShots = function () {};
+/* ---------------- prebuild: touch every cached key ---------------- */
+G.prebuild(() => {
+  E.build();
+  ['judge', 'witness', 'defense', 'prosecution', 'jury', 'visit', 'defendant', 'office', 'hallway'].forEach(id => {
+    const c = G.makeCanvas(SW, SH).getContext('2d');
+    SHOTS[id](c, 'back', 0); SHOTS[id](c, 'front', 0);
+  });
+  E._exterior(G.makeCanvas(SW, SH).getContext('2d'), 0);
+});
 })();

@@ -75,11 +75,14 @@ function resize() {
   screen.style.width = cw + 'px';
   screen.style.height = ch + 'px';
   let s = Math.min(screen.width / G.W, screen.height / G.H);
-  if (s >= 2) s = Math.floor(s);          // целочисленный масштаб, когда можем
+  const st = (G.Save && G.Save.data && G.Save.data.settings) || {};
+  if (st.scaleMode === 'fixed' && st.scale > 0) s = Math.min(s, st.scale);
+  else if (st.scaleMode !== 'fit' && s >= 2) s = Math.floor(s);   // целочисленный масштаб — пиксели одинаковые
   scale = s;
   offX = Math.floor((screen.width - G.W * s) / 2);
   offY = Math.floor((screen.height - G.H * s) / 2);
 }
+G.resize = function () { resize(); };
 G.mountCanvas = function (parent) {
   (parent || document.body).appendChild(screen);
   resize();
@@ -279,8 +282,8 @@ const fx = G.fx = {
   shakeT: 0, shakeDur: 0, shakeAmp: 0,
   flashT: 0, flashDur: 0, flashCol: '#fbf7f0',
   fade: 0,               // 0..1 — чёрное затемнение поверх всего (кроме оверлеев UI, если те рисуют после)
-  shake(amp = 3, dur = 0.35) { this.shakeAmp = amp; this.shakeDur = dur; this.shakeT = dur; },
-  flash(col = '#fbf7f0', dur = 0.25) { this.flashCol = col; this.flashDur = dur; this.flashT = dur; },
+  shake(amp = 3, dur = 0.35) { if (G.Save.data.settings.shake === false) return; this.shakeAmp = amp; this.shakeDur = dur; this.shakeT = dur; },
+  flash(col = '#fbf7f0', dur = 0.25) { if (G.Save.data.settings.flash === false) return; this.flashCol = col; this.flashDur = dur; this.flashT = dur; },
 };
 
 /* ---------------------------------------------------------------------
@@ -313,7 +316,7 @@ G.Cast = {
   defs: cast,
   register(id, def) { cast[id] = def; },
   has(id) { return !!cast[id]; },
-  name(id) { return cast[id] ? cast[id].name : id; },
+  name(id) { const n = cast[id] ? cast[id].name : id; return G.tr ? G.tr(n) : n; },
   voice(id) { return cast[id] && cast[id].voice || 'mid'; },
   animDuration(id, a) { return (cast[id] && cast[id].anims && cast[id].anims[a]) || 0; },
   drawBust(c, id, x, y, o) {
@@ -329,13 +332,107 @@ G.Cast = {
 };
 
 /* ---------------------------------------------------------------------
+   АССЕТЫ. Код — генератор, а игра рисует запечённые PNG.
+   G.cacheCanvas(key, w, h, fn) — главный способ создать статичный спрайт:
+     • если PNG с таким ключом загружен (G.Assets) — вернёт картинку;
+     • иначе нарисует fn(ctx,w,h) в canvas, запомнит в реестре для запекания.
+   Ключ = путь файла без .png: 'cast/judge/bust/normal/f0', 'env/world/back', 'icon/violin/32'.
+   Результат только для рисования (drawImage). Пиксели читать внутри fn.
+   tools/bake.js запекает реестр в assets/png/<key>.png и атласы assets/atlas/*.
+   --------------------------------------------------------------------- */
+G.Assets = {
+  imgs: {},          // key -> {img, x, y, w, h} (кусок атласа)
+  registry: {},      // key -> canvas (сгенерировано кодом)
+  prebuilders: [],   // функции, которые трогают все ключи (для запекания)
+  loaded: false,
+  async load(base, onProgress) {
+    try {
+      const r = await fetch(base + 'assets/atlas/atlas.json');
+      if (!r.ok) throw new Error('no atlas');
+      const man = await r.json();
+      let done = 0;
+      await Promise.all(man.sheets.map(sh => new Promise(res => {
+        const img = new Image();
+        img.onload = () => {
+          for (const [k, f] of Object.entries(sh.frames)) this.imgs[k] = { img, x: f[0], y: f[1], w: f[2], h: f[3] };
+          done++; onProgress && onProgress(done / man.sheets.length); res();
+        };
+        img.onerror = () => { done++; res(); };
+        img.src = base + 'assets/atlas/' + sh.file;
+      })));
+      this.loaded = true;
+    } catch (e) { this.loaded = false; }
+    return this.loaded;
+  },
+};
+/* Объект-«спрайт» из атласа ведёт себя как canvas для drawImage через G.blit/G.draw */
+function atlasSprite(a) {
+  // отдельный canvas для каждого кадра — чтобы старый код (drawImage(spr,x,y)) работал без изменений
+  const c = document.createElement('canvas'); c.width = a.w; c.height = a.h;
+  const x = c.getContext('2d'); x.imageSmoothingEnabled = false;
+  x.drawImage(a.img, a.x, a.y, a.w, a.h, 0, 0, a.w, a.h);
+  c._baked = true;
+  return c;
+}
+G.cacheCanvas = function (key, w, h, fn) {
+  const reg = G.Assets.registry;
+  if (reg[key]) return reg[key];
+  const a = G.Assets.imgs[key];
+  if (a) return (reg[key] = atlasSprite(a));
+  const c = G.makeCanvas(w, h);
+  fn(c.getContext('2d'), w, h);
+  reg[key] = c;
+  return c;
+};
+G.prebuild = function (fn) { G.Assets.prebuilders.push(fn); };
+
+/* ---------------------------------------------------------------------
+   ЛОКАЛИЗАЦИЯ. Исходный текст игры — русский. G.tr(text) переводит строку
+   на текущий язык по словарям G.L10N[lang][исходная строка].
+   G.T(key) — строки интерфейса по ключу: G.UIStr[lang][key].
+   Языки по порядку: en (по умолчанию), ru, zh.
+   --------------------------------------------------------------------- */
+G.LANGS = ['en', 'ru', 'zh'];
+G.L10N = G.L10N || { en: {}, zh: {} };
+G.UIStr = G.UIStr || { en: {}, ru: {}, zh: {} };
+G.lang = function () { return (G.Save && G.Save.data.settings.lang) || 'en'; };
+G.tr = function (text) {
+  if (text == null) return text;
+  const l = G.lang();
+  if (l === 'ru') return text;
+  const d = G.L10N[l];
+  return (d && d[text]) || text;
+};
+G.T = function (key, vars) {
+  const l = G.lang();
+  let s = (G.UIStr[l] && G.UIStr[l][key]) || (G.UIStr.en && G.UIStr.en[key]) || (G.UIStr.ru && G.UIStr.ru[key]) || key;
+  if (vars) for (const k in vars) s = s.split('{' + k + '}').join(vars[k]);
+  return s;
+};
+
+/* ---------------------------------------------------------------------
    СОХРАНЕНИЯ
    --------------------------------------------------------------------- */
 G.Save = {
   key: 'slovo-zashity-v1',
-  data: { solved: {}, settings: { music: 0.7, sfx: 0.8, textSpeed: 1 }, progress: null },
+  data: {
+    solved: {}, progress: null,
+    settings: {
+      lang: 'en', music: 0.7, sfx: 0.8, blips: 0.6, textSpeed: 1, textSize: 'normal',
+      scaleMode: 'integer', scale: 0, shake: true, flash: true, adult: false, autoAdvance: false, difficulty: 'normal',
+    },
+    career: { cases: [], opinions: { judge: 50, jury: 50, public: 50, press: 50 } },
+  },
   load() {
-    try { const s = JSON.parse(localStorage.getItem(this.key)); if (s) this.data = Object.assign(this.data, s); } catch (e) {}
+    try {
+      const s = JSON.parse(localStorage.getItem(this.key));
+      if (s) {
+        const def = this.data;
+        this.data = Object.assign({}, def, s);
+        this.data.settings = Object.assign({}, def.settings, s.settings || {});
+        this.data.career = Object.assign({}, def.career, s.career || {});
+      }
+    } catch (e) {}
     return this.data;
   },
   save() { try { localStorage.setItem(this.key, JSON.stringify(this.data)); } catch (e) {} },

@@ -1,7 +1,7 @@
 // Сборка в один HTML для публикации: node tools/build.js
 const fs = require('fs'), path = require('path');
 const root = path.resolve(__dirname, '..');
-const ORDER = ['core', 'env', 'cast_main', 'cast_case', 'font', 'ui', 'audio', 'cases', 'director', 'main'];
+const ORDER = ['core', 'env', 'cast_main', 'cast_case', 'iso', 'icons', 'font', 'font_cjk', 'ui', 'locale/ui_strings', 'locale/eula', 'locale/en', 'locale/zh', 'audio', 'remarks', 'cases', 'reputation', 'director', 'main'];
 const head = `<title>Слово защиты</title>
 <meta name="description" content="Пиксельная судебная игра: вы адвокат защиты в Высшем суде Калифорнии.">
 <style>
@@ -14,7 +14,7 @@ const head = `<title>Слово защиты</title>
 `;
 const scripts = ORDER.map(n => {
   const f = path.join(root, 'src', n + '.js');
-  if (!fs.existsSync(f)) { console.warn('missing', n); return ''; }
+  if (!fs.existsSync(f)) { return ''; }
   return `<script>/* ${n}.js */\n${fs.readFileSync(f, 'utf8').replace(/<\/script/gi, '<\\/script')}\n</script>`;
 }).join('\n');
 fs.mkdirSync(path.join(root, 'dist'), { recursive: true });

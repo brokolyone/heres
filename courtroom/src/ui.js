@@ -17,6 +17,17 @@ const M = (s, o) => G.Font ? G.Font.measure(s, o) : String(s).length * 6;
 const WRAP = (s, w, o) => G.Font ? G.Font.wrap(s, w, o) : [String(s)];
 const STRIP = s => G.Font ? G.Font.strip(s) : String(s);
 const kp = (...ks) => ks.some(k => inp.keyPressed(k));
+const TT = (k, v) => G.T ? G.T(k, v) : k;
+const TR = s => (G.tr ? G.tr(s) : s);
+const ST = () => (G.Save && G.Save.data && G.Save.data.settings) || {};
+const LANG = () => (G.lang ? G.lang() : 'ru');
+/* Статичные спрайты UI — через G.cacheCanvas (запекаются в assets/png/ui/...) */
+function UC(key, w, h, fn) {
+  if (G.cacheCanvas) return G.cacheCanvas('ui/' + key, w, h, fn);
+  const c = G.makeCanvas(w, h); fn(c.getContext('2d'), w, h); return c;
+}
+function hkey(s) { return strSeed(String(s)).toString(36); }
+function isLarge() { const st = ST(); return st.textSize === 'large' || LANG() === 'zh'; }
 
 /* ---------------------------------------------------------------------
    Общие примитивы
@@ -75,7 +86,7 @@ function dim(c, lvl) {
   lvl = G.clamp(lvl | 0, 0, 16);
   if (!lvl) return;
   let s = dimCache[lvl];
-  if (!s) { s = dimCache[lvl] = G.makeSprite(W, H, x => G.dither(x, 0, 0, W, H, P.black, lvl)); }
+  if (!s) { s = dimCache[lvl] = UC('dim/' + lvl, W, H, x => G.dither(x, 0, 0, W, H, P.black, lvl)); }
   c.drawImage(s, 0, 0);
 }
 function shadowRect(c, x, y, w, h, a) {
@@ -199,10 +210,11 @@ const ARROW_DN = G.fromMap([
 /* ---------------------------------------------------------------------
    ДИАЛОГ
    --------------------------------------------------------------------- */
-const DLG_Y = 150, DLG_H = 66;
-let dlgFrame = null;
-function buildDialogFrame() {
-  return G.makeSprite(W, DLG_H, c => {
+const DLG_Y = 150, DLG_H = 66, DLG_HL = 94;
+function dialogH() { return isLarge() ? DLG_HL : DLG_H; }
+function dialogTop() { return H - dialogH(); }
+function buildDialogFrame(DLG_H) {
+  return UC('dialog/frame' + DLG_H, W, DLG_H, c => {
     // ореховая рама
     woodFill(c, 0, 0, W, DLG_H, 31, 2);
     G.rect(c, 0, 0, W, 1, P.outline);
@@ -234,7 +246,7 @@ function namePlate(name) {
   if (plateCache[name]) return plateCache[name];
   const tw = M(name, { font: 'small' });
   const w = tw + 20, h = 14;
-  const s = G.makeSprite(w, h + 2, c => {
+  const s = UC('plate/' + hkey(name), w, h + 2, c => {
     shadowRect(c, 2, 2, w - 2, h, 0.45);
     G.rect(c, 0, 0, w - 1, h, P.outline);
     G.rect(c, 1, 1, w - 3, h - 2, R.gold[3]);
@@ -256,10 +268,12 @@ function namePlate(name) {
 
 function drawDialog(c, o) {
   o = o || {};
-  if (!dlgFrame) dlgFrame = buildDialogFrame();
+  const large = isLarge();
+  const DH = large ? DLG_HL : DLG_H;
+  const frame = buildDialogFrame(DH);
   const t = o.t || G.time || 0;
-  const y0 = o.y == null ? DLG_Y : o.y;
-  c.drawImage(dlgFrame, 0, y0);
+  const y0 = o.y == null ? H - DH : o.y;
+  c.drawImage(frame, 0, y0);
   if (o.name) {
     const pl = namePlate(o.name);
     const px = o.side === 'right' ? W - pl.width - 10 : 10;
@@ -272,24 +286,32 @@ function drawDialog(c, o) {
       const gx = px + Math.round(gp * (pl.width + 10)) - 5;
       for (let k = 0; k < 12; k++) {
         const xx = gx - (k >> 1), yy = y0 - 9 + k;
-        if (xx > px && xx < px + pl.width - 3 && k < 12) G.px(c, xx, yy, k % 5 === 0 ? P.white : R.gold[5]);
+        if (xx > px && xx < px + pl.width - 3) G.px(c, xx, yy, k % 5 === 0 ? P.white : R.gold[5]);
       }
     }
   }
   const col = o.color || R.paper[4];
   const emph = o.emph || R.red[4];
-  const lines = WRAP(o.text || '', W - 30, { font: 'small' });
-  let budget = o.shown == null ? Infinity : o.shown;
-  const lh = lines.length > 4 ? 9 : 10;
-  const ty = y0 + (lines.length > 4 ? 9 : o.name ? 11 : 10);
-  for (let i = 0; i < lines.length && i < 5; i++) {
+  const fo = { font: large && LANG() !== 'zh' ? 'big' : 'small' };
+  if (large && LANG() === 'zh') fo.font = 'small';
+  const full = STRIP(o.text || '');
+  const lines = WRAP(o.text || '', W - 34, fo);
+  const baseLH = G.Font ? G.Font.height(fo) : 10;
+  const maxL = Math.max(1, Math.floor((DH - 16) / baseLH));
+  const lh = lines.length > maxL ? Math.floor((DH - 14) / lines.length) : baseLH;
+  const ty = y0 + (o.name ? 11 : 9) + (lines.length > maxL ? -2 : 0);
+  const shown = o.shown == null ? Infinity : o.shown;
+  let pos = 0;
+  for (let i = 0; i < lines.length && i < maxL + 1; i++) {
+    const budget = shown - pos;
     if (budget <= 0) break;
-    T(c, lines[i], 14, ty + i * lh, col, { maxChars: budget, shadow: P.black, shadowX: 0, shadowY: 1, emph });
-    budget -= STRIP(lines[i]).length + 1;
+    T(c, lines[i], 14, ty + i * lh, col, Object.assign({ maxChars: budget, shadow: P.black, shadowX: 0, shadowY: 1, emph }, fo));
+    pos += STRIP(lines[i]).length;
+    if (full[pos] === ' ' || full[pos] === '\n') pos++;
   }
   if (o.waiting) {
     const bob = Math.round(Math.sin(t * 7) * 1.5);
-    if (((t * 2.2) | 0) % 3 !== 2) c.drawImage(ARROW_DN, W - 22, y0 + DLG_H - 15 + bob);
+    if (((t * 2.2) | 0) % 3 !== 2) c.drawImage(ARROW_DN, W - 22, y0 + DH - 15 + bob);
   }
 }
 
@@ -365,7 +387,7 @@ function buildSeals() {
     G.ellipse(c, 6, 6, 5, 5, R.gold[4]);
     G.ellipse(c, 7, 7, 5, 5, R.gold[3]);
   };
-  sealOk = G.makeSprite(15, 15, c => {
+  sealOk = UC('seal/ok', 15, 15, c => {
     base(c);
     G.ellipse(c, 7, 7, 4, 4, R.red[1]);
     G.ellipse(c, 7, 7, 4, 3, R.red[2]);
@@ -375,7 +397,7 @@ function buildSeals() {
     G.px(c, 5, 6, R.red[1]); G.px(c, 9, 6, R.red[1]); G.rect(c, 6, 9, 3, 1, R.red[1]);
     G.px(c, 5, 4, R.red[5]);
   });
-  sealLost = G.makeSprite(15, 15, c => {
+  sealLost = UC('seal/lost', 15, 15, c => {
     base(c);
     G.ellipse(c, 7, 7, 4, 4, R.neutral[1]);
     G.ellipse(c, 8, 8, 3, 3, R.neutral[2]);
@@ -385,7 +407,7 @@ function buildSeals() {
     G.line(c, 5, 4, 7, 7, P.black); G.line(c, 7, 7, 6, 10, P.black); G.line(c, 7, 7, 10, 8, P.black);
     G.px(c, 3, 5, R.gold[1]); G.px(c, 11, 10, R.gold[1]);
   });
-  sealFlash = G.makeSprite(15, 15, c => {
+  sealFlash = UC('seal/flash', 15, 15, c => {
     G.ellipse(c, 7, 7, 7, 7, P.outline);
     G.ellipse(c, 7, 7, 6, 6, R.gold[5]);
     G.ellipse(c, 7, 7, 4, 4, P.white);
@@ -437,6 +459,17 @@ function lighter(col) {
   return col;
 }
 /* Базовый штамп: двойная рамка, текст, неровная мастика. size: 'small'|'big'|'shout' */
+function stampDims(text, size) {
+  const font = size === 'small' ? 'big' : 'title';
+  const zoom = size === 'shout' ? 2 : 1;
+  const fo = { font };
+  const lines = String(text).split('\n');
+  const capH = G.Font ? G.Font.capH(fo) : 7;
+  const tw = Math.max(...lines.map(l => M(l, fo)));
+  const pad = size === 'small' ? 4 : 6, b = 7;
+  const lgap = size === 'small' ? 3 : 5;
+  return { w: (tw + 2 * (b + pad) + 2) * zoom, h: (lines.length * capH + (lines.length - 1) * lgap + 2 * (b + pad - 2)) * zoom };
+}
 function stampBase(text, color, size) {
   const key = text + '|' + color + '|' + size;
   if (stampBaseCache[key]) return stampBaseCache[key];
@@ -492,14 +525,28 @@ function stampBase(text, color, size) {
   stampBaseCache[key] = base;
   return base;
 }
+const rotRaw = {};
 function stampVariant(text, color, size, angle, scale) {
   const key = text + '|' + color + '|' + size + '|' + angle + '|' + scale;
   let v = stampVarCache[key];
-  if (!v) {
-    const rot = stampVarCache[text + '|' + color + '|' + size + '|' + angle + '|1'] || rotShear(stampBase(text, color, size), angle);
-    v = stampVarCache[key] = scale === 1 ? rot : xform(rot, 0, scale);
+  if (v) return v;
+  const d = stampDims(text, size);
+  const a = angle * Math.PI / 180, ca = Math.abs(Math.cos(a)), sa = Math.abs(Math.sin(a));
+  const rw = Math.ceil(d.w * ca + d.h * sa) + 4, rh = Math.ceil(d.w * sa + d.h * ca) + 4;
+  const rk = text + '|' + color + '|' + size + '|' + angle;
+  const getRot = () => rotRaw[rk] || (rotRaw[rk] = rotShear(stampBase(text, color, size), angle));
+  const ck = 'stamp/' + hkey(text + '|' + color + '|' + size) + '_' + (angle < 0 ? 'm' + (-angle) : angle) + '_' + Math.round(scale * 100);
+  if (scale === 1) {
+    v = UC(ck, rw, rh, c => { const r = getRot(); c.drawImage(r, (rw - r.width) >> 1, (rh - r.height) >> 1); });
+  } else {
+    const sw = Math.ceil(rw * scale) + 2, sh = Math.ceil(rh * scale) + 2;
+    v = UC(ck, sw, sh, c => {
+      const r0 = getRot();
+      const pad = G.makeCanvas(rw, rh); pad.getContext('2d').drawImage(r0, (rw - r0.width) >> 1, (rh - r0.height) >> 1);
+      const r = xform(pad, 0, scale); c.drawImage(r, (sw - r.width) >> 1, (sh - r.height) >> 1);
+    });
   }
-  return v;
+  return (stampVarCache[key] = v);
 }
 const APPEAR_STEPS = [2.2, 1.8, 1.5, 1.25, 1.1, 1];
 function drawStamp(c, x, y, text, color, o) {
@@ -521,11 +568,11 @@ function drawStamp(c, x, y, text, color, o) {
    БОЛЬШОЙ УДАР ПЕЧАТЬЮ
    --------------------------------------------------------------------- */
 const SHOUTS = {
-  objection: { text: 'ПРОТЕСТ!', color: P.stamp, angle: -7 },
-  contradiction: { text: 'ПРОТИВОРЕЧИЕ', color: P.stamp, angle: 5 },
-  sustained: { text: 'ПРОТЕСТ\nПРИНЯТ', color: P.stampBlue, angle: -5 },
-  overruled: { text: 'ПРОТЕСТ\nОТКЛОНЁН', color: P.stampBlue, angle: 6 },
-  evidence: { text: 'ПРИОБЩЕНО\nК ДЕЛУ', color: P.stampBlue, angle: -6 },
+  objection: { color: P.stamp, angle: -7 },
+  contradiction: { color: P.stamp, angle: 4 },
+  sustained: { color: P.stampBlue, angle: -5 },
+  overruled: { color: P.stampBlue, angle: 6 },
+  evidence: { color: P.stampBlue, angle: -6 },
 };
 const SHOUT_STEPS = [2.6, 2.1, 1.7, 1.4, 1.2, 1.08, 1];
 const splatCache = {};
@@ -561,7 +608,8 @@ function paperSheet(c, cx, cy, ang, flip, w, h) {
   }
 }
 function drawShout(c, kind, t) {
-  const S = SHOUTS[kind] || SHOUTS.objection;
+  if (!SHOUTS[kind]) kind = 'objection';
+  const S = Object.assign({ text: TT('shout.' + kind) }, SHOUTS[kind]);
   t = G.clamp(t, 0, 1);
   const cx = W >> 1, cy = (H >> 1) - 14;
   const fall = 0.16;
@@ -691,7 +739,7 @@ function icon2x(id) {
 let folderBg = null;
 const FX = 10, FY = 10, FW = 364, FH = 198;
 function buildFolder() {
-  return G.makeSprite(W, H, c => {
+  return UC('record/folder_' + LANG(), W, H, c => {
     // задняя обложка + вкладка
     shadowRect(c, FX + 4, FY + 6, FW, FH - 2, 0.45);
     // вкладка «Улики»
@@ -729,14 +777,14 @@ function buildFolder() {
     G.rect(c, sx + (sw >> 1) - 11, sy - 3, 22, 3, R.gold[3]);
     G.rect(c, sx + (sw >> 1) - 11, sy - 3, 22, 1, R.gold[5]);
     // заголовок слева
-    T(c, 'МАТЕРИАЛЫ ДЕЛА', FX + 12, FY + 13, R.wood[1], { font: 'small' });
+    T(c, TT('rec.title'), FX + 12, FY + 13, R.wood[1], { font: 'small' });
     G.rect(c, FX + 12, FY + 23, 150, 1, R.paper[1]);
-    tab(FX + 14, 54, true, 'Улики');
+    tab(FX + 14, M(TT('rec.tab')) + 16, true, TT('rec.tab'));
   });
 }
 const REC = { cols: 4, rows: 3, cell: 38, gx: FX + 12, gy: FY + 28 };
 function courtRecord(c, state, evidence, t) {
-  if (!folderBg) folderBg = buildFolder();
+  folderBg = buildFolder();
   state = state || {};
   evidence = evidence || [];
   t = t || 0;
@@ -760,7 +808,7 @@ function courtRecord(c, state, evidence, t) {
   // заголовок режима
   if (mode === 'present') {
     const blink = ((t * 2) | 0) % 2 === 0;
-    const lbl = 'ПРЕДЪЯВИТЕ УЛИКУ';
+    const lbl = TT('rec.presentHint');
     const lw = M(lbl) + 12, lx = FX + FW - lw - 4;
     G.rect(c, lx, FY - 3, lw, 13, P.outline);
     G.rect(c, lx + 1, FY - 2, lw - 2, 11, blink ? R.red[3] : R.red[2]);
@@ -819,28 +867,29 @@ function courtRecord(c, state, evidence, t) {
     }
     // номер улики
     const nx = ix + 76;
-    T(c, 'Улика', nx, iy + 2, R.wood[2]);
+    T(c, TT('rec.item'), nx, iy + 2, R.wood[2]);
     T(c, '№ ' + (state.sel + 1), nx, iy + 12, P.inkDark, { font: 'big' });
-    if (ev.doc) { G.rect(c, nx, iy + 30, 64, 11, R.paper[2]); T(c, '+ документ', nx + 2, iy + 31, R.wood[1]); }
+    if (ev.doc) { G.rect(c, nx, iy + 30, 64, 11, R.paper[2]); T(c, TT('rec.hasDoc'), nx + 2, iy + 31, R.wood[1]); }
     // название и описание
     const tw = 150;
-    const nameLines = WRAP(ev.name || ev.id, tw, { font: 'big' });
+    const nameLines = WRAP(TR(ev.name || ev.id), tw, { font: 'big' });
     let yy = iy + 72;
     nameLines.slice(0, 2).forEach((l, i) => T(c, l, sx + 18, yy + i * 13, P.inkDark, { font: 'big' }));
     yy += Math.min(2, nameLines.length) * 13 + 1;
-    const dl = WRAP(ev.desc || '', tw - 2, { font: 'small' });
+    const dl = WRAP(TR(ev.desc || ''), tw - 2, { font: 'small' });
     const room = Math.max(1, Math.floor((FY + FH - 32 - yy) / 10));
     dl.slice(0, room).forEach((l, i) => T(c, l, sx + 18, yy + i * 10, P.ink, { emph: P.stamp }));
   } else {
-    T(c, 'Папка пуста', sx + 90, sy + 60, R.wood[2], { align: 'center' });
+    T(c, TT('rec.empty'), sx + 90, sy + 60, R.wood[2], { align: 'center' });
   }
   // кнопки
   const by = FY + FH - 22;
   let bx = FX + FW - 10;
   const btns = [];
-  btns.push({ label: 'Закрыть', act: 'close', w: 58, kind: 'normal' });
-  if (ev && ev.doc) btns.push({ label: 'Документ', act: 'doc', w: 64, kind: 'normal' });
-  if (mode === 'present' && ev) btns.push({ label: 'Предъявить', act: 'present', w: 76, kind: 'danger' });
+  const bw = l => M(l) + 16;
+  btns.push({ label: TT('rec.close'), act: 'close', w: bw(TT('rec.close')), kind: 'normal' });
+  if (ev && ev.doc) btns.push({ label: TT('rec.doc'), act: 'doc', w: bw(TT('rec.doc')), kind: 'normal' });
+  if (mode === 'present' && ev) btns.push({ label: TT('rec.present'), act: 'present', w: bw(TT('rec.present')), kind: 'danger' });
   for (const b of btns) {
     bx -= b.w;
     if (button(c, { x: bx, y: by, w: b.w, h: 16 }, b.label, { kind: b.kind, silent: true })) result = { action: b.act, id: ev ? ev.id : null };
@@ -862,7 +911,7 @@ function courtRecord(c, state, evidence, t) {
 const docCache = new WeakMap();
 let deskBg = null;
 function buildDesk() {
-  return G.makeSprite(W, H, c => {
+  return UC('desk', W, H, c => {
     // ореховый стол из досок
     for (let i = 0; i < 8; i++) {
       woodFill(c, 0, i * 27, W, 27, 200 + i, i % 2 ? 2 : 3);
@@ -914,7 +963,7 @@ function scribble(c, x, y, w, seed, col) {
 }
 function buildDoc(doc) {
   const pw = 236, ph = 206, px = (W - pw) >> 1, py = 5;
-  return G.makeSprite(W, H, c => {
+  return UC('doc/' + hkey((doc.title || '') + '|' + (doc.lines || []).join('|') + '|' + (doc.signature || '')) + '_' + LANG(), W, H, c => {
     c.drawImage(deskBg || (deskBg = buildDesk()), 0, 0);
     // тень листа
     shadowRect(c, px + 4, py + 4, pw, ph, 0.45);
@@ -929,11 +978,11 @@ function buildDoc(doc) {
     for (let i = 0; i < 160; i++) G.px(c, px + Math.floor(rnd() * pw), py + Math.floor(rnd() * ph), R.paper[3]);
     G.frame(c, px - 1, py - 1, pw + 2, ph + 2, R.paper[0]);
     // шапка
-    const head = doc.header || 'ВЫСШИЙ СУД КАЛИФОРНИИ • ОКРУГ ЛОС-АНДЖЕЛЕС';
+    const head = doc.header ? TR(doc.header) : TT('doc.header');
     const hl = WRAP(head, pw - 44).slice(0, 2);
     let hy = py + 5;
     hl.forEach(l => { T(c, l, px + (pw >> 1) + 8, hy, R.neutral[3], { align: 'center' }); hy += 9; });
-    const tl = WRAP(doc.title || '', pw - 44, { font: 'big' }).slice(0, 2);
+    const tl = WRAP(TR(doc.title || ''), pw - 44, { font: 'big' }).slice(0, 2);
     hy += 2;
     tl.forEach(l => { T(c, l, px + (pw >> 1) + 8, hy, P.inkDark, { font: 'big', align: 'center' }); hy += 13; });
     G.rect(c, px + 30, hy + 2, pw - 44, 1, P.inkDark);
@@ -960,7 +1009,7 @@ function buildDoc(doc) {
     let ly = top - 9;
     const maxLy = py + ph - (doc.signature ? 36 : 12);
     const lines = [];
-    for (const raw of (doc.lines || [])) for (const l of WRAP(raw, pw - 40)) lines.push(l);
+    for (const raw of (doc.lines || [])) for (const l of WRAP(TR(raw), pw - 40)) lines.push(l);
     for (const l of lines) {
       if (ly > maxLy) break;
       // «машинопись»: тёмные чернила, местами пропуск ленты
@@ -982,7 +1031,7 @@ function buildDoc(doc) {
       G.rect(c, px + pw - 110, sy, 96, 1, P.inkDark);
       T(c, doc.signature, px + pw - 62, sy + 2, R.neutral[4], { align: 'center' });
       scribble(c, px + pw - 104, sy - 6, 70, strSeed(doc.signature), P.ink);
-      T(c, 'Подпись', px + 30, sy - 8, R.neutral[4]);
+      T(c, TT('doc.sign'), px + 30, sy - 8, R.neutral[4]);
     }
     // печати
     for (const s of (doc.stamps || [])) {
@@ -992,13 +1041,12 @@ function buildDoc(doc) {
 }
 function drawDocument(c, doc, t) {
   if (!doc) return;
-  let cv = docCache.get(doc);
-  if (!cv) { cv = buildDoc(doc); docCache.set(doc, cv); }
+  const cv = buildDoc(doc);
   c.drawImage(cv, 0, 0);
   t = t || 0;
   if (((t * 2) | 0) % 2 === 0) {
     G.rect(c, W - 70, H - 13, 66, 11, P.black);
-    T(c, 'Esc / клик', W - 37, H - 12, R.paper[3], { align: 'center' });
+    T(c, TT('doc.close'), W - 37, H - 12, R.paper[3], { align: 'center' });
   }
 }
 
@@ -1050,7 +1098,7 @@ function choice(c, prompt, options, t) {
    --------------------------------------------------------------------- */
 let hudBanner = null;
 function buildBanner() {
-  return G.makeSprite(W, 18, c => {
+  return UC('hud/banner', W, 18, c => {
     woodFill(c, 0, 0, W, 15, 501, 1);
     G.rect(c, 0, 0, W, 1, R.wood[3]);
     G.rect(c, 0, 14, W, 1, R.gold[4]);
@@ -1069,11 +1117,14 @@ function crossHUD(c, o) {
   G.rect(c, 4, 4, 7, 7, P.outline);
   G.rect(c, 5, 5, 5, 5, on ? R.red[4] : R.red[1]);
   if (on) G.px(c, 6, 6, R.red[5]);
-  const ttl = 'ПЕРЕКРЁСТНЫЙ ДОПРОС' + (o.title ? ' — ' + o.title : '');
-  T(c, ttl, 15, 3, R.gold[5], { shadow: R.wood[0], shadowX: 0, shadowY: 1 });
+  const ttl = TT('hud.title') + (o.title ? ' — ' + o.title : '');
+  if (isLarge() && LANG() !== 'zh') {
+    G.rect(c, 0, 15, W, 6, R.wood[1]); G.rect(c, 0, 20, W, 1, R.gold[4]); G.rect(c, 0, 21, W, 1, P.outline);
+    T(c, ttl, 15, 3, R.gold[5], { font: 'big', shadow: R.wood[0], shadowX: 0, shadowY: 1 });
+  } else T(c, ttl, 15, 3, R.gold[5], { shadow: R.wood[0], shadowX: 0, shadowY: 1 });
   // счётчик показаний: пометки-зарубки
   const total = o.total || 1, idx = o.index || 0;
-  const cnt = 'Показание ' + (idx + 1) + '/' + total;
+  const cnt = TT('hud.stmt', { i: idx + 1, n: total });
   const cw = M(cnt);
   const px0 = W - 6 - total * 6;
   T(c, cnt, px0 - 5 - cw, 3, R.paper[3]);
@@ -1082,18 +1133,20 @@ function crossHUD(c, o) {
     G.rect(c, x, 4, 5, 7, P.outline);
     G.rect(c, x + 1, 5, 3, 5, i === idx ? R.gold[5] : i < idx ? R.gold[2] : R.wood[2]);
   }
-  // кнопки
+  // кнопки (над диалоговой панелью)
   let act = null;
-  const y = 125, h = 16;
+  const h = 16, y = dialogTop() - 12 - h;
   if (button(c, { x: 4, y, w: 24, h }, '◄', { disabled: idx <= 0, hotkey: 'ArrowLeft', silent: true })) act = 'prev';
   let x = W - 4 - 24;
   if (button(c, { x, y, w: 24, h }, '►', { hotkey: 'ArrowRight', silent: true })) act = 'next';
-  x -= 54;
-  if (button(c, { x, y, w: 50, h }, 'Папка', { hotkey: ['r', 'к', 'Tab'], hotkeyLabel: 'R' })) act = 'record';
-  x -= 84;
-  if (button(c, { x, y, w: 80, h }, 'Предъявить', { kind: 'danger', hotkey: ['e', 'у'], hotkeyLabel: 'E' })) act = 'present';
-  x -= 74;
-  if (button(c, { x, y, w: 70, h }, 'Уточнить', { kind: 'primary', hotkey: ['q', 'й'], hotkeyLabel: 'Q' })) act = 'press';
+  const bw = l => M(l) + 26;
+  const lr = TT('hud.record'), lp = TT('hud.present'), lq = TT('hud.press');
+  x -= bw(lr) + 4;
+  if (button(c, { x, y, w: bw(lr), h }, lr, { hotkey: ['r', 'к', 'Tab'], hotkeyLabel: 'R' })) act = 'record';
+  x -= bw(lp) + 4;
+  if (button(c, { x, y, w: bw(lp), h }, lp, { kind: 'danger', hotkey: ['e', 'у'], hotkeyLabel: 'E' })) act = 'present';
+  x -= bw(lq) + 4;
+  if (button(c, { x, y, w: bw(lq), h }, lq, { kind: 'primary', hotkey: ['q', 'й'], hotkeyLabel: 'Q' })) act = 'press';
   if (act === 'prev' || act === 'next') sfx('select');
   return { action: act };
 }
@@ -1157,7 +1210,7 @@ function startCase(i) {
 /* Заглушка-фон: закат над Лос-Анджелесом */
 let skyBg = null;
 function buildSky() {
-  return G.makeSprite(W, H, c => {
+  return UC('title/sky', W, H, c => {
     const bands = [R.blue[3], R.blue[4], R.blue[5], P.sky, P.sky2, R.gold[5], R.red[5]];
     const bh = 22;
     bands.forEach((col, i) => {
@@ -1229,9 +1282,8 @@ function buildLogo(text) {
     x += g.w + 4;
   }
   const at = (X, Y) => X >= 0 && Y >= 0 && X < gw && Y < gh && mask[Y * gw + X];
-  const out = G.makeCanvas(gw + D + 4, gh + D + 4);
-  const c = out.getContext('2d');
   const ox = 2, oy = 2;
+  const out = UC('title/logo_' + hkey(text), gw + D + 4, gh + D + 4, c => {
   // контур + экструзия
   for (let d = D; d >= 1; d--) {
     for (let Y = 0; Y < gh; Y++) for (let X = 0; X < gw; X++) if (at(X, Y)) G.px(c, ox + X + d, oy + Y + d, d === D ? P.outline : R.wood[d > 3 ? 0 : d > 1 ? 1 : 2]);
@@ -1256,7 +1308,8 @@ function buildLogo(text) {
     if (!at(X, Y + 1) || !at(X + 1, Y)) col = R.gold[1];
     G.px(c, ox + X, oy + Y, col);
   }
-  return { cv: out, mask, gw, gh, ox, oy };
+  });
+  return { cv: out, mask, gw, gh, ox, oy, text };
 }
 function menuBackground(c) {
   if (!deskBg) deskBg = buildDesk();
@@ -1272,12 +1325,14 @@ function sceneHeader(c, text) {
 /* ---------------------------------------------------------------------
    ТИТУЛЬНЫЙ ЭКРАН
    --------------------------------------------------------------------- */
-const TITLE_ITEMS = ['Новая игра', 'Продолжить', 'Выбор дела', 'Настройки', 'Об игре'];
+const TITLE_KEYS = ['menu.new', 'menu.continue', 'menu.select', 'menu.rep', 'menu.settings', 'menu.about'];
+const MENU_Y = 116, MENU_STEP = 15;
+function getLogo() { const txt = TT('logo'); if (!logoCv || logoCv.text !== txt) logoCv = buildLogo(LANG() === 'zh' ? (G.UIStr.en.logo || txt) : txt); return logoCv; }
 const TitleScene = {
   t: 0, sel: 0, lmx: -1, lmy: -1,
   enter() {
     this.t = 0; this.sel = 0;
-    if (!logoCv) logoCv = buildLogo('СЛОВО ЗАЩИТЫ');
+    getLogo();
     if (G.Audio && G.Audio.music) G.Audio.music('menu');
   },
   exit() {},
@@ -1290,15 +1345,16 @@ const TitleScene = {
       if (typeof idx === 'string' && G.Cases) idx = Math.max(0, G.Cases.findIndex(cs => cs.id === idx));
       startCase(idx);
     } else if (i === 2) G.setScene(UI.CaseSelectScene);
-    else if (i === 3) G.setScene(UI.SettingsScene);
-    else if (i === 4) G.setScene(UI.CreditsScene);
+    else if (i === 3) G.setScene(UI.RepScene, { back: UI.TitleScene });
+    else if (i === 4) G.setScene(UI.SettingsScene);
+    else if (i === 5) G.setScene(UI.AboutScene, { back: UI.TitleScene });
   },
   rects() {
-    return TITLE_ITEMS.map((_, i) => ({ x: 142, y: 128 + i * 15, w: 100, h: 14 }));
+    return TITLE_KEYS.map((_, i) => ({ x: 132, y: MENU_Y + 6 + i * MENU_STEP, w: 120, h: 14 }));
   },
   update(dt) {
     this.t += dt;
-    const n = TITLE_ITEMS.length;
+    const n = TITLE_KEYS.length;
     if (kp('ArrowDown', 's', 'ы')) { this.sel = (this.sel + 1) % n; sfx('select'); }
     if (kp('ArrowUp', 'w', 'ц')) { this.sel = (this.sel + n - 1) % n; sfx('select'); }
     const rs = this.rects();
@@ -1314,7 +1370,7 @@ const TitleScene = {
     const t = this.t;
     c.drawImage(skyBg || (skyBg = buildSky()), 0, 0);
     if (G.Env && G.Env.drawExterior) { try { G.Env.drawExterior(c, t); } catch (e) { /* фон-заглушка уже нарисован */ } }
-    if (!logoCv) logoCv = buildLogo('СЛОВО ЗАЩИТЫ');
+    getLogo();
     // логотип с лёгким «дыханием» и бликом
     const L = logoCv;
     const lx = (W - L.cv.width) >> 1, ly = 6 + (((t * 1.2) | 0) % 8 === 0 ? 0 : 0);
@@ -1331,7 +1387,7 @@ const TitleScene = {
       }
     }
     // подзаголовок на ленте
-    const sub = 'Высший суд Калифорнии • Округ Лос-Анджелес';
+    const sub = TT('menu.subtitle');
     const sw = M(sub) + 24;
     const sx = (W - sw) >> 1, sy = ly + L.cv.height + 2;
     G.rect(c, sx - 1, sy - 1, sw + 2, 14, P.outline);
@@ -1346,14 +1402,15 @@ const TitleScene = {
     }
     T(c, sub, W >> 1, sy + 2, R.paper[4], { align: 'center', shadow: R.red[0], shadowX: 0, shadowY: 1 });
     // меню: ореховая доска с латунной рамкой
-    const mx = 128, my = 122, mw = 128, mh = 84;
+    const mw = Math.max(128, Math.max(...TITLE_KEYS.map(k => M(TT(k)))) + 56), mx = (W - mw) >> 1, my = MENU_Y, mh = TITLE_KEYS.length * MENU_STEP + 10;
     shadowRect(c, mx + 3, my + 4, mw, mh, 0.45);
     woodFill(c, mx, my, mw, mh, 404, 2);
     brassFrame(c, mx, my, mw, mh);
     rivet(c, mx + 4, my + 4); rivet(c, mx + mw - 8, my + 4); rivet(c, mx + 4, my + mh - 8); rivet(c, mx + mw - 8, my + mh - 8);
     const hasProg = !!(G.Save && (G.Save.data.progress || Object.keys(G.Save.data.solved || {}).length));
-    TITLE_ITEMS.forEach((it, i) => {
-      const y = 128 + i * 15;
+    TITLE_KEYS.forEach((k, i) => {
+      const it = TT(k);
+      const y = MENU_Y + 5 + i * MENU_STEP;
       const sel = i === this.sel;
       if (sel) {
         G.rect(c, mx + 6, y, mw - 12, 13, R.wood[1]);
@@ -1393,11 +1450,11 @@ const PLACEHOLDER_CASES = [
 ];
 const folderCache = {};
 function buildCaseFolder(cs, i, solved, locked) {
-  const key = i + '|' + solved + '|' + locked + '|' + cs.title;
+  const key = i + '|' + solved + '|' + locked + '|' + cs.title + '|' + LANG();
   if (folderCache[key]) return folderCache[key];
   const fw = 86, fh = 126;
   const tabX = 6 + (i % 3) * 20;
-  const cv = G.makeSprite(fw + 4, fh + 14, c => {
+  const cv = UC('case/' + i + '_' + (solved ? 's' : 'u') + (locked ? 'l' : 'o') + '_' + LANG(), fw + 4, fh + 14, c => {
     const oy = 10;
     // вкладка
     const tw = Math.min(fw - 8, M(cs.docket || '') + 8);
@@ -1418,11 +1475,11 @@ function buildCaseFolder(cs, i, solved, locked) {
     G.rect(c, 6, oy + 8, fw - 12, 42, R.paper[4]);
     G.frame(c, 6, oy + 8, fw - 12, 42, R.paper[1]);
     G.rect(c, 6, oy + 8, fw - 12, 9, R.red[2]);
-    T(c, 'ДЕЛО № ' + (i + 1), fw >> 1, oy + 8, R.paper[4], { align: 'center' });
-    const tl = locked ? ['* * *'] : WRAP(cs.title || '', fw - 18);
+    T(c, TT('sel.case', { n: i + 1 }), fw >> 1, oy + 8, R.paper[4], { align: 'center' });
+    const tl = locked ? ['* * *'] : WRAP(TR(cs.title || ''), fw - 18);
     tl.slice(0, 3).forEach((l, k) => T(c, l, fw >> 1, oy + 20 + k * 10, P.inkDark, { align: 'center' }));
     // подпись-подзаголовок
-    const cap = locked ? [] : WRAP(cs.caption || '', fw - 12);
+    const cap = locked ? [] : WRAP(TR(cs.caption || ''), fw - 12);
     cap.slice(0, 5).forEach((l, k) => T(c, l, 6, oy + 54 + k * 10, R.wood[1]));
     // статья
     const code = (cs.charges && cs.charges[0] && cs.charges[0].code) || '';
@@ -1434,7 +1491,7 @@ function buildCaseFolder(cs, i, solved, locked) {
     G.rect(c, fw - 20, oy + 9, 7, 1, R.neutral[5]);
     if (solved && !locked) {
       const fem = FEM[cs.defendant];
-      drawStamp(c, fw >> 1, oy + 82, fem ? 'ОПРАВДАНА' : 'ОПРАВДАН', P.stamp, { angle: -14, size: 'small' });
+      drawStamp(c, fw >> 1, oy + 82, fem ? TT('stamp.acqF') : TT('stamp.acq'), P.stamp, { angle: -14, size: 'small' });
     }
     if (locked) {
       G.dither(c, 0, 0, fw + 4, fh + 14, R.neutral[3], 7);
@@ -1478,7 +1535,7 @@ const CaseSelectScene = {
   },
   draw(c) {
     menuBackground(c);
-    sceneHeader(c, 'ВЫБОР ДЕЛА');
+    sceneHeader(c, TT('sel.title'));
     const cs = this.cases();
     cs.forEach((k, i) => {
       const solved = isSolved(i), locked = this.locked(i);
@@ -1494,11 +1551,11 @@ const CaseSelectScene = {
       }
     });
     const k = cs[this.sel];
-    const info = this.locked(this.sel) ? 'Дело закрыто: сначала завершите предыдущее' : (isSolved(this.sel) ? 'Пройдено. ' : '') + (k ? k.title : '');
+    const info = this.locked(this.sel) ? TT('sel.locked') : (isSolved(this.sel) ? TT('sel.done') : '') + (k ? TR(k.title) : '');
     G.rect(c, 0, H - 22, W, 22, R.wood[0]);
     G.rect(c, 0, H - 22, W, 1, R.gold[2]);
     T(c, info, W >> 1, H - 16, R.paper[3], { align: 'center' });
-    if (button(c, { x: 4, y: H - 19, w: 50, h: 16 }, 'Назад', { silent: true, hotkey: null })) { sfx('cancel'); goTitle(); }
+    if (button(c, { x: 4, y: H - 19, w: 50, h: 16 }, TT('common.back'), { silent: true, hotkey: null })) { sfx('cancel'); goTitle(); }
   },
 };
 
@@ -1708,10 +1765,10 @@ function sparkle(c, x, y, size, col) {
 }
 const sheetCache = {};
 function evidenceSheet(ev) {
-  const key = ev.id;
+  const key = ev.id + LANG();
   if (sheetCache[key]) return sheetCache[key];
   const sw = 128, sh = 128;
-  const cv = G.makeSprite(sw, sh, c => {
+  const cv = UC('itemsheet/' + ev.id + '_' + LANG(), sw, sh, c => {
     G.rect(c, 0, 0, sw, sh, P.outline);
     G.rect(c, 1, 1, sw - 2, sh - 2, R.paper[4]);
     G.rect(c, 1, 1, sw - 2, 1, P.white);
@@ -1719,7 +1776,7 @@ function evidenceSheet(ev) {
     for (let y = 30; y < sh - 6; y += 8) G.rect(c, 3, y, sw - 6, 1, R.blue[6]);
     G.rect(c, 12, 1, 1, sh - 2, R.red[5]);
     // заголовок
-    const tl = WRAP(ev.name || '', sw - 22).slice(0, 2);
+    const tl = WRAP(TR(ev.name || ''), sw - 22).slice(0, 2);
     tl.forEach((l, i) => T(c, l, (sw >> 1) + 5, 4 + i * 10, P.inkDark, { align: 'center' }));
     G.rect(c, 16, 25, sw - 24, 1, P.inkDark);
     // «машинописные» строки
@@ -1794,7 +1851,7 @@ function drawItemGet(c, ev, t) {
     shadowRect(c, cx - (sh.width >> 1) + 4, y + 4, sh.width, sh.height, 0.45);
     c.drawImage(sh, cx - (sh.width >> 1), y);
     if (t > 0.85) {
-      drawStamp(c, cx - 2, y + 66, 'ПРИОБЩЕНО', P.stampBlue, { angle: -9, size: 'big', t: st });
+      drawStamp(c, cx - 2, y + 66, TT('item.stamp'), P.stampBlue, { angle: -9, size: 'big', t: st });
       if (st >= 1 && t < 1.05) {
         const rnd = G.rng(5);
         for (let i = 0; i < 10; i++) G.px(c, cx - 4 + Math.round((rnd() - 0.5) * 100), y + 64 + Math.round((rnd() - 0.5) * 40), P.stampBlue);
@@ -1836,7 +1893,7 @@ function drawItemGet(c, ev, t) {
     for (let x = 4; x < rw - 4; x += 3) { G.px(c, x, by + 3, R.gold[3]); G.px(c, x, by + 16, R.gold[3]); }
     if (k >= 1) {
       const tx = Math.round(G.lerp(-150, cx, G.ease.out(G.clamp((bt - 0.15) / 0.3, 0, 1))));
-      T(c, 'НОВАЯ УЛИКА', tx, by + 1, R.gold[5], { font: 'title', align: 'center', shadow: R.red[0], shadowX: 1, shadowY: 1 });
+      T(c, TT('item.new'), tx, by + 1, R.gold[5], { font: 'title', align: 'center', shadow: R.red[0], shadowX: 1, shadowY: 1 });
       // блик пробегает по надписи
       const gx = Math.round(((bt * 140) % 500) - 60);
       if (gx > 0 && gx < W) { c.globalAlpha = 0.35; G.poly(c, [[gx, by], [gx + 6, by], [gx - 4, by + 20], [gx - 10, by + 20]], P.white); c.globalAlpha = 1; }
@@ -1844,7 +1901,7 @@ function drawItemGet(c, ev, t) {
     // табличка с названием
     const nk = G.clamp((bt - 0.3) / 0.25, 0, 1);
     if (nk > 0) {
-      const name = ev.name || ev.id;
+      const name = TR(ev.name || ev.id);
       const nw = M(name, { font: 'big' }) + 24;
       const ny = by + 22 + Math.round((1 - G.ease.back(nk)) * 16);
       const nx = cx - (nw >> 1);

@@ -262,17 +262,18 @@ const FONTS = {};
 function buildFont(name, glyphs, H, lineH) {
   const chars = Object.keys(glyphs);
   let W = 0; for (const c of chars) W += glyphs[c].w + 1;
-  const atlas = G.makeCanvas(Math.max(1, W), H);
-  const ax = atlas.getContext('2d');
-  ax.fillStyle = '#ffffff';
   const map = {};
   let x = 0;
-  for (const c of chars) {
-    const g = glyphs[c];
-    for (let j = 0; j < g.h; j++) for (let i = 0; i < g.w; i++) if (g.m[j * g.w + i]) ax.fillRect(x + i, j, 1, 1);
-    map[c] = { x, w: g.w };
-    x += g.w + 1;
-  }
+  for (const c of chars) { map[c] = { x, w: glyphs[c].w }; x += glyphs[c].w + 1; }
+  const paint = (ax) => {
+    ax.fillStyle = '#ffffff';
+    for (const c of chars) {
+      const g = glyphs[c], gx = map[c].x;
+      for (let j = 0; j < g.h; j++) for (let i = 0; i < g.w; i++) if (g.m[j * g.w + i]) ax.fillRect(gx + i, j, 1, 1);
+    }
+  };
+  const atlas = G.cacheCanvas ? G.cacheCanvas('ui/font/' + name, Math.max(1, W), H, paint)
+    : (() => { const a = G.makeCanvas(Math.max(1, W), H); paint(a.getContext('2d')); return a; })();
   FONTS[name] = { name, atlas, map, h: H, lineH, gap: GAP[name], space: SPACE_ADV[name], tints: {} };
 }
 const smallG = {};
@@ -328,7 +329,26 @@ function tokens(text) {
   return out;
 }
 
+/* --- CJK через G.FontCJK (готовит интегратор) --- */
+const CJK_RE = /[\u2e80-\u9fff\uf900-\ufaff\u3000-\u303f\uff00-\uffef]/;
+const isCJK = ch => CJK_RE.test(ch);
+const cjkAdvCache = {};
+let cjkDummy = null;
+function cjkOK(ch) { return !!(G.FontCJK && isCJK(ch) && G.FontCJK.has(ch)); }
+function cjkAdv(ch) {
+  if (cjkAdvCache[ch] != null) return cjkAdvCache[ch];
+  if (G.FontCJK.advance) return (cjkAdvCache[ch] = G.FontCJK.advance(ch));
+  if (!cjkDummy) cjkDummy = G.makeCanvas(16, 16).getContext('2d');
+  return (cjkAdvCache[ch] = G.FontCJK.draw(cjkDummy, ch, 0, 0, '#ffffff') || 12);
+}
+function cjkY(f) { const h = G.FontCJK.h || 12; return f.name === 'small' ? 0 : Math.max(0, (f.lineH - h) >> 1); }
+function lineHOf(f) {
+  if (G.FontCJK && G.lang && G.lang() === 'zh' && f.name !== 'title') return Math.max(f.lineH, (G.FontCJK.h || 12) + 2);
+  return f.lineH;
+}
+
 function advance(f, ch) {
+  if (cjkOK(ch)) return cjkAdv(ch);
   if (ch === ' ') return f.space;
   const g = glyphOf(f, ch);
   return g ? g.w + f.gap : f.space;
@@ -346,7 +366,8 @@ function measureLine(f, line) {
 const Font = G.Font = {
   lineH: 10,
   fonts: FONTS,
-  height(o) { return fontOf(o).lineH; },
+  height(o) { return lineHOf(fontOf(o)); },
+  isCJK,
   strip(text) {
     let s = '';
     for (const tk of tokens(String(text))) if (tk.ch) s += tk.ch;
@@ -369,7 +390,7 @@ const Font = G.Font = {
     const maxChars = o.maxChars == null ? Infinity : o.maxChars;
     const lines = text.split('\n');
     let shown = 0, emph = false, cy = y | 0;
-    const lh = o.lineH || f.lineH;
+    const lh = o.lineH || lineHOf(f);
     for (let li = 0; li < lines.length; li++) {
       const line = lines[li];
       let cx = x | 0;
@@ -384,6 +405,12 @@ const Font = G.Font = {
         shown++;
         const ch = tk.ch;
         if (ch === ' ') { cx += f.space; continue; }
+        if (cjkOK(ch)) {
+          const cyy = cy + cjkY(f);
+          if (o.shadow) G.FontCJK.draw(ctx, ch, cx + (o.shadowX == null ? 1 : o.shadowX), cyy + (o.shadowY == null ? 1 : o.shadowY), o.shadow);
+          cx += G.FontCJK.draw(ctx, ch, cx, cyy, emph ? emphCol : color) + (o.spacing || 0);
+          continue;
+        }
         const g = glyphOf(f, ch);
         if (!g) { cx += f.space; continue; }
         if (o.shadow) ctx.drawImage(tinted(f, o.shadow), g.x, 0, g.w, f.h, cx + (o.shadowX == null ? 1 : o.shadowX), cy + (o.shadowY == null ? 1 : o.shadowY), g.w, f.h);
@@ -410,13 +437,23 @@ const Font = G.Font = {
       return endEmph;
     };
     for (const para of String(text).split('\n')) {
-      const words = para.split(' ');
+      // единицы переноса: слова (через пробел) и отдельные иероглифы
+      const units = [];
+      let cur = '', curSp = false, pend = false;
+      const push = () => { if (cur !== '') { units.push({ t: cur, sp: curSp }); cur = ''; } };
+      for (const ch of para) {
+        if (ch === ' ') { push(); pend = true; continue; }
+        if (isCJK(ch)) { push(); units.push({ t: ch, sp: pend }); pend = false; continue; }
+        if (cur === '') { curSp = pend; pend = false; }
+        cur += ch;
+      }
+      push();
       let line = '', start = emph;
-      for (let w of words) {
-        const test = line === '' ? w : line + ' ' + w;
+      for (const u of units) {
+        const test = line === '' ? u.t : line + (u.sp ? ' ' : '') + u.t;
         if (line !== '' && measureLine(f, (start ? '*' : '') + test) > maxW) {
           emph = finish(line, start);
-          start = emph; line = w;
+          start = emph; line = u.t;
         } else line = test;
         // слишком длинное слово — режем посимвольно
         while (measureLine(f, line) > maxW && Font.strip(line).length > 1) {
